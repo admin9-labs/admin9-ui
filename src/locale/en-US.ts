@@ -1,0 +1,43 @@
+export default {
+  mediaPicker: {
+    title: 'Select Media',
+    selectImage: 'Select Image',
+    uploadImage: 'Upload Image',
+    deleteCount: '{count} selected',
+    delete: 'Delete',
+    confirm: 'OK',
+    cancel: 'Cancel',
+    uploadFailed: 'Upload failed',
+    loadFailed: 'Load failed',
+    deleteFailed: 'Delete failed',
+    empty: 'No media',
+  },
+  iconPicker: {
+    placeholder: 'Select icon',
+    searchPlaceholder: 'Search icon',
+    empty: 'No matching icon',
+  },
+  userPicker: {
+    title: 'Select',
+    selected: '{count} selected',
+    confirm: 'OK',
+    cancel: 'Cancel',
+    empty: 'No data',
+    buttonText: 'Select User',
+    select: 'Select',
+    colId: 'ID',
+    colName: 'Name',
+    colDescription: 'Description',
+    colAvatar: 'Avatar',
+    okWithCount: 'OK ({count} selected)',
+  },
+  dataTable: {
+    searchPlaceholder: 'Search',
+    refresh: 'Refresh',
+  },
+  proTable: {
+    action: 'Action',
+    searchPlaceholder: 'Search',
+    refresh: 'Refresh',
+  },
+};

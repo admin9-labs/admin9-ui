@@ -1,0 +1,43 @@
+export default {
+  mediaPicker: {
+    title: '选择素材',
+    selectImage: '选择图片',
+    uploadImage: '上传图片',
+    deleteCount: '已选 {count} 项',
+    delete: '删除',
+    confirm: '确定',
+    cancel: '取消',
+    uploadFailed: '上传失败',
+    loadFailed: '加载失败',
+    deleteFailed: '删除失败',
+    empty: '暂无素材',
+  },
+  iconPicker: {
+    placeholder: '选择图标',
+    searchPlaceholder: '搜索图标',
+    empty: '无匹配图标',
+  },
+  userPicker: {
+    title: '选择',
+    selected: '已选 {count} 项',
+    confirm: '确定',
+    cancel: '取消',
+    empty: '暂无数据',
+    buttonText: '选择用户',
+    select: '选择',
+    colId: 'ID',
+    colName: '姓名',
+    colDescription: '描述',
+    colAvatar: '头像',
+    okWithCount: '确定（已选 {count} 项）',
+  },
+  dataTable: {
+    searchPlaceholder: '搜索',
+    refresh: '刷新',
+  },
+  proTable: {
+    action: '操作',
+    searchPlaceholder: '搜索',
+    refresh: '刷新',
+  },
+};
