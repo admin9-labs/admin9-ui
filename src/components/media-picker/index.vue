@@ -365,15 +365,18 @@
                 </a-button>
               </template>
             </a-upload>
-            <a-button
+            <a-popconfirm
               v-if="canDelete && selectCount"
-              :loading="deleteLoading"
-              type="primary"
-              status="danger"
-              @click="onDeleteItems"
+              :content="t('admin9Ui.mediaPicker.deleteConfirm')"
+              :ok-text="t('admin9Ui.mediaPicker.delete')"
+              :cancel-text="t('admin9Ui.mediaPicker.cancel')"
+              :ok-loading="deleteLoading"
+              @ok="onDeleteItems"
             >
-              {{ t('admin9Ui.mediaPicker.deleteCount', { count: selectCount }) }}
-            </a-button>
+              <a-button :loading="deleteLoading" type="primary" status="danger">
+                {{ t('admin9Ui.mediaPicker.deleteCount', { count: selectCount }) }}
+              </a-button>
+            </a-popconfirm>
           </a-space>
           <a-button @click="fetchList">
             <template #icon><icon-refresh /></template>
@@ -405,17 +408,25 @@
                   </template>
                 </a-radio>
                 <span v-if="!isSelectable(item)" class="a9-media-picker__status">{{ statusLabel(item) }}</span>
-                <a-button
+                <a-popconfirm
                   v-if="item.status === 'failed' && canDelete"
-                  class="a9-media-picker__delete"
-                  size="mini"
-                  status="danger"
-                  :loading="isDeleting(item.id)"
-                  :disabled="isDeleting(item.id)"
-                  @click.stop="onDeleteFailed(item.id)"
+                  :content="t('admin9Ui.mediaPicker.deleteConfirm')"
+                  :ok-text="t('admin9Ui.mediaPicker.delete')"
+                  :cancel-text="t('admin9Ui.mediaPicker.cancel')"
+                  :ok-loading="isDeleting(item.id)"
+                  @ok="onDeleteFailed(item.id)"
                 >
-                  {{ t('admin9Ui.mediaPicker.delete') }}
-                </a-button>
+                  <a-button
+                    class="a9-media-picker__delete"
+                    size="mini"
+                    status="danger"
+                    :loading="isDeleting(item.id)"
+                    :disabled="isDeleting(item.id)"
+                    @click.stop
+                  >
+                    {{ t('admin9Ui.mediaPicker.delete') }}
+                  </a-button>
+                </a-popconfirm>
               </div>
             </div>
           </a-radio-group>
@@ -446,17 +457,25 @@
                   </template>
                 </a-checkbox>
                 <span v-if="!isSelectable(item)" class="a9-media-picker__status">{{ statusLabel(item) }}</span>
-                <a-button
+                <a-popconfirm
                   v-if="item.status === 'failed' && canDelete"
-                  class="a9-media-picker__delete"
-                  size="mini"
-                  status="danger"
-                  :loading="isDeleting(item.id)"
-                  :disabled="isDeleting(item.id)"
-                  @click.stop="onDeleteFailed(item.id)"
+                  :content="t('admin9Ui.mediaPicker.deleteConfirm')"
+                  :ok-text="t('admin9Ui.mediaPicker.delete')"
+                  :cancel-text="t('admin9Ui.mediaPicker.cancel')"
+                  :ok-loading="isDeleting(item.id)"
+                  @ok="onDeleteFailed(item.id)"
                 >
-                  {{ t('admin9Ui.mediaPicker.delete') }}
-                </a-button>
+                  <a-button
+                    class="a9-media-picker__delete"
+                    size="mini"
+                    status="danger"
+                    :loading="isDeleting(item.id)"
+                    :disabled="isDeleting(item.id)"
+                    @click.stop
+                  >
+                    {{ t('admin9Ui.mediaPicker.delete') }}
+                  </a-button>
+                </a-popconfirm>
               </div>
             </div>
           </a-checkbox-group>
