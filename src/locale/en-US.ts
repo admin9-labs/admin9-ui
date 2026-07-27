@@ -11,6 +11,8 @@ export default {
     loadFailed: 'Load failed',
     deleteFailed: 'Delete failed',
     empty: 'No media',
+    processing: 'Processing',
+    failed: 'Failed',
   },
   iconPicker: {
     placeholder: 'Select icon',

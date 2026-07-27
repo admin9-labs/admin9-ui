@@ -11,6 +11,8 @@ export default {
     loadFailed: '加载失败',
     deleteFailed: '删除失败',
     empty: '暂无素材',
+    processing: '处理中',
+    failed: '处理失败',
   },
   iconPicker: {
     placeholder: '选择图标',

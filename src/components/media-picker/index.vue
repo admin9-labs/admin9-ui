@@ -8,12 +8,12 @@
   import type { MediaItem, MediaService } from '../../services/types';
 
   /**
-   * AMediaPicker —— 素材选择器（image-gallery 的后端无关升级版）。
+   * AMediaPicker —— 后端无关的素材选择器。
    *
    * 设计要点（见 DESIGN.md §5.1）：
    * - 库不直接调任何后端，列表/上传/删除全部走注入的 MediaService。
    * - 上传用 a-upload :custom-request → service.upload（不再 :action 绕过 axios）。
-   * - emit 与 onMounted 反构统一用 id（修 image-gallery 的 uid/id 混用 bug）。
+   * - emit 与 onMounted 反构统一用 id，避免 uid/id 混用。
    * - 单选(multiple=false)即选即关；多选(multiple=true)底部确认。
    */
   type ModelValue = MediaItem[] | MediaItem | string | undefined;
@@ -31,6 +31,10 @@
       buttonText?: string;
       /** 上传接受的 MIME */
       accept?: string;
+      /** 是否允许在素材弹窗中上传 */
+      canUpload?: boolean;
+      /** 是否允许在素材弹窗中删除 */
+      canDelete?: boolean;
       /** 媒体服务；未传时回退到插件全局注入 */
       service?: MediaService;
       /** 是否展示外层已选文件列表 */
@@ -42,6 +46,8 @@
       pageSize: 24,
       buttonText: '',
       accept: 'image/png,image/jpeg,image/gif',
+      canUpload: true,
+      canDelete: true,
       showFileList: true,
     }
   );
@@ -70,25 +76,36 @@
   const current = ref(1);
   const pageSize = ref(props.pageSize);
   const total = ref(0);
+  let latestListRequest = 0;
   const isEmpty = computed(() => list.value.length === 0 && !loading.value);
+  type SelectableMediaItem = MediaItem & { url: string };
+  const isSelectable = (item: MediaItem): item is SelectableMediaItem =>
+    (!item.status || item.status === 'ready') && typeof item.url === 'string' && item.url.length > 0;
+  const previewUrl = (item: MediaItem) => (isSelectable(item) ? item.thumbnail || item.url : undefined);
+  const statusLabel = (item: MediaItem) =>
+    item.status === 'pending' ? t('admin9Ui.mediaPicker.processing') : t('admin9Ui.mediaPicker.failed');
 
   const fetchList = async () => {
+    const request = latestListRequest + 1;
+    latestListRequest = request;
     setLoading(true);
     try {
       const { list: items, pagination } = await service.list({
         page: current.value,
         pageSize: pageSize.value,
       });
+      if (request !== latestListRequest) return;
       list.value = items;
       total.value = pagination.total;
       pageSize.value = pagination.pageSize;
     } catch {
+      if (request !== latestListRequest) return;
       // service 抛错时给出提示并清空，不阻塞交互
       Message.error(t('admin9Ui.mediaPicker.loadFailed'));
       list.value = [];
       total.value = 0;
     } finally {
-      setLoading(false);
+      if (request === latestListRequest) setLoading(false);
     }
   };
 
@@ -104,7 +121,7 @@
   const toFileItem = (item: MediaItem): FileItem => ({
     uid: item.id,
     name: item.name,
-    url: item.url,
+    url: item.url ?? undefined,
     status: 'done',
   });
 
@@ -116,18 +133,19 @@
       return;
     }
     // 保留消费者原始形态：字符串模式回传 URL，否则回传 MediaItem
-    emit('update:modelValue', isStringModel.value ? item.url : item);
+    emit('update:modelValue', isStringModel.value ? item.url ?? undefined : item);
   };
 
   const confirmSelection = (items: MediaItem[]) => {
+    const selectableItems = items.filter(isSelectable);
     setVisible(false);
-    selectedItems.value = items;
-    fileList.value = items.map(toFileItem);
-    emit('change', items);
+    selectedItems.value = selectableItems;
+    fileList.value = selectableItems.map(toFileItem);
+    emit('change', selectableItems);
     if (props.multiple) {
-      emit('update:modelValue', items);
+      emit('update:modelValue', selectableItems);
     } else {
-      emitSingle(items[items.length - 1]);
+      emitSingle(selectableItems[selectableItems.length - 1]);
     }
   };
 
@@ -146,6 +164,10 @@
     const next = new Map(selectedMap.value);
     // 仅同步当前页：勾上→加入，取消→移除（其它页选中项保留）
     list.value.forEach((item) => {
+      if (!isSelectable(item)) {
+        next.delete(item.id);
+        return;
+      }
       if (incoming.has(item.id)) next.set(item.id, item);
       else next.delete(item.id);
     });
@@ -156,7 +178,7 @@
   const onSingleSelect = (value: string | number | boolean) => {
     const id = String(value);
     const item = list.value.find((m) => m.id === id);
-    if (!item) return;
+    if (!item || !isSelectable(item)) return;
     singleKey.value = id;
     // 即选即关
     confirmSelection([item]);
@@ -168,21 +190,26 @@
 
   /* ------------------------------ 删除 ------------------------------ */
   const deleteLoading = ref(false);
-  const onDeleteItems = async () => {
-    if (selectedKeys.value.length === 0) return;
+  const removeItems = async (ids: string[]) => {
+    if (ids.length === 0) return;
     try {
       deleteLoading.value = true;
-      await service.remove(selectedKeys.value);
+      await service.remove(ids);
       const next = new Map(selectedMap.value);
-      selectedKeys.value.forEach((id) => next.delete(id));
+      ids.forEach((id) => next.delete(id));
       selectedMap.value = next;
       await fetchList();
     } catch {
+      selectedMap.value = new Map();
+      emit('select', []);
+      await fetchList();
       Message.error(t('admin9Ui.mediaPicker.deleteFailed'));
     } finally {
       deleteLoading.value = false;
     }
   };
+  const onDeleteItems = () => removeItems(selectedKeys.value);
+  const onDeleteFailed = (id: string) => removeItems([id]);
 
   /* ----------------------- 上传（走 service，不绕过 axios） ------------- */
   const uploadCount = ref(0);
@@ -319,9 +346,10 @@
         <div class="a9-media-picker__toolbar">
           <a-space>
             <a-upload
+              v-if="canUpload"
               :multiple="true"
               :show-file-list="false"
-              :auto-upload="false"
+              :auto-upload="true"
               :custom-request="customUpload"
               :accept="accept"
             >
@@ -332,7 +360,13 @@
                 </a-button>
               </template>
             </a-upload>
-            <a-button v-if="selectCount" :loading="deleteLoading" type="primary" status="danger" @click="onDeleteItems">
+            <a-button
+              v-if="canDelete && selectCount"
+              :loading="deleteLoading"
+              type="primary"
+              status="danger"
+              @click="onDeleteItems"
+            >
               {{ t('admin9Ui.mediaPicker.deleteCount', { count: selectCount }) }}
             </a-button>
           </a-space>
@@ -345,26 +379,76 @@
           <!-- 单选：radio 即选即关 -->
           <a-radio-group v-else-if="!multiple" :model-value="singleKey" @change="onSingleSelect">
             <div class="a9-media-picker__grid">
-              <a-radio v-for="item in list" :key="item.id" :value="item.id">
-                <template #radio>
-                  <a-image :src="item.thumbnail || item.url" :preview="false" width="120" height="90" fit="cover" show-loader />
-                </template>
-              </a-radio>
+              <div
+                v-for="item in list"
+                :key="item.id"
+                class="a9-media-picker__item"
+                :class="{ 'is-unavailable': !isSelectable(item) }"
+              >
+                <a-radio :value="item.id" :disabled="!isSelectable(item)">
+                  <template #radio>
+                    <a-image
+                      v-if="previewUrl(item)"
+                      :src="previewUrl(item)"
+                      :preview="false"
+                      width="120"
+                      height="90"
+                      fit="cover"
+                      show-loader
+                    />
+                    <div v-else class="a9-media-picker__placeholder" aria-hidden="true" />
+                  </template>
+                </a-radio>
+                <span v-if="!isSelectable(item)" class="a9-media-picker__status">{{ statusLabel(item) }}</span>
+                <a-button
+                  v-if="item.status === 'failed' && canDelete"
+                  class="a9-media-picker__delete"
+                  size="mini"
+                  status="danger"
+                  @click.stop="onDeleteFailed(item.id)"
+                >
+                  {{ t('admin9Ui.mediaPicker.delete') }}
+                </a-button>
+              </div>
             </div>
           </a-radio-group>
           <!-- 多选：checkbox + 底部确认 -->
           <a-checkbox-group v-else :model-value="selectedKeys" @change="onMultiSelect">
             <div class="a9-media-picker__grid">
-              <a-checkbox
+              <div
                 v-for="item in list"
                 :key="item.id"
-                :value="item.id"
-                :disabled="limitReached && !selectedKeys.includes(item.id)"
+                class="a9-media-picker__item"
+                :class="{ 'is-unavailable': !isSelectable(item) }"
               >
-                <template #checkbox>
-                  <a-image :src="item.thumbnail || item.url" :preview="false" width="120" height="90" fit="cover" show-loader />
-                </template>
-              </a-checkbox>
+                <a-checkbox
+                  :value="item.id"
+                  :disabled="!isSelectable(item) || (limitReached && !selectedKeys.includes(item.id))"
+                >
+                  <template #checkbox>
+                    <a-image
+                      v-if="previewUrl(item)"
+                      :src="previewUrl(item)"
+                      :preview="false"
+                      width="120"
+                      height="90"
+                      fit="cover"
+                      show-loader
+                    />
+                    <div v-else class="a9-media-picker__placeholder" aria-hidden="true" />
+                  </template>
+                </a-checkbox>
+                <span v-if="!isSelectable(item)" class="a9-media-picker__status">{{ statusLabel(item) }}</span>
+                <a-button
+                  v-if="item.status === 'failed' && canDelete"
+                  class="a9-media-picker__delete"
+                  size="mini"
+                  status="danger"
+                  @click.stop="onDeleteFailed(item.id)"
+                >
+                  {{ t('admin9Ui.mediaPicker.delete') }}
+                </a-button>
+              </div>
             </div>
           </a-checkbox-group>
         </a-spin>
@@ -426,6 +510,46 @@
       :deep(.arco-checkbox-checked) .arco-image {
         border-color: rgb(var(--primary-6));
       }
+    }
+
+    &__item {
+      position: relative;
+
+      &.is-unavailable {
+        opacity: 0.6;
+      }
+    }
+
+    &__placeholder {
+      width: 120px;
+      height: 90px;
+      background: var(--color-fill-2);
+      border: 2px solid var(--color-neutral-1);
+    }
+
+    &__status,
+    &__delete {
+      position: absolute;
+      right: 4px;
+      z-index: 1;
+    }
+
+    &__status {
+      bottom: 4px;
+      padding: 2px 6px;
+      color: var(--color-white);
+      font-size: 12px;
+      line-height: 18px;
+      background: rgb(var(--danger-6));
+      border-radius: 2px;
+    }
+
+    &__item:not(.is-unavailable) &__status {
+      display: none;
+    }
+
+    &__delete {
+      top: 4px;
     }
 
     &__footer {

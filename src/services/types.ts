@@ -14,19 +14,23 @@
 export interface MediaItem {
   id: string;
   name: string;
-  url: string;
+  url: string | null;
   /** 后端相对路径（引用/删除用），可选 */
   path?: string;
   /** 字节数，可选 */
   size?: number;
   /** MIME 类型，如 image/jpeg，可选 */
   mime?: string;
+  /** 文件扩展名，如 jpg 或 webp，可选 */
+  extension?: string;
   /** 缩略图 URL，缺省时库回退用 url */
   thumbnail?: string;
   width?: number;
   height?: number;
   /** ISO 时间，可选 */
   createdAt?: string;
+  /** 服务端处理状态；未提供时按历史行为视为 ready */
+  status?: 'pending' | 'ready' | 'failed';
 }
 
 export interface MediaListParams {
