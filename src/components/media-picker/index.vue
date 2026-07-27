@@ -189,11 +189,14 @@
   };
 
   /* ------------------------------ 删除 ------------------------------ */
-  const deleteLoading = ref(false);
-  const removeItems = async (ids: string[]) => {
-    if (ids.length === 0) return;
+  const deletingIds = ref(new Set<string>());
+  const deleteLoading = computed(() => selectedKeys.value.some((id) => deletingIds.value.has(id)));
+  const isDeleting = (id: string) => deletingIds.value.has(id);
+  const removeItems = async (inputIds: string[]) => {
+    const ids = Array.from(new Set(inputIds));
+    if (ids.length === 0 || ids.some(isDeleting)) return;
+    deletingIds.value = new Set([...deletingIds.value, ...ids]);
     try {
-      deleteLoading.value = true;
       await service.remove(ids);
       const next = new Map(selectedMap.value);
       ids.forEach((id) => next.delete(id));
@@ -205,7 +208,9 @@
       await fetchList();
       Message.error(t('admin9Ui.mediaPicker.deleteFailed'));
     } finally {
-      deleteLoading.value = false;
+      const remaining = new Set(deletingIds.value);
+      ids.forEach((id) => remaining.delete(id));
+      deletingIds.value = remaining;
     }
   };
   const onDeleteItems = () => removeItems(selectedKeys.value);
@@ -405,6 +410,8 @@
                   class="a9-media-picker__delete"
                   size="mini"
                   status="danger"
+                  :loading="isDeleting(item.id)"
+                  :disabled="isDeleting(item.id)"
                   @click.stop="onDeleteFailed(item.id)"
                 >
                   {{ t('admin9Ui.mediaPicker.delete') }}
@@ -444,6 +451,8 @@
                   class="a9-media-picker__delete"
                   size="mini"
                   status="danger"
+                  :loading="isDeleting(item.id)"
+                  :disabled="isDeleting(item.id)"
                   @click.stop="onDeleteFailed(item.id)"
                 >
                   {{ t('admin9Ui.mediaPicker.delete') }}
