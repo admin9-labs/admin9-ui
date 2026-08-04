@@ -7,7 +7,7 @@ Admin9 Pro 中后台增强业务组件库，基于 Arco Design Vue。
 ## 安装
 
 ```bash
-pnpm add @admin9-labs/admin9-ui
+npm install @admin9-labs/admin9-ui
 ```
 
 peerDependencies：`vue`、`@arco-design/web-vue`、`vue-i18n`、`@vueuse/core`。
@@ -49,11 +49,11 @@ app.use(Admin9UI, {
 
 ```bash
 # 在 monorepo 根
-pnpm install
+npm ci
 
 # 构建库
-cd packages/admin9-ui && pnpm build
+npm run build --workspace=@admin9-labs/admin9-ui
 
 # watch 模式
-pnpm dev
+npm run dev --workspace=@admin9-labs/admin9-ui
 ```

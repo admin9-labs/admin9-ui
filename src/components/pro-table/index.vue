@@ -90,12 +90,12 @@
   /** 最终列：showAction=true 时追加一列，内容由 #action 插槽决定 */
   const mergedColumns = computed<TableColumnData[]>(() => {
     if (!props.showAction) return props.columns;
-    const hasAction = props.columns.some((c) => c.slotName === 'action' || c.key === ACTION_COLUMN_KEY);
+    const hasAction = props.columns.some((c) => c.slotName === 'action' || c.dataIndex === ACTION_COLUMN_KEY);
     if (hasAction) return props.columns;
     return [
       ...props.columns,
       {
-        key: ACTION_COLUMN_KEY,
+        dataIndex: ACTION_COLUMN_KEY,
         title: t('admin9Ui.proTable.action'),
         slotName: 'action',
         width: 160,

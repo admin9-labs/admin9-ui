@@ -8,7 +8,7 @@
 
 | 维度 | 决策 | 依据 |
 |---|---|---|
-| 仓库结构 | 轻量 monorepo，`packages/admin9-ui/` 作 pnpm workspace 包 | pnpm 已是包管理器（v11.5），workspace 零额外成本 |
+| 仓库结构 | 轻量 monorepo，`packages/admin9-ui/` 作 npm workspace 包 | 根项目支持 npm 11，锁文件与 CI 以 11.12.1 为基准 |
 | 包名 | `@admin9-labs/admin9-ui` | GitHub 组织 admin9-labs，scope 名正言顺 |
 | 组件前缀 | `A`（如 `AMediaPicker`） | 用户决策。贴 Arco 家族。当前清单与 Arco 原生无撞名（见 §3 风险） |
 | composable 前缀 | 无（`useModal`） | 业界惯例，靠 import 路径区分 |
@@ -44,8 +44,8 @@
 
 ```
 admin9-web/                       仓库根
-├─ pnpm-workspace.yaml            新增：packages: ['packages/*', '.']
-├─ package.json                   根，装公共 dev 工具（不动 App 依赖）
+├─ package.json                   根，声明 workspaces: ['packages/*'] 并装公共 dev 工具
+├─ package-lock.json              npm workspace 统一锁文件
 ├─ src/                           App，基本不动
 └─ packages/
    └─ admin9-ui/                  新库
@@ -74,12 +74,12 @@ admin9-web/                       仓库根
             └─ index.less         # Arco 变量引用（不 @import App 的 breakpoint）
 ```
 
-### pnpm-workspace.yaml（新增，仓库根）
+### package.json workspaces（仓库根）
 
-```yaml
-packages:
-  - 'packages/*'
-  - '.'
+```json
+{
+  "workspaces": ["packages/*"]
+}
 ```
 
 ### packages/admin9-ui/package.json
@@ -148,7 +148,7 @@ build: {
 
 ### App 侧引用（开发期直接消费源码）
 
-- App `package.json` devDependencies：`"@admin9-labs/admin9-ui": "workspace:*"`
+- App `package.json` devDependencies：`"@admin9-labs/admin9-ui": "0.1.0"`，npm 按同名同版本自动链接本地 workspace
 - App `src/main.ts`（在 `app.use(i18n)` 之后）：
   ```ts
   import Admin9UI from '@admin9-labs/admin9-ui';
@@ -157,7 +157,7 @@ build: {
   ```
 - App `tsconfig.json` 的 `include` 追加 `"packages/admin9-ui/src/**/*"`（否则 vue-tsc 报错）
 - App `vite.config.base.ts` 的 `optimizeDeps.exclude` 加 `@admin9-labs/admin9-ui`（让 App vite 直接编译库源码，热更新生效）
-- 发布期：库 `exports` 指向 dist，App 把 `workspace:*` 换版本号
+- 发布期：库 `exports` 指向 dist；当前版本约束已使用标准 semver，npm workspace 在开发期自动链接本地包
 
 ---
 
@@ -517,11 +517,11 @@ breakpoint：库 `styles/index.less` 自带一份，不 `@import` App 的 `src/a
 ## 9. App 侧集成与迁移点（逐 file:line）
 
 ### 9.1 库脚手架（新增）
-- `pnpm-workspace.yaml`（新增）
+- 根 `package.json` 的 `workspaces` 与 `package-lock.json`
 - `packages/admin9-ui/`（全新）
 
 ### 9.2 App 配置改动
-- `package.json`：devDependencies 加 `"@admin9-labs/admin9-ui": "workspace:*"`
+- `package.json`：devDependencies 加 `"@admin9-labs/admin9-ui": "0.1.0"`
 - `src/main.ts`：`app.use(i18n)` 后加 `import Admin9UI` + `app.use(Admin9UI)` + `import styles`
 - `tsconfig.json`：`include` 加 `"packages/admin9-ui/src/**/*"`
 - `vite.config.base.ts`：`optimizeDeps.exclude` 加 `@admin9-labs/admin9-ui`
@@ -545,7 +545,7 @@ breakpoint：库 `styles/index.less` 自带一份，不 `@import` App 的 `src/a
 
 ## 10. 实施步骤
 
-1. **脚手架**：建 `pnpm-workspace.yaml` + `packages/admin9-ui/` 全套（package.json/tsconfig/vite.config.lib.ts/index.ts 骨架/hooks 副本）。`pnpm install` 验证 workspace 通。
+1. **脚手架**：在根 `package.json` 声明 npm workspaces，并建立 `packages/admin9-ui/` 全套（package.json/tsconfig/vite.config.lib.ts/index.ts 骨架/hooks 副本）。`npm ci` 验证 workspace 自动链接。
 2. **AMediaPicker**：迁 image-gallery 进库，按 §5.1 改造（service 注入、修 uid/id bug、上传走 service）。建 `src/services/mediaService.ts` adapter。接 tiptap 调用方验证。
 3. **AIconPicker**：构建期生成 Arco 图标名清单 JSON，实现 popover 网格 + 搜索。接 EditMenuModal 验证渲染侧不动。
 4. **ADataTable**：提取 picker 内部公共分页列表。
