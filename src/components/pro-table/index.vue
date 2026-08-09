@@ -11,9 +11,8 @@
    * ADataTable 是 picker 的"搜索+分页表格片段"，无 toolbar/action；
    * AProTable 是页面级，收敛 fetcher + 分页 + loading + 可选 action 列。
    *
-   * 与现有 GridTable 的关系：升级而非平行。GridTable 硬伤——row-key 硬编码 'id'、
-   * action 列写死编辑/删除、数据全靠父透传无请求收敛。AProTable 用 fetcher 注入自管请求，
-   * rowKey 可配，action 列可配且内容完全由 #action 插槽自定义（无内置编辑/删除）。
+   * AProTable 用 fetcher 注入自管请求，rowKey 可配，action 列可配且内容完全由
+   * #action 插槽自定义（无内置编辑/删除）。
    *
    * 精简原则：只收敛 fetcher+分页+loading，不做 query 表单/工具栏/批量操作/导出那套重的。
    * 后端能力一律通过 fetcher 注入，库不调任何后端。

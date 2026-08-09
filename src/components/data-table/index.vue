@@ -5,8 +5,7 @@
 
   /**
    * ADataTable —— picker 内部复用的分页列表基座（不对外全局注册）。
-   * 收敛 pagination / loading / keyword / fetchData 样板，参考 GridTable 的"attrs 透传 + 暴露实例"思想，
-   * 但去掉 action 列，row-key 不硬编码（GridTable 硬编码 'id'）。
+   * 收敛 pagination / loading / keyword / fetchData 样板，不包含 action 列，row-key 可配置。
    *
    * fetcher 由使用方注入（库不调具体后端），返回 { list, total }。
    */

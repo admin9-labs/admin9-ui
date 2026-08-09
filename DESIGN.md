@@ -1,549 +1,242 @@
 # @admin9-labs/admin9-ui 设计文档
 
 > 状态：独立公开 package 设计基线 v2
-> 日期：2026-06-27
-> 作者：基于代码逐行精读产出
+>
+> 更新日期：2026-08-09
 
-## 0. 决策摘要（已锁定）
+## 1. 定位
 
-| 维度 | 决策 | 依据 |
+`@admin9-labs/admin9-ui` 是基于 Vue 3 与 Arco Design Vue 的中后台增强组件库。
+它以独立 Git 仓库和公开 npm package 维护，消费方只通过 package exports 使用构建产物。
+
+组件库负责：
+
+- 可跨应用复用的组件、交互和类型契约；
+- 后端无关的 service 接口；
+- 可合并到宿主 vue-i18n 实例的 locale messages；
+- ESM、CJS、TypeScript declarations 和单一样式入口。
+
+组件库不负责：
+
+- 具体网络端点、请求封装或响应信封；
+- 应用身份、状态管理、导航和权限体系；
+- 具体业务字段或应用 service adapter；
+- Admin9 应用共享层的 `Grid`、`GridToolbar` 和 `GridTable`。
+
+`useLoading` 与 `useVisible` 保留既有能力和公开导出，不因仓库拆分而迁移或改写。
+
+## 2. 仓库与包结构
+
+```text
+admin9-ui/
+├── .github/workflows/ci.yml
+├── package.json
+├── package-lock.json
+├── tsconfig.json
+├── vite.config.lib.ts
+├── tests/
+└── src/
+    ├── index.ts
+    ├── components/
+    │   ├── data-table/
+    │   ├── icon-picker/
+    │   ├── media-picker/
+    │   ├── pro-table/
+    │   └── user-picker/
+    ├── composables/
+    ├── hooks/
+    ├── locale/
+    ├── services/
+    └── styles/
+```
+
+包名固定为 `@admin9-labs/admin9-ui`。版本 `0.1.0` 是公开首发版本；在 `0.x` 阶段继续遵循语义化版本，但不承诺 1.0 级别的兼容稳定性。
+
+## 3. 公开能力
+
+| 导出 | 定位 | 数据依赖 |
 |---|---|---|
-| 仓库结构 | `admin9-ui` 独立 Git 仓库，与 `admin9-web` 同级 | 包可独立安装、测试、构建、发布和维护 |
-| 包名 | `@admin9-labs/admin9-ui` | GitHub 组织 admin9-labs，scope 名正言顺 |
-| 组件前缀 | `A`（如 `AMediaPicker`） | 用户决策。贴 Arco 家族。当前清单与 Arco 原生无撞名（见 §3 风险） |
-| composable 前缀 | 无（`useModal`） | 业界惯例，靠 import 路径区分 |
-| 组件清单 | `AMediaPicker`、`AIconPicker`、`AUserPicker` + `useModal` | 4 个，其余删减见下 |
-| 素材范围 | 类型无关的 `MediaPicker`，App 现在只注入图片 service | 库只认 `MediaService` 接口，类型由注入决定 |
-| i18n | 库导出 messages 对象，App 合并进宿主 vue-i18n | 不建独立实例，避免 locale 割裂 |
-| 样式 | scoped less + Arco CSS 变量，**不用 Tailwind** | 避免 App 维护 Tailwind content 路径的耦合 |
-| 构建工具链 | Vite 6 + TypeScript 5 + vite-plugin-dts | 与宿主工具链隔离，产出标准 ESM/CJS/types |
-| 当前阶段 | 公开 npm package，`0.x` 迭代 | 先服务实际项目并用真实消费验证契约，不承诺 1.0 稳定性 |
+| `AMediaPicker` | 素材选择、上传与删除交互 | `MediaService` 注入 |
+| `AIconPicker` | Arco 图标搜索与选择 | 无 |
+| `AUserPicker` | 分页用户选择 | `UserService` 注入 |
+| `AProTable` | fetcher 驱动的页面级表格 | fetcher prop 注入 |
+| `useModal` | 命令式确认与删除确认 | 无 |
+| `useLoading` | loading 状态 hook | 无 |
+| `useVisible` | visible 状态 hook | 无 |
+| `messages`、`localePrefix` | 中英文 locale | 宿主 i18n 实例 |
+| `arcoIconNames` | 图标名清单 | Arco 图标全局注册 |
 
-### 删减决策（避免伪封装）
+`ADataTable` 是 picker 内部复用零件，不全局注册，也不作为稳定公开组件承诺。
 
-| 组件 | 删除理由 |
-|---|---|
-| ~~ColorPicker~~ | Arco 原生 `<a-color-picker>` 能力完备（v-model/预设/历史/popover/格式）。封装多余且会与原生撞名。项目已在 `control-group.vue:254` 用原生 |
-| ~~CodeEditor~~ | 项目当前**无代码编辑需求**（仅 1 处只读 JSON 用 `<pre>` 展示）。属"为未来造"。等真实需求出现再评估 CodeMirror 6 |
+组件采用 `A` 前缀以保持与 Arco 生态一致。插件安装时会检查同名全局组件并输出冲突警告；若未来 Arco 增加同名组件，再通过新的兼容版本处理命名调整。
 
----
+## 4. Service 契约
 
-## 1. 目标与范围
+组件库只调用注入的接口，不感知数据来自何处，也不处理应用级认证和响应转换。
 
-把中后台反复出现的"选择类"组件沉淀成公开 package `@admin9-labs/admin9-ui`。组件库保持后端无关，由宿主注入 service adapter；包在独立仓库中维护，并通过真实应用持续验证组件契约。点一下触发弹窗 → 选一个/多个 → 回填表单字段。核心解决三个真实痛点：
-
-1. **素材选择**：现有 `image-gallery` 与后端强耦合、丢弃选中项 id、上传绕过 axios。升级为后端无关的 `AMediaPicker`。
-2. **菜单图标**：`EditMenuModal` 的图标字段是纯文本 `<a-input>`，用户手敲 `icon-settings` 字符串。改为可视化 `AIconPicker`。
-3. **选人**：项目无"弹窗分页选人"组件。新增 `AUserPicker`，复用 MediaPicker 的 service 注入模式。
-
-附加：`useModal` 收敛项目 4 处高度重复的删除确认（缺防重复提交、i18n 不一致）。
-
----
-
-## 2. 仓库结构
-
-```
-admin9-labs/
-├─ admin9-web/                    # 消费方应用，独立 Git 仓库
-└─ admin9-ui/                     # 本仓库
-   ├─ package.json                # npm 元数据、peerDependencies 与 exports
-   ├─ package-lock.json           # 独立锁文件
-   ├─ tsconfig.json               # bundler resolution 与声明文件配置
-   ├─ vite.config.lib.ts          # ESM/CJS/types/styles/locale 构建
-   ├─ tests/                      # 组件行为与公开契约测试
-   └─ src/
-      ├─ index.ts                 # 插件安装与命名导出
-      ├─ components/
-      ├─ composables/
-      ├─ hooks/                   # useVisible/useLoading 保留现有能力
-      ├─ services/                # 后端无关接口契约
-      ├─ locale/
-      └─ styles/
-```
-
-### package.json
-
-```jsonc
-{
-  "name": "@admin9-labs/admin9-ui",
-  "version": "0.1.0",
-  "type": "module",
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
-    },
-    "./styles": "./dist/style.css",
-    "./locale": {
-      "types": "./dist/locale/index.d.ts",
-      "import": "./dist/locale/index.js",
-      "require": "./dist/locale/index.cjs"
-    }
-  },
-  "sideEffects": ["**/*.less", "**/*.css", "*.vue"],
-  "peerDependencies": {
-    "vue": "^3.5.0",
-    "@arco-design/web-vue": "^2.57.0",
-    "vue-i18n": "^9.14.0",
-    "@vueuse/core": "^9.13.0"
-  },
-  "devDependencies": {
-    "less": "^4.5.1",
-    "typescript": "^5.4.0",
-    "vite": "6.4.3",
-    "vite-plugin-dts": "^3.9.0",
-    "@vitejs/plugin-vue": "^5.0.0",
-    "@vitejs/plugin-vue-jsx": "^3.1.0",
-    "vue-tsc": "^2.0.0"
-  },
-  "scripts": {
-    "build": "vue-tsc --noEmit -p tsconfig.json && vite build --config vite.config.lib.ts",
-    "dev": "vite build --watch --config vite.config.lib.ts"
-  }
-}
-```
-
-要点：
-- `peerDependencies` 精确对齐 App 版本，库不重复打包 vue/arco/vue-i18n/vueuse。
-- `sideEffects` 必含 `*.less/*.css/*.vue`，否则消费者 tree-shaking 误删样式。
-- 独立工具链使用 Vite 6 / TypeScript 5；宿主只消费构建产物，不共享开发依赖。
-
-### vite.config.lib.ts 要点
+### MediaService
 
 ```ts
-build: {
-  lib: { entry: { index: 'src/index.ts', locale: 'src/locale/index.ts' },
-         formats: ['es', 'cjs'] },
-  cssCodeSplit: false,            // 合并单一 style.css
-  rollupOptions: {
-    external: ['vue', '@arco-design/web-vue', 'vue-i18n', '@vueuse/core'],
-    output: { assetFileNames: 'style.css', globals: { vue: 'Vue' } },
-  },
-}
-```
-
-### App 侧引用（registry 产物）
-
-- App `package.json` dependencies：`"@admin9-labs/admin9-ui": "0.1.0"`，锁文件解析到 npm registry
-- App `src/main.ts`（在 `app.use(i18n)` 之后）：
-  ```ts
-  import Admin9UI from '@admin9-labs/admin9-ui';
-  import '@admin9-labs/admin9-ui/styles';
-  app.use(Admin9UI);
-  ```
-- App 不引用本仓库源码路径，类型、样式和 locale 均通过 package exports 消费。
-- 本地 tarball 可用于发布前隔离验证，但不能写入宿主的最终锁文件。
-
----
-
-## 3. 组件清单与优先级
-
-| 组件 | 优先级 | 形态 | 后端依赖 | 说明 |
-|---|---|---|---|---|
-| `AMediaPicker` | P0 | 弹窗（modal） | MediaService（App 注入） | image-gallery 升级，类型无关 |
-| `AIconPicker` | P0 | popover | 无（Arco 图标名清单） | 替换菜单管理的手敲 input |
-| `AUserPicker` | P1 | 弹窗（modal） | UserService（App 注入） | 复用 MediaPicker 模式 |
-| `AProTable` | P1 | 页面级表格 | fetcher prop 注入 | 精简版页面表格，收敛 fetcher+分页+loading |
-| `useModal` | P1 | composable | 无 | 收敛 4 处删除确认 |
-| `ADataTable` | 内部 | — | fetcher prop | picker 内部分页列表复用，不对外注册 |
-
-### 撞名风险记录（A 前缀）
-
-当前清单 `AMediaPicker`/`AIconPicker`/`AUserPicker` 与 Arco 原生组件（`AColorPicker`/`ATimePicker`/`ATreeSelect`/`ASelect`/`ACascader`）**无重名**。`ADataTable` 为内部组件不全局注册，不撞。
-
-**风险**：Arco 在 picker/select 命名域活跃，未来某版新增 `AUserPicker`/`AMediaPicker` 概率不低。一旦发生，库在 Arco 之后 `app.use` 会触发 "registered multiple times" 警告并覆盖原生。缓解：库 `install` 时做名称冲突检测（启动时 `console.warn` 若检测到重名），便于及早发现。长期若撞名严重，可回头切 `A9`/`Pro`（届时仅改库内一处前缀常量 + 重新发包）。
-
----
-
-## 4. 核心契约：MediaService 接口
-
-库不直接调任何后端。所有"列表/上传/删除"能力由 App 通过 `MediaService` 接口注入。
-
-```ts
-// src/services/types.ts
-
 export interface MediaItem {
   id: string;
   name: string;
-  url: string;          // 完整可访问 URL
-  path?: string;        // 后端相对路径（引用/删除用）
-  size?: number;        // 字节数（可选）
-  mime?: string;        // image/jpeg 等（可选）
-  thumbnail?: string;   // 缩略图 URL，缺省时库回退用 url
+  url: string | null;
+  path?: string;
+  status?: 'pending' | 'ready' | 'failed';
+  size?: number;
+  mime?: string;
+  extension?: string;
+  thumbnail?: string;
   width?: number;
   height?: number;
-  createdAt?: string;   // ISO 时间（可选）
+  createdAt?: string;
 }
 
 export interface MediaListParams {
-  page: number;          // 1-based
-  pageSize: number;
-  keyword?: string;      // 搜索（后端不支持则 App adapter 忽略）
-}
-
-export interface MediaPagination {
   page: number;
   pageSize: number;
-  total: number;
-  hasMore: boolean;
+  keyword?: string;
 }
 
 export interface MediaListResult {
   list: MediaItem[];
-  pagination: MediaPagination;
-}
-
-export interface MediaUploadOptions {
-  file: File;
-  onProgress?: (percent: number) => void;
-  signal?: AbortSignal;
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    hasMore: boolean;
+  };
 }
 
 export interface MediaService {
   list(params: MediaListParams): Promise<MediaListResult>;
-  upload(options: MediaUploadOptions): Promise<MediaItem>;  // 必须返回新记录（修正现有丢弃 id 的 bug）
+  upload(options: {
+    file: File;
+    onProgress?: (percent: number) => void;
+    signal?: AbortSignal;
+  }): Promise<MediaItem>;
   remove(ids: string[]): Promise<string[]>;
 }
 ```
 
-### 职责边界（重要）
+### UserService
 
-库**只定义 `MediaService` 接口契约 + 渲染 UI**，**不包含任何具体后端接口的实现**。把接口落到具体后端（调哪个 URL、字段叫什么、怎么解响应、怎么鉴权）是**消费方 App 的职责**，由 App 写 adapter 实现这个接口再注入给库。
+```ts
+export interface UserItem {
+  id: string;
+  name: string;
+  description?: string;
+  avatar?: string;
+  [key: string]: unknown;
+}
 
+export interface UserListParams {
+  page: number;
+  pageSize: number;
+  keyword?: string;
+}
+
+export interface UserService {
+  list(params: UserListParams): Promise<{
+    list: UserItem[];
+    pagination: MediaPagination;
+  }>;
+}
 ```
-┌─────────────────────────────┐         ┌──────────────────────────────────┐
-│  库 @admin9-labs/admin9-ui  │         │  消费方 App（业务）              │
-│  ─────────────────────────  │         │  ──────────────────────────────  │
-│  AMediaPicker (渲染/交互)   │◄────────│  mediaService 实现 MediaService │
-│  MediaService 接口契约      │  注入   │   ↳ 调 /api/file/images          │
-│                             │         │   ↳ 调 /api/upload/image         │
-│  不含任何具体 URL / 字段    │         │   ↳ 调 /api/files                │
-└─────────────────────────────┘         │   ↳ 拼 token、转 page_size、解响应│
-                                       └──────────────────────────────────┘
+
+消费方可以在组件使用点传入 `service`，也可以在插件安装时提供默认 service：
+
+```ts
+app.use(Admin9UI, {
+  mediaService,
+  userService,
+});
 ```
 
-这样库可以被任意后端复用：换了后端，App 只需重写 adapter，库代码不动。
-
-### App 侧 adapter（示例，属于 App 不进库）
-
-App 在 `src/services/mediaService.ts` 写一个实现 `MediaService` 的对象，注入给 `<AMediaPicker :service="mediaService">`。具体接哪些后端 URL、字段怎么映射，是 App 的事——本项目 adapter 会对接现有的 `/api/file/images` 等（迁移指引见 §9，含 image-gallery 的耦合点 file:line），但**这些细节不出现在库代码里**。
-
-注入也可以全局化（避免每个使用点传 service）：App 在 `main.ts` 调 `app.use(Admin9UI, { mediaService })`，库内部通过 `provide/inject` 取默认 service。两种方式库都支持，使用点传 `:service` 优先。
-
-**关键修正**：现有 `image-gallery` 上传走 `<a-upload :action>` 绕过 axios（`index.vue:31,243-244`），导致 token 硬编码 + 丢弃服务端返回的新文件记录（只能整页重拉）。App adapter 改走自身 axios 后，鉴权统一、能拿到新文件 id，不再丢失。
-
----
+使用点传入的 service 优先于插件默认值。缺少必需 service 时，组件应给出明确错误，而不是自行猜测网络行为。
 
 ## 5. 组件设计
 
-### 5.1 AMediaPicker（P0，image-gallery 升级）
+### AMediaPicker
 
-基于 `src/components/image-gallery/index.vue` 逐行精读改造。
+- `multiple=false` 时使用单选流程；`multiple=true` 时允许批量选择并确认。
+- `limit` 只约束多选数量，不隐式决定数据类型。
+- 上传使用 `customRequest` 调用注入 service，并支持进度与取消信号。
+- 对外始终使用 `MediaItem.id`，保留可选 path 和状态字段。
+- 删除前要求显式确认；部分删除失败后刷新列表并清理陈旧选择。
+- `canUpload` 与 `canDelete` 分别控制能力，调用方无需暴露其权限模型。
 
-**Props**
-```ts
-interface AMediaPickerProps {
-  modelValue?: MediaItem[] | MediaItem | string | undefined;
-  multiple?: boolean;          // 显式取代现有靠 attrs.limit + modelValue 类型的隐式推断
-  limit?: number;              // 0=不限；配合 multiple
-  pageSize?: number;           // 默认 24（现 index.vue:41）
-  buttonText?: string;         // 外层触发按钮文案
-  accept?: string;             // 默认 'image/png,image/jpeg,image/gif'（现 index.vue:246）
-  service?: MediaService;      // 显式传入优先；缺省回退插件全局注入
-  showFileList?: boolean;      // 外层是否展示已选列表（现透传给外层 a-upload）
-  // 不再有 token / baseURL / action props —— 鉴权由 service 内部处理
-}
-```
+### AIconPicker
 
-**Emits**
-```ts
-type Emits = {
-  'update:modelValue': [MediaItem[] | MediaItem | string | undefined];
-  'change': [MediaItem[]];
-  'select': [MediaItem[]];          // 用户勾选变化（实时）
-  'upload-success': [MediaItem];
-  'upload-error': [error: unknown];
-}
-```
+- 使用 popover、搜索框和固定网格完成选择。
+- 图标清单以字符串形式分发，不把全部图标实现打入包。
+- 图标预览依赖消费方注册的 Arco 图标组件。
+- 输出合法图标名字符串，支持清空。
 
-**关键改造点（逐行对应现有 image-gallery）**
+### AUserPicker
 
-| 现行号 | 现耦合 | 改为 |
-|---|---|---|
-| `:5` `import { getToken }` | `@/utils/auth` | 删除；鉴权移入 service.upload |
-| `:6` `import { FileRecord, deleteFiles, queryFiles }` | `@/api/file` | 删除；改用 `props.service` |
-| `:30` `const token = getToken()` | localStorage 直读 | 删除 |
-| `:31` `action = ${VITE_API_BASE_URL}/api/upload/image` | env + 硬编码 URL | 删除 |
-| `:50-63` `fetchData` 调 `queryFiles` | 直调 API | `props.service.list({ page: current, pageSize })` |
-| `:75-84` `onDeleteItems` 调 `deleteFiles` | 直调 API | `props.service.remove(selectKeys)` |
-| `:240-257` 内层 `<a-upload :action :headers name>` | action URL + 手动 Authorization | 改 `:custom-request` → 内部调 `props.service.upload({file})`，移除 `:action`/`:headers` |
-| `:160-169` `uploadSuccess` 解 `response.response` | 假设后端信封 + 绕过拦截器 | customRequest resolve 返回 `MediaItem`，直接 push |
-| `:110` `{ uid: item.id, name, url }` | uid/id 混用 + 丢 path | 统一 emit `MediaItem`（保留 id、可选 path） |
-| `:187` `item.id` 反构 onMounted | 与 emit 的 uid 不一致 bug | emit 与反构都用 `id`，对齐 |
-| `:196` `fileLimit=1`（字符串模式） | 隐式单选 | `multiple=false` 显式 |
-| `:228/235/254/259/283/284` `t('common.imageGallery.*')` | vue-i18n 全局 key | 库内置 locale + 统一前缀 `admin9Ui.mediaPicker.*` |
-| `:2` `useAttrs` 透传 limit | 隐式 | 显式 `props.limit` + `props.multiple` |
+- 复用 service 注入和分页选择模式。
+- 单选流程选择后关闭，多选流程显式确认。
+- 只依赖 `UserItem` 与 `UserService`，不扩展消费方业务字段。
 
-**修两个现有 bug**：
-1. uid/id 字段不一致导致 modelValue round-trip 失效（`:110` emit 用 uid vs `:187` onMounted 读 id）。
-2. 上传走 a-upload action 绕过 axios，token 硬编码 + 丢弃新文件记录（`:243-244`）。
+### useModal
 
-**单选/多选交互**：现有 UI 永远多选 checkbox，靠 `fileLimit` 确认时截断（`:113-130`），用户可勾多张后被静默丢弃。改为：`multiple=false` 时单选即选即关（参考 QQMapSelect `:152-157` 模式）；`multiple=true` 时 row-selection + 底部确认按钮。
+- 基于 Arco Modal 能力提供通用确认和删除确认。
+- 异步确认期间启用 loading，防止重复提交。
+- 保留调用方提供标题、正文、按钮文案和回调的能力。
 
-**调用方迁移**：`src/components/tiptap/control-group.vue:258` 改为 `<AMediaPicker :service="mediaService" :show-file-list="false" @change="onInsertImage">`；`onInsertImage`（`:76-91`）现读 `image.url` 不变。
+### ADataTable 与 AProTable
 
-### 5.2 AIconPicker（P0，菜单图标）
+- `ADataTable` 负责 picker 内部的 fetcher、分页、loading、搜索和选择状态。
+- `AProTable` 对外提供可配置 `rowKey`、fetcher、分页和 action 插槽。
+- 两者不包含查询表单、工具栏、导出或具体行操作等应用业务能力。
+- 应用共享的 Grid 家族保持在消费方，不属于本包迁移范围。
 
-替换 `EditMenuModal.vue:36-38` 的纯文本 `<a-input>`。
+## 6. 国际化
 
-**Props**
-```ts
-interface AIconPickerProps {
-  modelValue?: string;          // 图标名字符串（kebab: 'icon-dashboard' 或 Pascal: 'IconDashboard'）
-  allowClear?: boolean;
-  placeholder?: string;
-  size?: 'small' | 'medium' | 'large';
-}
-emit: { 'update:modelValue': [string | undefined] }
-```
+组件库不创建独立 vue-i18n 实例，以避免 locale 状态分裂。
 
-**形态**：`a-popover` + 网格（非弹窗）。表单内轻量交互，popover 附着输入框体验最连贯。
+- messages 使用 `admin9Ui.<component>.<key>` 前缀；
+- `@admin9-labs/admin9-ui/locale` 同时提供 ESM、CJS 和类型入口；
+- 消费方将 messages 合并到自己的 vue-i18n 配置；
+- 组件内部通过宿主提供的 i18n 实例读取当前语言。
 
-- 触发器：只读 `a-input`，左侧前缀渲染当前选中图标（`<component :is="modelValue">`），右侧 clear。
-- popover 内容：顶部搜索框 + 下方网格（287 个图标，简单 grid + 滚动，无需虚拟列表）。
-- 每个 cell：`<component :is="name">` 预览 + hover tooltip 显示名字，点击 emit + 关闭。
-- 搜索：去 `icon-` 前缀后小写匹配（`'settings'` 命中 `'IconSettings'`）。
+## 7. 样式
 
-**图标清单来源**：Arco 图标可程序化枚举（`node_modules/@arco-design/web-vue/es/icon/index.js` 共 287 个具名导出）。但 `import * as ArcoIcons` 会把 287 个 SVG 打进库 bundle——**构建期跑一次 `Object.keys` 生成纯字符串名清单 JSON 随库分发**，运行时只持字符串数组，渲染用 `<component :is="name">` 依赖宿主已 `app.use(ArcoVueIcon)` 注册的全局组件。库本身不打包任何 SVG。
+- 组件使用 scoped Less 和 Arco CSS variables；
+- 不依赖 Tailwind 或消费方源码路径；
+- 公共样式通过 `@admin9-labs/admin9-ui/styles` 导入；
+- `sideEffects` 明确保留 CSS、Less 和 Vue 文件的样式副作用；
+- 暗色外观跟随 Arco theme variables。
 
-**渲染机制**：cell 与触发器预览都用 `<component :is="iconName">`，依赖宿主 `main.ts:19 app.use(ArcoVueIcon)` 已注册的全局组件。库不打包 SVG。
+## 8. 构建与发布
 
-**集成（最小改动）**：`EditMenuModal.vue:36-38` 替换为：
-```vue
-<a-form-item v-if="formData.type !== 3" :label="$t('system.menu.editModal.icon')" field="icon">
-  <AIconPicker v-model="formData.icon" allow-clear :placeholder="$t('system.menu.editModal.icon.placeholder')" />
-</a-form-item>
-```
-- `:134` `icon: formData.icon || undefined`、`:192` 回填 `formData.icon = record.icon || ''` 不动。
-- 产出值用 kebab（`icon-dashboard`）兼容现有数据与 placeholder 文案。
-
-**渲染侧不改**：
-- `src/views/system/menu/index.vue:26` `<component :is="record.icon">`
-- `src/components/menu/index.vue:93` `h(compile(`<${meta.icon}/>`))`
-
-两者基于"字符串名 → 全局组件"工作，AIconPicker 只替换录入方式，产出仍是合法图标名字符串，机制已通。
-
-### 5.3 AUserPicker（P1，弹窗选人）
-
-复用 AMediaPicker 的弹窗 + service 注入模式，内嵌分页表格选人。
-
-**Props**
-```ts
-interface AUserPickerProps {
-  modelValue?: UserItem[] | UserItem | undefined;
-  multiple?: boolean;
-  service?: UserService;         // 显式传入优先；缺省回退插件全局注入
-  pageSize?: number;
-  buttonText?: string;
-}
-```
-
-`UserService` 接口由 App 注入（库只定义 `list(params) => UserListResult` 抽象契约，不关心具体后端）。App 侧 adapter 对接用户列表接口即可。注：本项目 `src/api/system/user.ts:46` 有泛型 bug（现 `<UserRecord[]>` 实际返回 `HttpResponse<UserRecord[]>`，缺 meta），App adapter 写时规避——这是 App 的代码问题，与库无关。
-
-**交互**：
-- 单选：行内"选择"按钮即选即关（QQMapSelect `:152-157` 模式，`footer=false`）。
-- 多选：row-selection + 底部"确定（带已选数量）/取消"（沿用 EditUserModal 的 `@before-ok` + `done(closed)` 异步模式 `EditUserModal.vue:2,61-77`）。
-
-**内部用 ADataTable**（见 5.5）承载分页列表，避免重复写 pagination/loading/fetchData 样板。
-
-### 5.4 useModal（P1，收敛删除确认）
-
-对标 Arco `Modal.open`，加项目惯例：统一 i18n 文案、防重复提交（okLoading）、统一错误提示。
-
-```ts
-interface UseModalReturn {
-  // 删除确认（最常用，4 处删除模式高度统一）
-  confirmDelete: (config: {
-    title?: string;            // 默认 t('common.confirm.delete.title')
-    content?: string;          // 默认 t('common.confirm.delete.content')
-    onDelete: () => Promise<void>;
-    successMsg?: string;
-    onSuccess?: () => void;
-  }) => void;
-  // 通用确认
-  confirm: (config: {
-    title: string; content: string;
-    onOk: () => Promise<void> | void;
-    okText?: string;          // 默认 t('common.action.confirm')
-    cancelText?: string;      // 默认 t('common.action.cancel')
-    type?: 'warning' | 'info';
-    hideCancel?: boolean;
-  }) => void;
-  // 透传 Arco ModalConfig（不丢原生能力）
-  open: (config: ModalConfig) => ModalReturn;
-}
-```
-
-**迁移落地点**：
-- `src/views/system/role/index.vue:99` Modal.warning（删除角色）→ `confirmDelete`
-- `src/views/system/menu/index.vue:156` Modal.warning（删除菜单）→ `confirmDelete`
-- `src/views/system/dict/index.vue:211` Modal.warning（删除字典类型）→ `confirmDelete`
-- `src/views/system/dict/index.vue:234` Modal.warning（删除字典项）→ `confirmDelete`
-- `src/api/interceptor.ts:71` Modal.error（401 登出，硬编码英文）→ `confirm` 并修 i18n
-
-### 5.5 ADataTable（内部，picker 复用）
-
-参考 GridTable 的"attrs 透传 + 暴露实例"思想，但去掉 action 列，加 fetcher。
-
-**Props**
-```ts
-interface ADataTableProps {
-  columns: TableColumn[];
-  rowKey?: string;              // 不硬编码（GridTable 硬编码 'id'，与素材表可能冲突）
-  fetcher: (params: { page: number; pageSize: number; keyword?: string }) =>
-    Promise<{ list: any[]; total: number }>;
-  searchable?: boolean;
-  multiple?: boolean;
-}
-// expose: refresh(), clearSelection()
-```
-
-内部自管 `pagination`/`loading`/`keyword`/`selectedRowKeys`，避免每个 picker 重写（现 `user/index.vue:75-131` 和 `qq-map-select:131-150` 的样板）。透传 a-table 的 `v-bind="$attrs"` 和具名插槽。
-
-**不搬 Grid/GridToolbar 进库**：Grid 是页面级 a-card 容器，弹窗内再套是双重卡片；GridToolbar 的创建/刷新按钮对 picker 无意义。
-
-### 5.6 AProTable（P1，精简版页面表格）
-
-**定位区分（重要）**：`ADataTable` 是 picker 内部私有零件（不注册）；`AProTable` 是**对外注册的页面级业务表格**。两者职责不重叠：
-- `ADataTable` = picker 的"搜索+分页表格片段"，无 toolbar/action
-- `AProTable` = 页面级，收敛 fetcher + 分页 + loading + 可选 action 列
-
-**与现有 GridTable 的关系**：升级而非平行。现 `GridTable` 硬伤：`row-key` 硬编码 `'id'`、action 列写死编辑/删除、数据全靠父透传无请求收敛。`AProTable` 用 fetcher 注入自管请求，`rowKey` 可配，action 列可配/可插槽。长期页面逐步从 GridTable 迁到 AProTable。
-
-**精简原则**：只收敛 fetcher+分页+loading（复用 ADataTable 内核），**不做** query 表单/工具栏/批量操作/导出那套重的——这些让页面用插槽自行扩展。避免过度设计。
-
-**Props**
-```ts
-interface AProTableProps {
-  columns: TableColumn[];
-  rowKey?: string;                    // 默认 'id'，不硬编码
-  fetcher: (params: { page: number; pageSize: number; keyword?: string }) =>
-    Promise<{ list: any[]; total: number }>;
-  pageSize?: number;                  // 默认 10
-  searchable?: boolean;               // 默认 false，需搜索时开
-  showAction?: boolean;               // 默认 false，按需开 action 列
-  // action 列内容通过 #action 插槽自定义，无内置编辑/删除（避免 GridTable 的写死问题）
-}
-// expose: refresh(), clearSelection()
-```
-
-**实现**：内部复用 ADataTable 内核（fetcher/pagination/loading 逻辑），外层套 a-table 透传 + 可选 action 插槽。`rowKey` 透传不硬编码。
-
-**全局注册**：`app.component('AProTable', AProTable)`（与 AMediaPicker 等同列）。
-
-**撞名检查**：Arco 无 `ProTable`/`AProTable` 原生组件，安全。
-
----
-
-## 6. i18n 策略
-
-库**不建独立 vue-i18n 实例**（否则 locale 状态与 App 割裂、切换不同步）。
-
-- 库 `src/locale/{zh-CN,en-US}.ts` 导出 messages 对象，统一前缀 `admin9Ui.<component>.<key>`。
-- 库内组件用 `useI18n()`（依赖 App 已 `app.use(i18n)`）。
-- App `src/locale/index.ts:33-34` 合并：
-  ```ts
-  import { messages as uiMsg } from '@admin9-labs/admin9-ui/locale';
-  'zh-CN': { ...loadLocaleMessages('zh-CN'), ...uiMsg['zh-CN'] },
-  'en-US': { ...loadLocaleMessages('en-US'), ...uiMsg['en-US'] },
-  ```
-
-key 前缀统一 `admin9Ui.*`（现 image-gallery 散在 `common.imageGallery.*`，迁移时统一）。
-
----
-
-## 7. 样式策略
-
-库组件统一 `<style lang="less" scoped>` + Arco CSS 变量（`var(--color-text-1)`、`var(--color-fill-2)` 等），Arco 自带暗色联动（`[arco-theme="dark"]`），**不用 Tailwind**。
-
-理由：
-1. 避免 App `tailwind.config.js` content 数组维护库路径的耦合。
-2. 消费者未装 Tailwind 也能用。
-3. 与 Arco 主题切换无缝。
-4. 现库源码若用 Tailwind class，App 的 `content`（现 `tailwind.config.js:3` 仅 `./src/**`）purge 会删掉库用到的 utility。
-
-breakpoint：库 `styles/index.less` 自带一份，不 `@import` App 的 `src/assets/style/breakpoint.less`（那是 App 专属，base.ts:38 的 modifyVars hack）。
-
----
-
-## 8. 构建与发布阶段
-
-| 项 | 方案 |
+| 入口 | 产物 |
 |---|---|
-| 产物 | ESM (`dist/index.js`) + CJS (`dist/index.cjs`) + d.ts (`dist/index.d.ts`) + 单一 `dist/style.css` |
-| external | vue / @arco-design/web-vue / vue-i18n / @vueuse/core |
-| dts | vite-plugin-dts，entryRoot=src，insertTypesEntry |
-| cssCodeSplit | false（合并单一 style.css） |
-| 当前交付 | 公开 npm package，继续由真实应用验证 service 与组件契约 |
-| npm 发布 | `0.x` 遵循语义化版本；发布前必须通过 tarball 与 registry 消费验证 |
+| package main import | `dist/index.js` |
+| package main require | `dist/index.cjs` |
+| package types | `dist/index.d.ts` |
+| `./styles` | `dist/style.css` |
+| `./locale` import | `dist/locale/index.js` |
+| `./locale` require | `dist/locale/index.cjs` |
+| `./locale` types | `dist/locale/index.d.ts` |
 
----
+Vue、Arco Design Vue、vue-i18n 和 VueUse 是 peer dependencies，并在构建中 external，避免消费方获得重复运行时实例。
 
-## 9. App 侧集成与迁移点（逐 file:line）
+每次发布前必须完成：
 
-### 9.1 独立包仓库
-- `admin9-ui/package.json`、`package-lock.json` 与独立 CI
-- GitHub：`admin9-labs/admin9-ui`
+1. clean install；
+2. typecheck、lint、组件测试和 library build；
+3. `npm pack --dry-run` 内容审计；
+4. 真实 tarball 的 ESM、CJS、类型、styles、locale 和生产构建验证；
+5. 发布后从 registry 重新安装并重复消费者构建。
 
-### 9.2 App 配置改动
-- `package.json`：dependencies 加精确版本 `"@admin9-labs/admin9-ui": "0.1.0"`
-- `src/main.ts`：`app.use(i18n)` 后加 `import Admin9UI` + `app.use(Admin9UI)` + `import styles`
-- `tsconfig.json`：仅包含宿主 `src`，不包含组件库源码
-- `vite.config.base.ts`：按 registry 构建与开发验证结果决定是否需要 `optimizeDeps.exclude`
-- `src/locale/index.ts:33-34`：合并库 messages
+tag、GitHub Release 与 npm 产物必须指向同一发布提交。不得在未验证的工作区或不同提交上生成同版本产物。
 
-### 9.3 组件迁移
-- `src/components/image-gallery/index.vue` → 迁入库 `components/media-picker/index.vue`，按 §5.1 改造
-- `src/components/index.ts:6,17`：删除 ImageGallery 注册（库接管）
-- `src/components/tiptap/control-group.vue:258`：改用 `<AMediaPicker :service="mediaService">`
-- `src/views/system/menu/components/EditMenuModal.vue:36-38`：`<a-input>` → `<AIconPicker>`
-- 新增 `src/services/mediaService.ts`（App adapter）
+## 9. 约束与风险
 
-### 9.4 useModal 迁移
-- `src/views/system/role/index.vue:99`
-- `src/views/system/menu/index.vue:156`
-- `src/views/system/dict/index.vue:211`
-- `src/views/system/dict/index.vue:234`
-- `src/api/interceptor.ts:71`
-
----
-
-## 10. 实施步骤
-
-1. **脚手架**：从原 `packages/admin9-ui/` 保留历史提取独立仓库，建立 package-lock、CI 与公开包元数据。
-2. **AMediaPicker**：迁 image-gallery 进库，按 §5.1 改造（service 注入、修 uid/id bug、上传走 service）。建 `src/services/mediaService.ts` adapter。接 tiptap 调用方验证。
-3. **AIconPicker**：构建期生成 Arco 图标名清单 JSON，实现 popover 网格 + 搜索。接 EditMenuModal 验证渲染侧不动。
-4. **ADataTable**：提取 picker 内部公共分页列表。
-5. **AUserPicker**：复用 ADataTable + service 注入。
-6. **useModal**：实现 + 迁移 5 处。
-7. **i18n 迁移**：image-gallery 文案统一到 `admin9Ui.mediaPicker.*`，App 合并库 messages。
-8. **验证**：包独立执行 typecheck/lint/test/build/pack，并用真实 tarball 与 registry 安装验证；App 独立安装、测试、构建和浏览器冒烟。
-
----
-
-## 11. 风险与待决
-
-1. **[已查明] `/api/upload/image` 响应结构无文档**：Apifox 默认模块(project 7843160)只有 auth/me/admin-users/admin-roles/admin-permissions 接口，**无任何素材接口定义**，schemas 为空。且 Apifox 路径是 `/me`、`/admin/users`（无 `/api/` 前缀），与代码里的 `/api/me`、`/api/system/users` 不一致——后端文档与实现系统性脱节。
-   - **合理推断**：现有 image-gallery 上传成功后靠 `watch(uploadFiles)` 队列清空时**整页重拉列表**(`:178-182`)，而非用上传返回的记录——强烈暗示**上传响应里没有稳定 id**（若有，原代码不会选择整页重拉）。
-   - **对 AMediaPicker 的影响**：`service.upload()` 不假设返回有 id；adapter 在 id 缺失时返回部分填充的 MediaItem，组件内上传完成后强制 `refresh()` 列表取最新数据。删除依赖列表项的 id，不依赖上传返回值。**需向后端确认 `/api/upload/image` 是否返回 id**，确认后可优化为"上传返回记录直接 push"。
-2. **[待决] 头像上传是否统一进 MediaService**：建议**不统一**。头像语义是"绑定用户 profile 的私有资源"（`/api/me/avatar` 上传后触发后端更新 user.avatar），与素材库（公共资源池）不同。头像应走独立 `AvatarUploader`（内部可复用 AMediaPicker "从素材库选一张当头像"，但上传通道分开）。但应顺手收敛 `ProfilePanel.vue:100` 的 `/api/user/upload-avatar`（绕过 axios、无 5MB 校验、响应字段 `data.url` 与 `/api/me/avatar` 的 `data.avatar_url` 不一致，是技术债）→ 改走 `userStore.updateAvatar`。
-3. **[风险] A 前缀未来撞名**：见 §3。缓解：install 时名称冲突检测 + console.warn。长期若撞名严重切 A9/Pro。
-4. **[已处理] 宿主仅消费 registry 构建产物**：不再让宿主编译组件库源码；是否排除依赖预构建以真实 Vite 验证为准。
-5. **[约束] 库内禁用 `@/` 别名**：库源码只能相对导入。现 image-gallery 的 `@/utils/auth`、`@/api/file` 必须替换为 service 注入。
-6. **[约束] 库不依赖 `import.meta.env`**：现 image-gallery 的 `VITE_API_BASE_URL`（`:31`）耦合移入 App adapter。
-7. **[已知 bug] `system/user.ts:46` 泛型错误**：`queryUserList` 写 `<UserRecord[]>`，实际返回 `HttpResponse<UserRecord[]>`，缺 meta 分页。AUserPicker 的 adapter 要规避（直接用 axios 拿 meta）。
-8. **[可选优化] `components/menu/index.vue:93` 的 `compile()`**：依赖运行时模板编译器，可顺势迁到 `<component :is>`（更安全，可去掉运行时编译器依赖）。非本次范围。
+- 库源码只使用相对导入，不依赖消费方 alias 或环境变量。
+- service 接口保持数据源无关；新增字段前先证明跨应用复用价值。
+- 公开导出在 `0.x` 中仍可能演进，但变更必须通过版本记录说明。
+- A 前缀未来可能与 Arco 新组件重名，当前通过安装时检测暴露风险。
+- CJS 入口仅在持续消费验证通过时保留；若未来工具链无法可靠产出，应在新版本中明确移除，而不是保留虚假声明。
