@@ -10,7 +10,7 @@
   /**
    * AMediaPicker —— 后端无关的素材选择器。
    *
-   * 设计要点（见 DESIGN.md §5.1）：
+   * 设计要点（见 DESIGN.md 的 AMediaPicker 章节）：
    * - 库不直接调任何后端，列表/上传/删除全部走注入的 MediaService。
    * - 上传用 a-upload :custom-request → service.upload（不再 :action 绕过 axios）。
    * - emit 与 onMounted 反构统一用 id，避免 uid/id 混用。
@@ -235,7 +235,7 @@
         // Public event names are intentionally preserved for compatibility.
         // eslint-disable-next-line vue/custom-event-name-casing
         emit('upload-success', item);
-        // service.upload 可能不返回稳定 id（见 DESIGN.md §11.1），上传后强制刷新
+        // Refresh after upload so the list reflects the data source's canonical state.
         fetchList();
       })
       .catch((error: unknown) => {

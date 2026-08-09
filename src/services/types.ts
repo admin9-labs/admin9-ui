@@ -62,8 +62,7 @@ export interface MediaUploadOptions {
 /**
  * 媒体服务契约。由 App 注入实现（adapter），库不直接调任何后端。
  *
- * 注意：upload() 返回的 MediaItem.id 可能缺失（取决于后端是否返回），
- * 调用方（库组件）应在 id 缺失时回退为"上传后刷新列表"策略。
+ * upload() 必须返回符合 MediaItem 契约且带稳定 id 的记录。
  */
 export interface MediaService {
   list(params: MediaListParams): Promise<MediaListResult>;
