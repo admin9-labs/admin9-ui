@@ -5,7 +5,8 @@
 This repository owns the backend-agnostic `@admin9-labs/admin9-ui` Vue component package.
 Keep concrete API URLs, authentication, stores, routes, application permissions, and business fields in consuming apps.
 
-`useLoading` and `useVisible` are inherited capabilities and remain supported unless a concrete defect requires change.
+Public APIs must be components that fill broadly needed gaps in Arco Design Vue, plus the types, locale, styles, and internal implementation required by those components.
+Do not expose general-purpose hooks, utility functions, or consuming-app infrastructure. `useLoading` and `useVisible` are internal implementation details only.
 The Admin9 `Grid`, `GridToolbar`, and `GridTable` family belongs to the application shared layer and must not move here.
 
 ## Commands
