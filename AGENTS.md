@@ -17,15 +17,15 @@ Repository development and CI use Node 20 with pnpm 10.5.2. This is a repository
 corepack enable
 corepack prepare pnpm@10.5.2 --activate
 pnpm install --frozen-lockfile
+# During development, run only checks relevant to the changed scope.
+pnpm test -- tests/media-picker.spec.ts
 pnpm run type:check
-pnpm run acceptance:typecheck
 pnpm run lint
-pnpm test
-pnpm run build
-pnpm run acceptance:build
-pnpm run pack:check
-pnpm run verify:tarball
+
+# Run at most once locally before handing off a release candidate.
 pnpm run release:check
 ```
 
-Do not publish a version until a real tarball has passed isolated consumer verification.
+GitHub Actions is the final authority for pull requests, main pushes, and releases. Do not duplicate the full gate locally after an unchanged candidate has passed it.
+
+Do not publish a version until the exact real tarball being published has passed isolated consumer verification. Release tags trigger `.github/workflows/release.yml`; local npm credentials are not part of the release path.

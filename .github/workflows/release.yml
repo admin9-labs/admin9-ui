@@ -1,0 +1,97 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        with:
+          version: 10.5.2
+
+      - name: Set up quality-gate Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Validate tag and main head
+        id: release
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          node scripts/check-release.mjs \
+            --tag "$GITHUB_REF_NAME" \
+            --commit "$GITHUB_SHA" \
+            --checkout-head "$(git rev-parse HEAD)" \
+            --main-head "$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check library types
+        run: pnpm run type:check
+
+      - name: Check acceptance host types
+        run: pnpm run acceptance:typecheck
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build acceptance host
+        run: pnpm run acceptance:build
+
+      - name: Build and verify release tarball
+        run: pnpm run verify:tarball -- --output-dir release-artifacts
+
+      - name: Set up trusted-publishing Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Install trusted-publishing npm CLI
+        run: npm install --global npm@11.19.0
+
+      - name: Check npm publication state
+        id: registry
+        run: node scripts/check-publish-status.mjs --tarball-dir release-artifacts >> "$GITHUB_OUTPUT"
+
+      - name: Publish verified tarball to npm
+        if: steps.registry.outputs.published != 'true'
+        run: npm publish "${{ steps.registry.outputs.tarball }}" --access public --provenance
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TARBALL: ${{ steps.registry.outputs.tarball }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$RELEASE_TARBALL" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$RELEASE_TARBALL" \
+              --verify-tag \
+              --generate-notes \
+              --title "$GITHUB_REF_NAME"
+          fi

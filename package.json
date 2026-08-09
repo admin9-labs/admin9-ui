@@ -51,7 +51,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "vue-tsc --noEmit -p tsconfig.json && vite build --config vite.config.lib.ts",
+    "build": "vite build --config vite.config.lib.ts",
     "dev": "vite build --watch --config vite.config.lib.ts",
     "acceptance:dev": "vite --config vite.config.dev.ts",
     "acceptance:typecheck": "vue-tsc --noEmit -p dev/tsconfig.json",
@@ -59,11 +59,10 @@
     "type:check": "vue-tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "lint": "pnpm run lint:eslint && pnpm run lint:style",
-    "lint:eslint": "eslint \"./src/**/*.{js,jsx,ts,tsx,vue}\" \"./tests/**/*.{js,jsx,ts,tsx}\" \"./dev/**/*.{js,jsx,ts,tsx,vue}\" \"./vite.config.*.ts\"",
+    "lint:eslint": "eslint \"./src/**/*.{js,jsx,ts,tsx,vue}\" \"./tests/**/*.{js,jsx,ts,tsx}\" \"./dev/**/*.{js,jsx,ts,tsx,vue}\" \"./scripts/**/*.mjs\" \"./vite.config.*.ts\"",
     "lint:style": "stylelint \"./src/**/*.{css,less,vue}\" \"./dev/**/*.{css,less,vue}\"",
-    "pack:check": "npm pack --dry-run",
     "verify:tarball": "node scripts/verify-tarball.mjs",
-    "release:check": "pnpm run type:check && pnpm run acceptance:typecheck && pnpm run lint && pnpm test && pnpm run build && pnpm run acceptance:build && pnpm run pack:check && pnpm run verify:tarball"
+    "release:check": "pnpm run type:check && pnpm run acceptance:typecheck && pnpm run lint && pnpm test && pnpm run acceptance:build && pnpm run verify:tarball"
   },
   "peerDependencies": {
     "vue": "^3.5.0",

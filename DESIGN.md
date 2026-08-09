@@ -256,13 +256,12 @@ Props、Events、Slots、状态行为和示例见 [AMediaLibrary 使用文档](.
 
 Vue、Arco Design Vue 和 vue-i18n 是 peer dependencies，并在构建中 external，避免消费方获得重复运行时实例。
 
-每次发布前必须完成：
+发布候选必须完成：
 
 1. `pnpm install --frozen-lockfile` clean install；
-2. typecheck、lint、组件测试和 library build；
-3. `pnpm run pack:check` 内容审计；
-4. 真实 tarball 的 ESM、CJS、类型、styles、locale 和生产构建验证；
-5. 发布后从 registry 重新安装并重复消费者构建。
+2. typecheck、lint、组件测试和验收宿主 typecheck/build；
+3. library build 与真实 tarball 内容审计；
+4. 同一个真实 tarball 的 ESM、CJS、类型、styles、locale 和生产构建验证。
 
 仓库内测试责任分为三层：
 
@@ -270,9 +269,9 @@ Vue、Arco Design Vue 和 vue-i18n 是 peer dependencies，并在构建中 exter
 - `dev/` 是使用 fake service 的最小浏览器验收宿主，只验证组件交互与样式，不承担业务应用职责；
 - `pnpm run verify:tarball` 构建真实 tarball，在临时最小 Vue 工程中安装并验证 ESM、CJS、类型、locale、styles、peer dependencies、消费构建和组件挂载。
 
-发布前可执行 `pnpm run release:check` 运行完整门禁。该命令只验证本地候选产物，不发布 npm 版本。
+提交发布候选前最多在本地执行一次 `pnpm run release:check`。它只组合一次 typecheck、验收 typecheck、lint、测试、验收 build 和 `verify:tarball`；library build 与 `npm pack` 仅由 `verify:tarball` 执行一次。日常开发只运行与改动相关的检查，GitHub Actions 才是 PR、`main` push 和发布的最终质量结论。
 
-tag、GitHub Release 与 npm 产物必须指向同一发布提交。不得在未验证的工作区或不同提交上生成同版本产物。
+正式发布由语义版本 tag 触发 GitHub Actions。工作流要求 tag 与 package 版本一致且位于远程 `main` 的准确 HEAD，并通过 npm Trusted Publishing/OIDC 发布隔离验证过的同一个 tgz；npm 成功后才创建 GitHub Release。tag、GitHub Release 与 npm 产物必须指向同一发布提交，不得在未验证的工作区或不同提交上生成同版本产物。
 
 ## 9. 约束与风险
 

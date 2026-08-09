@@ -1,16 +1,21 @@
+/* eslint-disable no-console */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { delimiter, dirname, join, resolve } from 'node:path';
+import { basename, delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ensureEmptyOutputDirectory, resolveOutputDirectory } from './release-utils.mjs';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const fixtureRoot = join(packageRoot, 'tests', 'consumer-fixture');
 const hostBaseline = JSON.parse(readFileSync(join(fixtureRoot, 'host-baseline.json'), 'utf8'));
+const retainedOutputDirectory = resolveOutputDirectory(process.argv.slice(2), packageRoot);
 const temporaryRoot = await mkdtemp(join(tmpdir(), 'admin9-ui-consumer-'));
-const tarballDirectory = join(temporaryRoot, 'tarball');
+const tarballDirectory = retainedOutputDirectory ?? join(temporaryRoot, 'tarball');
 const consumerDirectory = join(temporaryRoot, 'consumer');
+let createdTarballPath;
+let verified = false;
 const runtimeEnv = {
   ...process.env,
   PATH: `${dirname(process.execPath)}${delimiter}${process.env.PATH ?? ''}`,
@@ -42,15 +47,20 @@ function readJson(path) {
 try {
   const nodeMajor = Number.parseInt(process.versions.node.split('.')[0], 10);
   const pnpmVersion = execFileSync('pnpm', ['--version'], { encoding: 'utf8', env: runtimeEnv }).trim();
-  assert(nodeMajor === Number(hostBaseline.node), `Host baseline requires Node ${hostBaseline.node}; found ${process.versions.node}.`);
+  assert(
+    nodeMajor === Number(hostBaseline.node),
+    `Host baseline requires Node ${hostBaseline.node}; found ${process.versions.node}.`
+  );
   assert(pnpmVersion === hostBaseline.pnpm, `Host baseline requires pnpm ${hostBaseline.pnpm}; found ${pnpmVersion}.`);
   assert(existsSync(fixtureRoot), `Consumer fixture is missing: ${fixtureRoot}`);
   assert(existsSync(join(fixtureRoot, 'pnpm-lock.yaml')), 'Consumer fixture lockfile is missing.');
 
+  if (retainedOutputDirectory) await ensureEmptyOutputDirectory(retainedOutputDirectory);
+
   run('pnpm', ['run', 'build'], { cwd: packageRoot });
 
   await cp(fixtureRoot, consumerDirectory, { recursive: true });
-  await mkdir(tarballDirectory);
+  if (!retainedOutputDirectory) await mkdir(tarballDirectory);
 
   console.log(
     `Using host baseline ${hostBaseline.consumerRepository}@${hostBaseline.consumerCommit} with Node ${process.versions.node} and pnpm ${pnpmVersion}.`
@@ -65,7 +75,12 @@ try {
   assert(Array.isArray(packResult) && packResult.length === 1, 'npm pack did not return exactly one package.');
 
   const packed = packResult[0];
+  assert(
+    packed.filename === basename(packed.filename) && packed.filename.endsWith('.tgz'),
+    'npm pack returned an unsafe filename.'
+  );
   const tarballPath = join(tarballDirectory, packed.filename);
+  createdTarballPath = tarballPath;
   assert(existsSync(tarballPath), `npm pack did not create ${tarballPath}.`);
 
   const packedFiles = new Set(packed.files.map((file) => file.path));
@@ -128,7 +143,10 @@ try {
 
   run('pnpm', ['run', 'smoke']);
 
+  verified = true;
   console.log(`\nVerified ${packed.filename} (${packed.size} bytes) in the single host-baseline consumer.`);
+  if (retainedOutputDirectory) console.log(`Retained verified tarball at ${tarballPath}.`);
 } finally {
+  if (retainedOutputDirectory && createdTarballPath && !verified) await rm(createdTarballPath, { force: true });
   await rm(temporaryRoot, { recursive: true, force: true });
 }

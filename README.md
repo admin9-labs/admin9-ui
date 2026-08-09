@@ -77,11 +77,11 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 corepack enable
 corepack prepare pnpm@10.5.2 --activate
 pnpm install --frozen-lockfile
+
+# 日常开发只运行与改动相关的测试、类型检查或 lint
+pnpm test -- tests/media-picker.spec.ts
 pnpm run type:check
 pnpm run lint
-pnpm test
-pnpm run build
-pnpm run pack:check
 ```
 
 组件库拥有自己的独立测试闭环，不依赖任何业务应用：
@@ -100,11 +100,15 @@ pnpm run acceptance:build
 # 构建真实 tarball，并在临时 Vue 消费工程中验证入口、类型、样式和挂载
 pnpm run verify:tarball
 
-# 发布前完整门禁（不会发布 package）
+# 提交发布候选前最多运行一次的本地预检（不会发布 package）
 pnpm run release:check
 ```
 
 `dev/` 只服务于组件库开发验收，不属于 package 公共 API，也不会进入 tarball。`tests/consumer-fixture/` 只会被复制到临时目录，并从真实 `.tgz` 安装 `@admin9-labs/admin9-ui`；它不会从 `src/` 回源。
+
+GitHub Actions 是 PR、`main` push 和正式发布的最终质量权威。推送与 `package.json` 版本严格一致的 `vX.Y.Z` tag 后，`.github/workflows/release.yml` 会确认 tag 位于远程 `main` 的准确 HEAD，运行完整门禁，并把通过隔离消费者验证的同一个 tgz 发布到 npm；发布成功后才创建 GitHub Release。不要在本地重新打包或使用本地 npm 凭据发布。
+
+npm 发布使用 Trusted Publishing/OIDC。仓库外必须先在 npm package 设置中配置 GitHub Actions Trusted Publisher：组织 `admin9-labs`、仓库 `admin9-ui`、工作流文件 `release.yml`，并允许 `npm publish`。该配置不包含任何仓库 secret；未配置或字段不精确时，发布工作流会在 npm 认证阶段失败。
 
 完整设计边界与历史决策见 [DESIGN.md](./DESIGN.md)。
 

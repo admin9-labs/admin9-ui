@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up pnpm
         uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
@@ -30,26 +30,5 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check types
-        run: pnpm run type:check
-
-      - name: Check acceptance host types
-        run: pnpm run acceptance:typecheck
-
-      - name: Lint
-        run: pnpm run lint
-
-      - name: Run tests
-        run: pnpm test
-
-      - name: Build library
-        run: pnpm run build
-
-      - name: Build acceptance host
-        run: pnpm run acceptance:build
-
-      - name: Check package contents
-        run: pnpm run pack:check
-
-      - name: Verify real tarball in an isolated consumer
-        run: pnpm run verify:tarball
+      - name: Run authoritative quality gate
+        run: pnpm run release:check
