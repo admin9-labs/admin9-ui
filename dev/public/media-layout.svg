@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" role="img" aria-labelledby="title description">
+  <title id="title">Responsive component layout</title>
+  <desc id="description">Desktop and mobile component frames used as local acceptance media.</desc>
+  <rect width="640" height="360" fill="#f2f3f5"/>
+  <rect x="54" y="46" width="380" height="250" rx="8" fill="#ffffff" stroke="#c9cdd4" stroke-width="2"/>
+  <rect x="54" y="46" width="380" height="30" rx="8" fill="#1d2129"/>
+  <circle cx="72" cy="61" r="4" fill="#f53f3f"/>
+  <circle cx="86" cy="61" r="4" fill="#ff7d00"/>
+  <circle cx="100" cy="61" r="4" fill="#00b42a"/>
+  <rect x="76" y="98" width="98" height="12" rx="3" fill="#1d2129"/>
+  <rect x="76" y="126" width="336" height="42" rx="4" fill="#e8f3ff"/>
+  <rect x="92" y="142" width="72" height="9" rx="2" fill="#165dff"/>
+  <rect x="76" y="184" width="160" height="88" rx="4" fill="#f7f8fa" stroke="#e5e6eb"/>
+  <rect x="252" y="184" width="160" height="88" rx="4" fill="#f7f8fa" stroke="#e5e6eb"/>
+  <rect x="98" y="208" width="72" height="8" rx="2" fill="#4e5969"/>
+  <rect x="98" y="230" width="112" height="6" rx="2" fill="#c9cdd4"/>
+  <rect x="274" y="208" width="68" height="8" rx="2" fill="#4e5969"/>
+  <rect x="274" y="230" width="112" height="6" rx="2" fill="#c9cdd4"/>
+  <rect x="466" y="78" width="120" height="238" rx="14" fill="#ffffff" stroke="#c9cdd4" stroke-width="2"/>
+  <rect x="504" y="88" width="44" height="5" rx="2" fill="#86909c"/>
+  <rect x="482" y="112" width="88" height="10" rx="2" fill="#1d2129"/>
+  <rect x="482" y="140" width="88" height="54" rx="4" fill="#e8ffea"/>
+  <rect x="492" y="154" width="50" height="7" rx="2" fill="#00b42a"/>
+  <rect x="492" y="172" width="66" height="6" rx="2" fill="#86909c"/>
+  <rect x="482" y="208" width="88" height="38" rx="4" fill="#f7f8fa" stroke="#e5e6eb"/>
+  <rect x="492" y="221" width="54" height="6" rx="2" fill="#4e5969"/>
+  <rect x="482" y="258" width="88" height="38" rx="4" fill="#f7f8fa" stroke="#e5e6eb"/>
+  <rect x="492" y="271" width="62" height="6" rx="2" fill="#4e5969"/>
+</svg>

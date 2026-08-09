@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "outDir": null,
+    "rootDir": "..",
+    "types": ["vite/client"]
+  },
+  "include": ["./**/*.ts", "./**/*.vue", "../src/**/*.ts", "../src/**/*.vue"],
+  "exclude": ["../node_modules", "../dist", "../tests"]
+}

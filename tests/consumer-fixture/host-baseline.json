@@ -1,0 +1,16 @@
+{
+  "sourceRepository": "qiyue2015/arco-design-pro-vue",
+  "sourcePath": "arco-design-pro-vite",
+  "consumerRepository": "qiyue2015/arco-design-pro-vite",
+  "consumerCommit": "952821d0b3074b056035be039ef44b1d04d4bb3f",
+  "node": "20",
+  "pnpm": "10.5.2",
+  "vue": "3.5.18",
+  "arcoDesignVue": "2.57.0",
+  "vueI18n": "9.14.5",
+  "vite": "3.2.11",
+  "typescript": "4.9.5",
+  "vueTsc": "1.8.27",
+  "pluginVue": "3.2.0",
+  "pluginVueJsx": "2.1.1"
+}

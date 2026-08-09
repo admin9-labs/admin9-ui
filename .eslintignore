@@ -1,3 +1,4 @@
 /*.json
 /*.js
 dist
+/tests/consumer-fixture/vite.config.ts
