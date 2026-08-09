@@ -31,8 +31,10 @@
 ```text
 admin9-ui/
 ├── .github/workflows/ci.yml
+├── .node-version
+├── docs/components/
 ├── package.json
-├── package-lock.json
+├── pnpm-lock.yaml
 ├── tsconfig.json
 ├── vite.config.lib.ts
 ├── tests/
@@ -40,6 +42,7 @@ admin9-ui/
     ├── index.ts
     ├── components/
     │   ├── icon-picker/
+    │   ├── media-library/
     │   ├── media-picker/
     │   └── pro-table/
     ├── internal/
@@ -53,16 +56,20 @@ admin9-ui/
 
 ## 3. 公开能力
 
-| 导出                                         | 定位                            | 数据依赖            |
-| -------------------------------------------- | ------------------------------- | ------------------- |
-| default `Admin9UI`                           | 全局组件注册与默认 service 注入 | 可选 `MediaService` |
-| `AMediaPicker`                               | 素材选择、上传与删除交互        | `MediaService` 注入 |
-| `AIconPicker`                                | Arco 图标搜索与选择             | 无                  |
-| `AProTable`                                  | fetcher 驱动的页面级表格        | fetcher prop 注入   |
-| `Admin9UIOptions`、`MediaService` 及相关类型 | 插件配置与素材 adapter 契约     | 消费方实现          |
-| `messages`、`localePrefix`、`zhCN`、`enUS`   | 中英文 locale                   | 宿主 i18n 实例      |
-| `arcoIconNames`                              | 图标名清单                      | Arco 图标全局注册   |
-| `@admin9-labs/admin9-ui/styles`              | 组件统一样式入口                | 无                  |
+| 导出                                                   | 定位                            | 数据依赖                   |
+| ------------------------------------------------------ | ------------------------------- | -------------------------- |
+| default `Admin9UI`                                     | 全局组件注册与默认 service 注入 | 可选 `MediaService`        |
+| `AMediaPicker`                                         | 素材选择、上传与删除交互        | `MediaService` 注入        |
+| `AMediaLibrary`                                        | 页面级素材与单级分组管理        | `MediaLibraryService` 注入 |
+| `AIconPicker`                                          | Arco 图标搜索与选择             | 无                         |
+| `AProTable`                                            | fetcher 驱动的页面级表格        | fetcher prop 注入          |
+| `Admin9UIPluginOptions`、`MediaService` 及相关公共类型 | 插件配置与素材 adapter 契约     | 消费方实现                 |
+| `messages`、`localePrefix`、`zhCN`、`enUS`             | 中英文 locale                   | 宿主 i18n 实例             |
+| `arcoIconNames`                                        | 图标名清单                      | Arco 图标全局注册          |
+| `@admin9-labs/admin9-ui/styles`                        | 组件统一样式入口                | 无                         |
+
+`Admin9UIPluginOptions` 专指 `app.use(Admin9UI, options)` 的插件配置对象，避免与组件 props 或 service options 混淆。
+`Admin9UIOptions` 作为弃用的兼容类型别名保留，避免破坏既有消费者的类型导入。
 
 组件采用 `A` 前缀以保持与 Arco 生态一致。插件安装时会检查同名全局组件并输出冲突警告；若未来 Arco 增加同名组件，再通过新的兼容版本处理命名调整。
 
@@ -129,7 +136,43 @@ export interface MediaService {
   }): Promise<MediaItem>;
   remove(ids: string[]): Promise<string[]>;
 }
+
+export interface CreateMediaGroupOptions {
+  mediaType: MediaType;
+  name: string;
+}
+
+export interface RenameMediaGroupOptions extends CreateMediaGroupOptions {
+  groupId: string;
+}
+
+export interface RemoveMediaGroupOptions {
+  mediaType: MediaType;
+  groupId: string;
+}
+
+export interface MoveMediaOptions {
+  mediaType: MediaType;
+  ids: string[];
+  groupId: string | null;
+}
+
+export interface MediaLibraryService extends MediaService {
+  listGroups(mediaType: MediaType): Promise<MediaGroup[]>;
+  createGroup(options: CreateMediaGroupOptions): Promise<MediaGroup>;
+  renameGroup(options: RenameMediaGroupOptions): Promise<MediaGroup>;
+  removeGroup(options: RemoveMediaGroupOptions): Promise<void>;
+  move(options: MoveMediaOptions): Promise<string[]>;
+}
 ```
+
+`MediaLibraryService` 是页面级管理的窄扩展，不改变 Picker 所依赖的 `MediaService`：
+
+- `listGroups(mediaType)` 在 Library 中为必选能力，返回该类型的后端真实单级分组；
+- `createGroup`、`renameGroup` 和 `removeGroup` 都使用对象参数并显式携带 `mediaType`；
+- `removeGroup` 仅删除分组，不得隐式删除组内素材；非空分组的处理或拒绝由 adapter 明确实现；
+- `move` 使用 `groupId: null` 表示移动到未分组，返回成功移动的 ID，以支持部分成功反馈；
+- 继承的 `remove(ids)` 同样返回成功删除的 ID；组件只清理已成功 ID 的选择状态。
 
 消费方可以在组件使用点传入 `service`，也可以在插件安装时提供默认 service：
 
@@ -145,28 +188,25 @@ app.use(Admin9UI, {
 
 ### AMediaPicker
 
-- `mediaType` 支持 `image`、`video` 和 `audio`，默认 `image`；单个实例不混合素材类型。
-- `multiple=false` 时使用单选流程；`multiple=true` 时允许批量选择并确认。
-- `limit` 只约束多选数量，不隐式决定数据类型。
-- 上传使用 `customRequest` 调用注入 service，并支持进度与取消信号。
-- 类型、分组和关键词都通过 `MediaService.list` 交给后端统一筛选，组件不在分页结果上做前端过滤。
-- 分组按素材类型隔离，采用单级、单归属模型；`undefined` 表示全部，`null` 表示未分组，字符串表示后端真实分组。
-- “全部”和“未分组”是组件内置视图，不属于 `MediaGroup`；`listGroups` 未实现时隐藏分组导航。
-- 切换分组重置到第 1 页，多选结果在同一次弹窗会话中跨分组、跨分页保留。
-- 具体分组内上传进入当前分组；全部或未分组视图上传进入未分组。
-- 图片使用缩略图网格与图片预览，视频展示封面、播放标识、时长和可用播放控件，音频展示文件信息、时长和可用试听控件。
-- `pending`、`failed`、缺少有效 URL 或与实例类型不匹配的素材保持可见但不可选择。
-- 对外始终使用 `MediaItem.id`，保留 path、groupId、duration 和状态字段。
-- 删除前要求显式确认；部分删除失败后刷新列表并清理陈旧选择。
-- `canUpload` 与 `canDelete` 分别控制能力，调用方无需暴露其权限模型；`canDelete` 安全默认值为 `false`。
-- 桌面端使用分组导航与素材区，窄屏改用紧凑分组选择控件。
-- Picker 不提供分组新建、改名、排序、删除、批量移动、多级目录或标签。
+- 表单级轻量选择表面；单个实例只处理一种 `MediaType`，并支持单选或带上限的多选。
+- 列表筛选、分页、分组和上传均通过 `MediaService` 交给 adapter，不在分页结果上做前端筛选。
+- `listGroups` 保持可选；未实现时 Picker 仍可作为无分组选择器使用。
+- 组件只暴露选择、上传和可选删除，不吸收分组管理、批量移动或应用业务能力。
+- 能力开关只控制界面；删除默认关闭，后端授权始终由消费方负责。
 
-### AMediaLibrary（后续阶段）
+Props、Events、Slots、状态行为和示例见 [AMediaPicker 使用文档](./docs/components/media-picker.md)。
 
-`AMediaLibrary` 是已确认的页面级素材管理组件需求，会与 `AMediaPicker` 同时存在。Picker 服务于表单轻量选择；Library 面向后续三个融媒体项目的完整素材管理页面。
+### AMediaLibrary
 
-Library 可复用公开的 `MediaType`、`MediaGroup`、`MediaItem`、`MediaService` 基础契约，以及包内私有的媒体展示实现。下一阶段仍需独立设计分组 CRUD、素材批量移动、完整管理工具栏、页面级查询与批量操作；这些能力不得反向塞入 Picker，也不应通过新增公共 hooks 或工具 API 暴露。
+`AMediaLibrary` 与 `AMediaPicker` 并存。Picker 服务于表单轻量选择；Library 是后端无关的完整素材管理页面组件，不包含路由、store、鉴权或具体 API。
+
+- 页面级管理表面；在 `MediaService` 之上仅增加单级分组 CRUD 和素材移动所需的 `MediaLibraryService` 窄扩展。
+- 后端负责分页、筛选、权限和部分成功结果；组件维护跨页选择，并只清理 service 确认成功的 ID。
+- 分组只有一级，`removeGroup` 不得隐式删除素材；更复杂的 DAM 策略留在消费应用。
+- 组件可复用包内私有媒体展示实现，但不把 helper、状态或管理逻辑导出为通用 API。
+- `refresh()` 与 `clearSelection()` 仅作为组件实例方法暴露，不属于独立 hooks 或工具。
+
+Props、Events、Slots、状态行为和示例见 [AMediaLibrary 使用文档](./docs/components/media-library.md)。
 
 ### AIconPicker
 
@@ -178,6 +218,8 @@ Library 可复用公开的 `MediaType`、`MediaGroup`、`MediaItem`、`MediaServ
 ### AProTable
 
 - `AProTable` 对外提供可配置 `rowKey`、fetcher、分页和 action 插槽。
+- fetcher 失败时发出 `error(error)` 事件；搜索、刷新按钮、分页和 fetcher 变化等 UI 请求入口会消费失败 Promise，避免产生 unhandled rejection。
+- `defineExpose` 的 `refresh()` 仍原样返回 fetcher 链的 Promise，调用方主动调用时必须自行 `await` 并处理拒绝；`clearSelection()` 只通知受控选择清空。
 - 它不包含查询表单、工具栏、导出或具体行操作等应用业务能力。
 - 应用共享的 Grid 家族保持在消费方，不属于本包迁移范围。
 
@@ -200,6 +242,8 @@ Library 可复用公开的 `MediaType`、`MediaGroup`、`MediaItem`、`MediaServ
 
 ## 8. 构建与发布
 
+仓库开发与 CI 使用 Node 20、pnpm 10.5.2，并以 `pnpm-lock.yaml` 固定开发依赖。该工具链基线只约束仓库构建和候选产物验证，不通过 repository-only `packageManager` pin 限制 npm 包消费者。
+
 | 入口                 | 产物                     |
 | -------------------- | ------------------------ |
 | package main import  | `dist/index.js`          |
@@ -214,11 +258,19 @@ Vue、Arco Design Vue 和 vue-i18n 是 peer dependencies，并在构建中 exter
 
 每次发布前必须完成：
 
-1. clean install；
+1. `pnpm install --frozen-lockfile` clean install；
 2. typecheck、lint、组件测试和 library build；
-3. `npm pack --dry-run` 内容审计；
+3. `pnpm run pack:check` 内容审计；
 4. 真实 tarball 的 ESM、CJS、类型、styles、locale 和生产构建验证；
 5. 发布后从 registry 重新安装并重复消费者构建。
+
+仓库内测试责任分为三层：
+
+- `tests/*.spec.ts` 使用通用 fake/stub 验证组件输入、事件、插槽和状态契约；
+- `dev/` 是使用 fake service 的最小浏览器验收宿主，只验证组件交互与样式，不承担业务应用职责；
+- `pnpm run verify:tarball` 构建真实 tarball，在临时最小 Vue 工程中安装并验证 ESM、CJS、类型、locale、styles、peer dependencies、消费构建和组件挂载。
+
+发布前可执行 `pnpm run release:check` 运行完整门禁。该命令只验证本地候选产物，不发布 npm 版本。
 
 tag、GitHub Release 与 npm 产物必须指向同一发布提交。不得在未验证的工作区或不同提交上生成同版本产物。
 

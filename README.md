@@ -9,8 +9,10 @@
 ## 安装
 
 ```bash
-npm install @admin9-labs/admin9-ui@0.1.0
+pnpm add @admin9-labs/admin9-ui@0.1.0
 ```
+
+消费应用可以使用自己的包管理器；这里使用 pnpm 只是示例，不要求消费者采用本仓库的开发工具版本。
 
 宿主需要提供以下 peer dependencies：
 
@@ -33,10 +35,13 @@ app.use(Admin9UI, {
 });
 ```
 
+插件第二个参数使用公开类型 `Admin9UIPluginOptions`，对应 `app.use(Admin9UI, options)` 的配置对象。
+原有 `Admin9UIOptions` 类型作为兼容别名保留，新代码应使用含义更明确的新名称。
+
 也可以按需导入：
 
 ```ts
-import { AMediaPicker, AIconPicker, AProTable } from '@admin9-labs/admin9-ui';
+import { AMediaLibrary, AMediaPicker, AIconPicker, AProTable } from '@admin9-labs/admin9-ui';
 import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 ```
 
@@ -44,43 +49,62 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 
 ## 公开能力
 
-- 默认导出的 `Admin9UI` 插件：全局注册三个组件，并可注入默认 `MediaService`
-- `AMediaPicker`：支持图片、视频和音频的表单级轻量素材选择器
+- 默认导出的 `Admin9UI` 插件：全局注册四个组件，并可注入默认 `MediaService`
+- [`AMediaPicker`](./docs/components/media-picker.md)：支持图片、视频和音频的表单级轻量素材选择器
+- [`AMediaLibrary`](./docs/components/media-library.md)：支持分组、上传、移动和删除的页面级素材管理组件
 - `AIconPicker`：Arco 图标选择器
 - `AProTable`：通过 fetcher 注入数据源的页面级表格
-- `Admin9UIOptions`、`MediaService` 及相关数据类型
+- `Admin9UIPluginOptions`、`MediaService`、`MediaLibraryService` 及相关数据类型
 - `messages`、`localePrefix`、`zhCN`、`enUS` 和 `arcoIconNames`
-- `@admin9-labs/admin9-ui/styles`：三个组件的统一样式入口
+- `@admin9-labs/admin9-ui/styles`：四个组件的统一样式入口
 
-## 后端边界
+## 素材组件边界
 
 组件库只定义接口契约和渲染行为，不包含具体 API URL、认证、store、router、权限或应用业务字段。
 消费方通过使用点的 `service` prop，或 `app.use(Admin9UI, { mediaService })` 注入 adapter。
 
-`AMediaPicker` 的 `mediaType` 默认为 `image`，单个实例只处理一种素材类型。列表的类型、分组和关键词筛选统一由消费方 adapter 对接后端完成；组件不会过滤已分页的结果。`listGroups` 为可选能力，未实现时 Picker 不显示分组导航。
-
-```vue
-<a-media-picker v-model="video" media-type="video" :service="mediaServiceAdapter" :can-delete="false" />
-```
-
-## 素材组件边界
-
 - `AMediaPicker` 面向表单中的轻量选择、上传和按分组浏览，不提供分组管理或完整素材管理操作。
-- `AMediaLibrary` 是已确认的后续页面级素材管理组件，面向后续融媒体项目；它会复用媒体契约与基础展示能力，但不在本阶段交付。
-- 分组新建、改名、排序、删除、批量移动、完整管理工具栏、多级目录和标签不属于 Picker。
+- `AMediaLibrary` 面向完整页面管理：单级分组 CRUD、后端分页查询、上传、单项/批量移动和删除，以及跨页/跨组选择。
+- 多级目录、排序、标签、版权、审核、版本、转码、审计和业务权限不属于本包。能力开关只控制界面，后端仍需执行授权。
+
+完整的接口定义与边界见 [DESIGN.md](./DESIGN.md#4-service-契约)，使用方式见对应组件文档。
 
 ## 开发
 
-需要 Node 22 与 npm 11：
+仓库开发与 CI 基线为 Node 20、pnpm 10.5.2。该基线用于可重复开发和发布验证，不等同于 npm 包消费者的运行时限制。
 
 ```bash
-npm ci
-npm run type:check
-npm run lint
-npm test
-npm run build
-npm pack --dry-run
+corepack enable
+corepack prepare pnpm@10.5.2 --activate
+pnpm install --frozen-lockfile
+pnpm run type:check
+pnpm run lint
+pnpm test
+pnpm run build
+pnpm run pack:check
 ```
+
+组件库拥有自己的独立测试闭环，不依赖任何业务应用：
+
+```bash
+# 组件契约测试
+pnpm test
+
+# 启动使用 fake service 的浏览器验收宿主
+pnpm run acceptance:dev
+
+# 构建验收宿主
+pnpm run acceptance:typecheck
+pnpm run acceptance:build
+
+# 构建真实 tarball，并在临时 Vue 消费工程中验证入口、类型、样式和挂载
+pnpm run verify:tarball
+
+# 发布前完整门禁（不会发布 package）
+pnpm run release:check
+```
+
+`dev/` 只服务于组件库开发验收，不属于 package 公共 API，也不会进入 tarball。`tests/consumer-fixture/` 只会被复制到临时目录，并从真实 `.tgz` 安装 `@admin9-labs/admin9-ui`；它不会从 `src/` 回源。
 
 完整设计边界与历史决策见 [DESIGN.md](./DESIGN.md)。
 

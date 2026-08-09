@@ -11,13 +11,21 @@ The Admin9 `Grid`, `GridToolbar`, and `GridTable` family belongs to the applicat
 
 ## Commands
 
+Repository development and CI use Node 20 with pnpm 10.5.2. This is a repository toolchain baseline, not a package-consumer runtime restriction. Do not add a repository-only `packageManager` pin to the published manifest.
+
 ```bash
-npm ci
-npm run type:check
-npm run lint
-npm test
-npm run build
-npm pack --dry-run
+corepack enable
+corepack prepare pnpm@10.5.2 --activate
+pnpm install --frozen-lockfile
+pnpm run type:check
+pnpm run acceptance:typecheck
+pnpm run lint
+pnpm test
+pnpm run build
+pnpm run acceptance:build
+pnpm run pack:check
+pnpm run verify:tarball
+pnpm run release:check
 ```
 
-Use Node 22 and npm 11. Do not publish a version until a real tarball has passed isolated consumer verification.
+Do not publish a version until a real tarball has passed isolated consumer verification.
