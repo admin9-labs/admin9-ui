@@ -7,9 +7,7 @@
   /**
    * AProTable —— 页面级业务表格（对外注册）。
    *
-   * 定位（见 DESIGN.md §5.6）：与 picker 内部私有零件 ADataTable 不重叠。
-   * ADataTable 是 picker 的"搜索+分页表格片段"，无 toolbar/action；
-   * AProTable 是页面级，收敛 fetcher + 分页 + loading + 可选 action 列。
+   * 定位（见 DESIGN.md §5）：页面级表格，收敛 fetcher + 分页 + loading + 可选 action 列。
    *
    * AProTable 用 fetcher 注入自管请求，rowKey 可配，action 列可配且内容完全由
    * #action 插槽自定义（无内置编辑/删除）。

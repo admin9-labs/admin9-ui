@@ -5,7 +5,7 @@ import vueJsx from '@vitejs/plugin-vue-jsx';
 import dts from 'vite-plugin-dts';
 
 // 库构建配置：产出 ESM + CJS + d.ts + 单一 style.css
-// peer dependencies 全部 external，由宿主 App 提供（vue / @arco-design/web-vue / vue-i18n / @vueuse/core）
+// peer dependencies 全部 external，由宿主 App 提供（vue / @arco-design/web-vue / vue-i18n）
 export default defineConfig({
   plugins: [
     vue(),
@@ -14,6 +14,7 @@ export default defineConfig({
       entryRoot: 'src',
       tsconfigPath: './tsconfig.json',
       insertTypesEntry: true,
+      exclude: ['src/hooks/**', 'src/internal/**'],
     }),
   ],
   resolve: {
@@ -44,7 +45,7 @@ export default defineConfig({
     },
     cssCodeSplit: false,
     rollupOptions: {
-      external: ['vue', '@arco-design/web-vue', 'vue-i18n', '@vueuse/core'],
+      external: ['vue', '@arco-design/web-vue', 'vue-i18n'],
       output: {
         exports: 'named',
         assetFileNames: 'style.css',

@@ -4,7 +4,7 @@
   import type { FileItem, RequestOption, UploadRequest } from '@arco-design/web-vue';
   import { useI18n } from 'vue-i18n';
   import { useLoading, useVisible } from '../../hooks';
-  import { admin9UIOptionsKey } from '../../locale';
+  import admin9UIOptionsKey from '../../internal/options';
   import type { MediaItem, MediaService } from '../../services/types';
 
   /**

@@ -1,17 +1,11 @@
 import type { App, Plugin } from 'vue';
-import { admin9UIOptionsKey, type Admin9UIOptions } from './locale';
+import admin9UIOptionsKey from './internal/options';
+import type { Admin9UIOptions } from './services/types';
 
 // 组件
 import AMediaPicker from './components/media-picker/index.vue';
 import AIconPicker from './components/icon-picker/index.vue';
-import AUserPicker from './components/user-picker/index.vue';
 import AProTable from './components/pro-table/index.vue';
-
-// composables
-export { default as useModal } from './composables/use-modal';
-
-// hooks（库内自用，也可对外暴露）
-export { useVisible, useLoading } from './hooks';
 
 // 服务接口契约（供 App 实现 adapter 时 import 类型）
 export type {
@@ -21,10 +15,7 @@ export type {
   MediaListResult,
   MediaPagination,
   MediaUploadOptions,
-  UserService,
-  UserItem,
-  UserListParams,
-  UserListResult,
+  Admin9UIOptions,
 } from './services/types';
 
 // locale（供 App 合并进宿主 vue-i18n）
@@ -34,21 +25,21 @@ export { messages, localePrefix } from './locale';
 export { arcoIconNames } from './components/icon-picker/icon-names';
 
 // 组件命名导出（供按需 import）
-export { AMediaPicker, AIconPicker, AUserPicker, AProTable };
+export { AMediaPicker, AIconPicker, AProTable };
 
 /**
  * 安装插件。
  *
  * @example 全局注入默认服务
- * app.use(Admin9UI, { mediaService, userService })
+ * app.use(Admin9UI, { mediaService })
  *
  * @example 仅安装组件（service 由使用点 :service 传入）
  * app.use(Admin9UI)
  */
-const Admin9UI: Plugin = {
+const Admin9UI = {
   install(app: App, options: Admin9UIOptions = {}) {
     // 名称冲突检测：A 前缀下若与 Arco 原生组件重名，提示及早发现
-    const reserved = ['AMediaPicker', 'AIconPicker', 'AUserPicker', 'AProTable'];
+    const reserved = ['AMediaPicker', 'AIconPicker', 'AProTable'];
     reserved.forEach((name) => {
       if (app.component(name)) {
         // eslint-disable-next-line no-console
@@ -61,12 +52,11 @@ const Admin9UI: Plugin = {
 
     app.component('AMediaPicker', AMediaPicker);
     app.component('AIconPicker', AIconPicker);
-    app.component('AUserPicker', AUserPicker);
     app.component('AProTable', AProTable);
 
     // 提供默认服务，供使用点不传 :service 时回退
     app.provide(admin9UIOptionsKey, options);
   },
-};
+} satisfies Plugin;
 
 export default Admin9UI;

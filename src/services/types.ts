@@ -70,31 +70,7 @@ export interface MediaService {
   remove(ids: string[]): Promise<string[]>;
 }
 
-/* ----------------------------- UserService ------------------------------ */
-
-/** 用户/实体选择项（AUserPicker 通用化，不绑定具体业务字段） */
-export interface UserItem {
-  id: string;
-  name: string;
-  /** 副标题/描述（如邮箱、部门），可选 */
-  description?: string;
-  /** 头像 URL，可选 */
-  avatar?: string;
-  [k: string]: unknown;
-}
-
-export interface UserListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-}
-
-export interface UserListResult {
-  list: UserItem[];
-  pagination: MediaPagination;
-}
-
-/** 用户服务契约。由 App 注入实现，库不关心具体后端。 */
-export interface UserService {
-  list(params: UserListParams): Promise<UserListResult>;
+/** Plugin installation options for app.use(Admin9UI, options). */
+export interface Admin9UIOptions {
+  mediaService?: MediaService;
 }

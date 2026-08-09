@@ -1,7 +1,7 @@
 {
   "name": "@admin9-labs/admin9-ui",
   "version": "0.1.0",
-  "description": "Admin9 Pro 中后台增强业务组件库，基于 Arco Design Vue",
+  "description": "补充 Arco Design Vue 中后台通用场景的 Vue 组件库",
   "type": "module",
   "license": "MIT",
   "author": "Admin9 Team",
@@ -54,14 +54,12 @@
   "peerDependencies": {
     "vue": "^3.5.0",
     "@arco-design/web-vue": "^2.57.0",
-    "vue-i18n": "^9.14.0",
-    "@vueuse/core": "^9.13.0"
+    "vue-i18n": "^9.14.0"
   },
   "devDependencies": {
     "@arco-design/web-vue": "^2.57.0",
     "@vitejs/plugin-vue": "5.2.4",
     "@vitejs/plugin-vue-jsx": "4.2.0",
-    "@vueuse/core": "^9.13.0",
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "eslint": "^8.57.1",
