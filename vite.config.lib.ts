@@ -31,10 +31,16 @@ export default defineConfig({
   },
   build: {
     lib: {
-      entry: resolve(__dirname, 'src/index.ts'),
+      entry: {
+        index: resolve(__dirname, 'src/index.ts'),
+        locale: resolve(__dirname, 'src/locale/index.ts'),
+      },
       name: 'Admin9UI',
       formats: ['es', 'cjs'],
-      fileName: (format) => (format === 'es' ? 'index.js' : 'index.cjs'),
+      fileName: (format, entryName) => {
+        const extension = format === 'es' ? 'js' : 'cjs';
+        return entryName === 'locale' ? `locale/index.${extension}` : `index.${extension}`;
+      },
     },
     cssCodeSplit: false,
     rollupOptions: {

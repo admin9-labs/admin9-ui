@@ -1,6 +1,6 @@
 # @admin9-labs/admin9-ui 设计文档
 
-> 状态：内部 package 实施基线 v1
+> 状态：独立公开 package 设计基线 v2
 > 日期：2026-06-27
 > 作者：基于代码逐行精读产出
 
@@ -8,7 +8,7 @@
 
 | 维度 | 决策 | 依据 |
 |---|---|---|
-| 仓库结构 | 轻量 monorepo，`packages/admin9-ui/` 作 npm workspace 包 | 根项目支持 npm 11，锁文件与 CI 以 11.12.1 为基准 |
+| 仓库结构 | `admin9-ui` 独立 Git 仓库，与 `admin9-web` 同级 | 包可独立安装、测试、构建、发布和维护 |
 | 包名 | `@admin9-labs/admin9-ui` | GitHub 组织 admin9-labs，scope 名正言顺 |
 | 组件前缀 | `A`（如 `AMediaPicker`） | 用户决策。贴 Arco 家族。当前清单与 Arco 原生无撞名（见 §3 风险） |
 | composable 前缀 | 无（`useModal`） | 业界惯例，靠 import 路径区分 |
@@ -16,8 +16,8 @@
 | 素材范围 | 类型无关的 `MediaPicker`，App 现在只注入图片 service | 库只认 `MediaService` 接口，类型由注入决定 |
 | i18n | 库导出 messages 对象，App 合并进宿主 vue-i18n | 不建独立实例，避免 locale 割裂 |
 | 样式 | scoped less + Arco CSS 变量，**不用 Tailwind** | 避免 App 维护 Tailwind content 路径的耦合 |
-| 构建工具链 | 库用 vite5 + ts5 + vite-plugin-dts | App 的 vite3/ts4.9 对 dts 插件太旧；库独立构建不影响 App 运行时 |
-| 当前阶段 | 内部 package，先服务实际项目并接入真实 API | 正式发布后完成稳定验证，再评估 npm 发布 |
+| 构建工具链 | Vite 6 + TypeScript 5 + vite-plugin-dts | 与宿主工具链隔离，产出标准 ESM/CJS/types |
+| 当前阶段 | 公开 npm package，`0.x` 迭代 | 先服务实际项目并用真实消费验证契约，不承诺 1.0 稳定性 |
 
 ### 删减决策（避免伪封装）
 
@@ -30,7 +30,7 @@
 
 ## 1. 目标与范围
 
-把中后台反复出现的"选择类"组件沉淀成内部 package `@admin9-labs/admin9-ui`。当前先服务实际项目、接入真实 API 并验证组件契约；宿主正式发布且 package 完成稳定验证后，再评估发布 npm。点一下触发弹窗 → 选一个/多个 → 回填表单字段。核心解决三个真实痛点：
+把中后台反复出现的"选择类"组件沉淀成公开 package `@admin9-labs/admin9-ui`。组件库保持后端无关，由宿主注入 service adapter；包在独立仓库中维护，并通过真实应用持续验证组件契约。点一下触发弹窗 → 选一个/多个 → 回填表单字段。核心解决三个真实痛点：
 
 1. **素材选择**：现有 `image-gallery` 与后端强耦合、丢弃选中项 id、上传绕过 axios。升级为后端无关的 `AMediaPicker`。
 2. **菜单图标**：`EditMenuModal` 的图标字段是纯文本 `<a-input>`，用户手敲 `icon-settings` 字符串。改为可视化 `AIconPicker`。
@@ -40,49 +40,28 @@
 
 ---
 
-## 2. 仓库结构（monorepo 脚手架）
+## 2. 仓库结构
 
 ```
-admin9-web/                       仓库根
-├─ package.json                   根，声明 workspaces: ['packages/*'] 并装公共 dev 工具
-├─ package-lock.json              npm workspace 统一锁文件
-├─ src/                           App，基本不动
-└─ packages/
-   └─ admin9-ui/                  新库
-      ├─ package.json             name=@admin9-labs/admin9-ui, peerDeps, exports
-      ├─ tsconfig.json            库独立（bundler resolution, declaration）
-      ├─ vite.config.lib.ts       lib mode: ESM+CJS+d.ts, peer deps external
-      ├─ README.md
-      └─ src/
-         ├─ index.ts              install 插件 + 命名导出
-         ├─ components/
-         │  ├─ media-picker/index.vue
-         │  ├─ icon-picker/index.vue
-         │  ├─ user-picker/index.vue
-         │  └─ data-table/index.vue     # 内部复用，不对外注册
-         ├─ composables/
-         │  └─ use-modal.ts
-         ├─ hooks/                # useVisible/useLoading 自带副本（零依赖）
-         │  ├─ visible.ts
-         │  └─ loading.ts
-         ├─ services/
-         │  └─ types.ts           # MediaService 等接口定义
-         ├─ locale/
-         │  ├─ zh-CN.ts
-         │  └─ en-US.ts
-         └─ styles/
-            └─ index.less         # Arco 变量引用（不 @import App 的 breakpoint）
+admin9-labs/
+├─ admin9-web/                    # 消费方应用，独立 Git 仓库
+└─ admin9-ui/                     # 本仓库
+   ├─ package.json                # npm 元数据、peerDependencies 与 exports
+   ├─ package-lock.json           # 独立锁文件
+   ├─ tsconfig.json               # bundler resolution 与声明文件配置
+   ├─ vite.config.lib.ts          # ESM/CJS/types/styles/locale 构建
+   ├─ tests/                      # 组件行为与公开契约测试
+   └─ src/
+      ├─ index.ts                 # 插件安装与命名导出
+      ├─ components/
+      ├─ composables/
+      ├─ hooks/                   # useVisible/useLoading 保留现有能力
+      ├─ services/                # 后端无关接口契约
+      ├─ locale/
+      └─ styles/
 ```
 
-### package.json workspaces（仓库根）
-
-```json
-{
-  "workspaces": ["packages/*"]
-}
-```
-
-### packages/admin9-ui/package.json
+### package.json
 
 ```jsonc
 {
@@ -100,8 +79,9 @@ admin9-web/                       仓库根
     },
     "./styles": "./dist/style.css",
     "./locale": {
-      "types": "./dist/locale.d.ts",
-      "import": "./dist/locale.js"
+      "types": "./dist/locale/index.d.ts",
+      "import": "./dist/locale/index.js",
+      "require": "./dist/locale/index.cjs"
     }
   },
   "sideEffects": ["**/*.less", "**/*.css", "*.vue"],
@@ -114,7 +94,7 @@ admin9-web/                       仓库根
   "devDependencies": {
     "less": "^4.5.1",
     "typescript": "^5.4.0",
-    "vite": "^5.2.0",
+    "vite": "6.4.3",
     "vite-plugin-dts": "^3.9.0",
     "@vitejs/plugin-vue": "^5.0.0",
     "@vitejs/plugin-vue-jsx": "^3.1.0",
@@ -130,14 +110,14 @@ admin9-web/                       仓库根
 要点：
 - `peerDependencies` 精确对齐 App 版本，库不重复打包 vue/arco/vue-i18n/vueuse。
 - `sideEffects` 必含 `*.less/*.css/*.vue`，否则消费者 tree-shaking 误删样式。
-- devDeps 升到 vite5/ts5（App 的 vite3/ts4.9 太旧，vite-plugin-dts 生态要求 ≥vite4）。库只产出产物，不影响 App 运行时。
+- 独立工具链使用 Vite 6 / TypeScript 5；宿主只消费构建产物，不共享开发依赖。
 
 ### vite.config.lib.ts 要点
 
 ```ts
 build: {
-  lib: { entry: resolve(__dirname, 'src/index.ts'), name: 'Admin9UI',
-         formats: ['es', 'cjs'], fileName: (f) => f === 'es' ? 'index.js' : 'index.cjs' },
+  lib: { entry: { index: 'src/index.ts', locale: 'src/locale/index.ts' },
+         formats: ['es', 'cjs'] },
   cssCodeSplit: false,            // 合并单一 style.css
   rollupOptions: {
     external: ['vue', '@arco-design/web-vue', 'vue-i18n', '@vueuse/core'],
@@ -146,18 +126,17 @@ build: {
 }
 ```
 
-### App 侧引用（开发期直接消费源码）
+### App 侧引用（registry 产物）
 
-- App `package.json` devDependencies：`"@admin9-labs/admin9-ui": "0.1.0"`，npm 按同名同版本自动链接本地 workspace
+- App `package.json` dependencies：`"@admin9-labs/admin9-ui": "0.1.0"`，锁文件解析到 npm registry
 - App `src/main.ts`（在 `app.use(i18n)` 之后）：
   ```ts
   import Admin9UI from '@admin9-labs/admin9-ui';
   import '@admin9-labs/admin9-ui/styles';
   app.use(Admin9UI);
   ```
-- App `tsconfig.json` 的 `include` 追加 `"packages/admin9-ui/src/**/*"`（否则 vue-tsc 报错）
-- App `vite.config.base.ts` 的 `optimizeDeps.exclude` 加 `@admin9-labs/admin9-ui`（让 App vite 直接编译库源码，热更新生效）
-- 发布期：库 `exports` 指向 dist；当前版本约束已使用标准 semver，npm workspace 在开发期自动链接本地包
+- App 不引用本仓库源码路径，类型、样式和 locale 均通过 package exports 消费。
+- 本地 tarball 可用于发布前隔离验证，但不能写入宿主的最终锁文件。
 
 ---
 
@@ -185,7 +164,7 @@ build: {
 库不直接调任何后端。所有"列表/上传/删除"能力由 App 通过 `MediaService` 接口注入。
 
 ```ts
-// packages/admin9-ui/src/services/types.ts
+// src/services/types.ts
 
 export interface MediaItem {
   id: string;
@@ -509,22 +488,22 @@ breakpoint：库 `styles/index.less` 自带一份，不 `@import` App 的 `src/a
 | external | vue / @arco-design/web-vue / vue-i18n / @vueuse/core |
 | dts | vite-plugin-dts，entryRoot=src，insertTypesEntry |
 | cssCodeSplit | false（合并单一 style.css） |
-| 当前交付 | 作为 workspace 内部 package 服务本项目，优先完成真实 API 接入与正式发布验证 |
-| npm 发布 | 宿主正式发布且 package 稳定验证完成后再评估；当前不以发包为目标，不提前收缩公共 API |
+| 当前交付 | 公开 npm package，继续由真实应用验证 service 与组件契约 |
+| npm 发布 | `0.x` 遵循语义化版本；发布前必须通过 tarball 与 registry 消费验证 |
 
 ---
 
 ## 9. App 侧集成与迁移点（逐 file:line）
 
-### 9.1 库脚手架（新增）
-- 根 `package.json` 的 `workspaces` 与 `package-lock.json`
-- `packages/admin9-ui/`（全新）
+### 9.1 独立包仓库
+- `admin9-ui/package.json`、`package-lock.json` 与独立 CI
+- GitHub：`admin9-labs/admin9-ui`
 
 ### 9.2 App 配置改动
-- `package.json`：devDependencies 加 `"@admin9-labs/admin9-ui": "0.1.0"`
+- `package.json`：dependencies 加精确版本 `"@admin9-labs/admin9-ui": "0.1.0"`
 - `src/main.ts`：`app.use(i18n)` 后加 `import Admin9UI` + `app.use(Admin9UI)` + `import styles`
-- `tsconfig.json`：`include` 加 `"packages/admin9-ui/src/**/*"`
-- `vite.config.base.ts`：`optimizeDeps.exclude` 加 `@admin9-labs/admin9-ui`
+- `tsconfig.json`：仅包含宿主 `src`，不包含组件库源码
+- `vite.config.base.ts`：按 registry 构建与开发验证结果决定是否需要 `optimizeDeps.exclude`
 - `src/locale/index.ts:33-34`：合并库 messages
 
 ### 9.3 组件迁移
@@ -545,14 +524,14 @@ breakpoint：库 `styles/index.less` 自带一份，不 `@import` App 的 `src/a
 
 ## 10. 实施步骤
 
-1. **脚手架**：在根 `package.json` 声明 npm workspaces，并建立 `packages/admin9-ui/` 全套（package.json/tsconfig/vite.config.lib.ts/index.ts 骨架/hooks 副本）。`npm ci` 验证 workspace 自动链接。
+1. **脚手架**：从原 `packages/admin9-ui/` 保留历史提取独立仓库，建立 package-lock、CI 与公开包元数据。
 2. **AMediaPicker**：迁 image-gallery 进库，按 §5.1 改造（service 注入、修 uid/id bug、上传走 service）。建 `src/services/mediaService.ts` adapter。接 tiptap 调用方验证。
 3. **AIconPicker**：构建期生成 Arco 图标名清单 JSON，实现 popover 网格 + 搜索。接 EditMenuModal 验证渲染侧不动。
 4. **ADataTable**：提取 picker 内部公共分页列表。
 5. **AUserPicker**：复用 ADataTable + service 注入。
 6. **useModal**：实现 + 迁移 5 处。
 7. **i18n 迁移**：image-gallery 文案统一到 `admin9Ui.mediaPicker.*`，App 合并库 messages。
-8. **验证**：`npm run dev` 跑 App，验证素材选择/菜单图标/删除确认全链路；`npm run type:check`；`npm run build`（App + 库各构建一次）。
+8. **验证**：包独立执行 typecheck/lint/test/build/pack，并用真实 tarball 与 registry 安装验证；App 独立安装、测试、构建和浏览器冒烟。
 
 ---
 
@@ -563,7 +542,7 @@ breakpoint：库 `styles/index.less` 自带一份，不 `@import` App 的 `src/a
    - **对 AMediaPicker 的影响**：`service.upload()` 不假设返回有 id；adapter 在 id 缺失时返回部分填充的 MediaItem，组件内上传完成后强制 `refresh()` 列表取最新数据。删除依赖列表项的 id，不依赖上传返回值。**需向后端确认 `/api/upload/image` 是否返回 id**，确认后可优化为"上传返回记录直接 push"。
 2. **[待决] 头像上传是否统一进 MediaService**：建议**不统一**。头像语义是"绑定用户 profile 的私有资源"（`/api/me/avatar` 上传后触发后端更新 user.avatar），与素材库（公共资源池）不同。头像应走独立 `AvatarUploader`（内部可复用 AMediaPicker "从素材库选一张当头像"，但上传通道分开）。但应顺手收敛 `ProfilePanel.vue:100` 的 `/api/user/upload-avatar`（绕过 axios、无 5MB 校验、响应字段 `data.url` 与 `/api/me/avatar` 的 `data.avatar_url` 不一致，是技术债）→ 改走 `userStore.updateAvatar`。
 3. **[风险] A 前缀未来撞名**：见 §3。缓解：install 时名称冲突检测 + console.warn。长期若撞名严重切 A9/Pro。
-4. **[风险] 库 dev 消费源码时 App vite3 兼容性**：App vite 3.2.11 较旧，处理 `node_modules` 内 `.vue` 需 `optimizeDeps.exclude`。优先用构建产物 + watch 模式更稳。
+4. **[已处理] 宿主仅消费 registry 构建产物**：不再让宿主编译组件库源码；是否排除依赖预构建以真实 Vite 验证为准。
 5. **[约束] 库内禁用 `@/` 别名**：库源码只能相对导入。现 image-gallery 的 `@/utils/auth`、`@/api/file` 必须替换为 service 注入。
 6. **[约束] 库不依赖 `import.meta.env`**：现 image-gallery 的 `VITE_API_BASE_URL`（`:31`）耦合移入 App adapter。
 7. **[已知 bug] `system/user.ts:46` 泛型错误**：`queryUserList` 写 `<UserRecord[]>`，实际返回 `HttpResponse<UserRecord[]>`，缺 meta 分页。AUserPicker 的 adapter 要规避（直接用 axios 拿 meta）。
