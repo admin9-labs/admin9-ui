@@ -10,10 +10,23 @@
 
 /* ----------------------------- MediaService ----------------------------- */
 
-/** 媒体素材项（类型无关：图片/视频/附件都套这个结构） */
+/** 素材类型；浏览与管理表面按单一类型查询。 */
+export type MediaType = 'image' | 'video' | 'audio';
+
+/** 后端真实分组；“全部”和“未分组”由组件内置，不属于此列表。 */
+export interface MediaGroup {
+  id: string;
+  name: string;
+  count?: number;
+}
+
+/** 后端无关的媒体素材项。 */
 export interface MediaItem {
   id: string;
   name: string;
+  type: MediaType;
+  /** null 表示未分组；素材只能属于一个同类型的单级分组。 */
+  groupId: string | null;
   url: string | null;
   /** 后端相对路径（引用/删除用），可选 */
   path?: string;
@@ -27,6 +40,8 @@ export interface MediaItem {
   thumbnail?: string;
   width?: number;
   height?: number;
+  /** 音视频时长，单位为秒。 */
+  duration?: number;
   /** ISO 时间，可选 */
   createdAt?: string;
   /** 服务端处理状态；未提供时按历史行为视为 ready */
@@ -37,8 +52,11 @@ export interface MediaListParams {
   /** 1-based 页码 */
   page: number;
   pageSize: number;
-  /** 搜索关键词，后端不支持则 App adapter 可忽略 */
+  /** 搜索关键词，由消费方 adapter 交给后端筛选。 */
   keyword?: string;
+  mediaType: MediaType;
+  /** undefined=全部，null=未分组，string=具体分组。 */
+  groupId?: string | null;
 }
 
 export interface MediaPagination {
@@ -55,6 +73,9 @@ export interface MediaListResult {
 
 export interface MediaUploadOptions {
   file: File;
+  mediaType: MediaType;
+  /** null 表示上传到未分组。 */
+  groupId: string | null;
   onProgress?: (percent: number) => void;
   signal?: AbortSignal;
 }
@@ -66,6 +87,8 @@ export interface MediaUploadOptions {
  */
 export interface MediaService {
   list(params: MediaListParams): Promise<MediaListResult>;
+  /** 可选分组能力；不需要分组浏览的消费表面可不实现。 */
+  listGroups?(mediaType: MediaType): Promise<MediaGroup[]>;
   upload(options: MediaUploadOptions): Promise<MediaItem>;
   remove(ids: string[]): Promise<string[]>;
 }

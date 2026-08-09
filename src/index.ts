@@ -10,6 +10,8 @@ import AProTable from './components/pro-table/index.vue';
 // 服务接口契约（供 App 实现 adapter 时 import 类型）
 export type {
   MediaService,
+  MediaType,
+  MediaGroup,
   MediaItem,
   MediaListParams,
   MediaListResult,

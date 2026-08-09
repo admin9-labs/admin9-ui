@@ -1,8 +1,21 @@
 export default {
   mediaPicker: {
     title: 'Select Media',
-    selectImage: 'Select Image',
-    uploadImage: 'Upload Image',
+    select: {
+      image: 'Select Image',
+      video: 'Select Video',
+      audio: 'Select Audio',
+    },
+    upload: {
+      image: 'Upload Image',
+      video: 'Upload Video',
+      audio: 'Upload Audio',
+    },
+    searchPlaceholder: 'Search media',
+    refresh: 'Refresh media',
+    groupAll: 'All',
+    groupUngrouped: 'Ungrouped',
+    groupLoadFailed: 'Failed to load groups',
     deleteCount: 'Delete {count} selected',
     delete: 'Delete',
     deleteConfirm: 'Deleted media cannot be recovered. Continue?',
@@ -14,6 +27,8 @@ export default {
     empty: 'No media',
     processing: 'Processing',
     failed: 'Failed',
+    unavailable: 'Media unavailable',
+    wrongType: 'Media type mismatch',
   },
   iconPicker: {
     placeholder: 'Select icon',

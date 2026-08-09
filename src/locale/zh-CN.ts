@@ -1,8 +1,21 @@
 export default {
   mediaPicker: {
     title: '选择素材',
-    selectImage: '选择图片',
-    uploadImage: '上传图片',
+    select: {
+      image: '选择图片',
+      video: '选择视频',
+      audio: '选择音频',
+    },
+    upload: {
+      image: '上传图片',
+      video: '上传视频',
+      audio: '上传音频',
+    },
+    searchPlaceholder: '搜索素材',
+    refresh: '刷新素材',
+    groupAll: '全部',
+    groupUngrouped: '未分组',
+    groupLoadFailed: '分组加载失败',
     deleteCount: '删除已选 {count} 项',
     delete: '删除',
     deleteConfirm: '删除后无法恢复，确定继续吗？',
@@ -14,6 +27,8 @@ export default {
     empty: '暂无素材',
     processing: '处理中',
     failed: '处理失败',
+    unavailable: '素材不可用',
+    wrongType: '素材类型不匹配',
   },
   iconPicker: {
     placeholder: '选择图标',
