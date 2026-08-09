@@ -212,13 +212,19 @@
   const onMultiSelect = (value: (string | number | boolean)[]) => {
     const incoming = new Set(value.map((entry) => String(entry)));
     const next = new Map(selectedMap.value);
+
+    // First remove current-page entries that are no longer selected, then add
+    // new entries only while capacity remains. This enforces limit at the
+    // event boundary as well as in the checkbox UI.
     list.value.forEach((item) => {
-      if (!isSelectable(item)) {
+      if (!isSelectable(item) || !incoming.has(item.id)) {
         next.delete(item.id);
-        return;
       }
-      if (incoming.has(item.id)) next.set(item.id, item);
-      else next.delete(item.id);
+    });
+    list.value.forEach((item) => {
+      if (!incoming.has(item.id) || !isSelectable(item) || next.has(item.id)) return;
+      if (props.limit > 0 && next.size >= props.limit) return;
+      next.set(item.id, item);
     });
     selectedMap.value = next;
     emit('select', Array.from(next.values()));
@@ -238,15 +244,25 @@
   const deletingIds = ref(new Set<string>());
   const deleteLoading = computed(() => selectedKeys.value.some((id) => deletingIds.value.has(id)));
   const isDeleting = (id: string) => deletingIds.value.has(id);
+  const successfulRequestedIds = (returnedIds: string[], requestedIds: string[]) => {
+    const requested = new Set(requestedIds);
+    const successful = new Set<string>();
+    returnedIds.forEach((id) => {
+      if (requested.has(id)) successful.add(id);
+    });
+    return Array.from(successful);
+  };
   const removeItems = async (inputIds: string[]) => {
     const ids = Array.from(new Set(inputIds));
     if (ids.length === 0 || ids.some(isDeleting)) return;
     deletingIds.value = new Set([...deletingIds.value, ...ids]);
     try {
-      await service.remove(ids);
+      const returnedIds = await service.remove(ids);
+      const removedIds = successfulRequestedIds(returnedIds, ids);
       const next = new Map(selectedMap.value);
-      ids.forEach((id) => next.delete(id));
+      removedIds.forEach((id) => next.delete(id));
       selectedMap.value = next;
+      if (removedIds.length !== ids.length) Message.warning(t('admin9Ui.mediaPicker.deletePartial'));
       await fetchList();
     } catch {
       selectedMap.value = new Map();
@@ -406,20 +422,17 @@
       title-align="start"
       @close="closeModal"
     >
-      <template #title>{{ t('admin9Ui.mediaPicker.title') }}</template>
+      <template #title>{{ selectLabel }}</template>
 
-      <a-select
-        v-if="hasGroupNavigation"
-        v-model="compactGroupValue"
-        class="a9-media-picker__group-select"
-        :loading="groupLoading"
-      >
-        <a-option :value="GROUP_ALL">{{ t('admin9Ui.mediaPicker.groupAll') }}</a-option>
-        <a-option :value="GROUP_UNGROUPED">{{ t('admin9Ui.mediaPicker.groupUngrouped') }}</a-option>
-        <a-option v-for="group in groups" :key="group.id" :value="groupOptionValue(group.id)">
-          {{ group.name }}{{ group.count === undefined ? '' : ` (${group.count})` }}
-        </a-option>
-      </a-select>
+      <div v-if="hasGroupNavigation" class="a9-media-picker__group-select">
+        <a-select v-model="compactGroupValue" :loading="groupLoading">
+          <a-option :value="GROUP_ALL">{{ t('admin9Ui.mediaPicker.groupAll') }}</a-option>
+          <a-option :value="GROUP_UNGROUPED">{{ t('admin9Ui.mediaPicker.groupUngrouped') }}</a-option>
+          <a-option v-for="group in groups" :key="group.id" :value="groupOptionValue(group.id)">
+            {{ group.name }}{{ group.count === undefined ? '' : ` (${group.count})` }}
+          </a-option>
+        </a-select>
+      </div>
 
       <div class="a9-media-picker__workspace" :class="{ 'without-groups': !hasGroupNavigation }">
         <aside v-if="hasGroupNavigation" class="a9-media-picker__groups" :aria-busy="groupLoading">
@@ -588,6 +601,10 @@
       display: none;
       width: 100%;
       margin-bottom: 12px;
+
+      :deep(.arco-select-view) {
+        width: 100%;
+      }
     }
 
     &__workspace {

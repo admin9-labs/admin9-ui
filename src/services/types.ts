@@ -93,7 +93,42 @@ export interface MediaService {
   remove(ids: string[]): Promise<string[]>;
 }
 
+export interface CreateMediaGroupOptions {
+  mediaType: MediaType;
+  name: string;
+}
+
+export interface RenameMediaGroupOptions extends CreateMediaGroupOptions {
+  groupId: string;
+}
+
+export interface RemoveMediaGroupOptions {
+  mediaType: MediaType;
+  groupId: string;
+}
+
+export interface MoveMediaOptions {
+  mediaType: MediaType;
+  ids: string[];
+  /** null 表示移动到未分组。 */
+  groupId: string | null;
+}
+
+/** 页面级素材管理所需的窄扩展；Picker 只依赖基础 MediaService。 */
+export interface MediaLibraryService extends MediaService {
+  listGroups(mediaType: MediaType): Promise<MediaGroup[]>;
+  createGroup(options: CreateMediaGroupOptions): Promise<MediaGroup>;
+  renameGroup(options: RenameMediaGroupOptions): Promise<MediaGroup>;
+  /** 仅删除分组；不得隐式删除分组内素材，非空处理策略由 adapter 明确实现。 */
+  removeGroup(options: RemoveMediaGroupOptions): Promise<void>;
+  /** 返回成功移动的素材 id；允许 adapter 表达部分成功。 */
+  move(options: MoveMediaOptions): Promise<string[]>;
+}
+
 /** Plugin installation options for app.use(Admin9UI, options). */
-export interface Admin9UIOptions {
+export interface Admin9UIPluginOptions {
   mediaService?: MediaService;
 }
+
+/** @deprecated Use Admin9UIPluginOptions. */
+export type Admin9UIOptions = Admin9UIPluginOptions;

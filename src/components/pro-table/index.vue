@@ -65,6 +65,7 @@
   const emit = defineEmits<{
     (e: 'update:selectedRowKeys', keys: (string | number)[]): void;
     (e: 'select', rows: TableData[]): void;
+    (e: 'error', error: unknown): void;
   }>();
 
   const { t } = useI18n();
@@ -80,6 +81,7 @@
     showTotal: true,
     showPageSize: true,
   });
+  let latestRequest = 0;
 
   /** action 列内部标识，避免调用方已自带 action 列时重复追加 */
   const ACTION_COLUMN_KEY = 'a9-pro-table-action';
@@ -116,6 +118,8 @@
   );
 
   const fetchData = async () => {
+    const request = latestRequest + 1;
+    latestRequest = request;
     setLoading(true);
     try {
       const { list, total } = await props.fetcher({
@@ -123,27 +127,36 @@
         pageSize: pagination.value.pageSize,
         keyword: keyword.value || undefined,
       });
+      if (request !== latestRequest) return;
       data.value = list;
       pagination.value.total = total;
+    } catch (error) {
+      if (request === latestRequest) emit('error', error);
+      throw error;
     } finally {
-      setLoading(false);
+      if (request === latestRequest) setLoading(false);
     }
+  };
+
+  /** UI 事件不暴露 Promise；失败已通过 error 事件通知调用方。 */
+  const fetchDataFromUi = () => {
+    fetchData().catch(() => undefined);
   };
 
   const onPageChange = (page: number) => {
     pagination.value.current = page;
-    fetchData();
+    fetchDataFromUi();
   };
 
   const onPageSizeChange = (size: number) => {
     pagination.value.current = 1;
     pagination.value.pageSize = size;
-    fetchData();
+    fetchDataFromUi();
   };
 
   const handleSearch = () => {
     pagination.value.current = 1;
-    fetchData();
+    fetchDataFromUi();
   };
 
   /** 重新拉取当前页数据 */
@@ -152,7 +165,7 @@
   /** 清空多选（受控：通知父组件清空 selectedRowKeys） */
   const clearSelection = () => emit('update:selectedRowKeys', []);
 
-  watch(() => props.fetcher, fetchData, { immediate: true });
+  watch(() => props.fetcher, fetchDataFromUi, { immediate: true });
 
   defineExpose({ refresh, clearSelection });
 </script>
@@ -166,7 +179,7 @@
         allow-clear
         @search="handleSearch"
       />
-      <a-button @click="refresh">
+      <a-button @click="fetchDataFromUi">
         <template #icon><icon-refresh /></template>
         {{ t('admin9Ui.proTable.refresh') }}
       </a-button>

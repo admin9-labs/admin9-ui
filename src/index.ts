@@ -1,15 +1,17 @@
 import type { App, Plugin } from 'vue';
-import admin9UIOptionsKey from './internal/options';
-import type { Admin9UIOptions } from './services/types';
+import admin9UIPluginOptionsKey from './internal/options';
+import type { Admin9UIPluginOptions } from './services/types';
 
 // 组件
 import AMediaPicker from './components/media-picker/index.vue';
+import AMediaLibrary from './components/media-library/index.vue';
 import AIconPicker from './components/icon-picker/index.vue';
 import AProTable from './components/pro-table/index.vue';
 
 // 服务接口契约（供 App 实现 adapter 时 import 类型）
 export type {
   MediaService,
+  MediaLibraryService,
   MediaType,
   MediaGroup,
   MediaItem,
@@ -17,6 +19,11 @@ export type {
   MediaListResult,
   MediaPagination,
   MediaUploadOptions,
+  CreateMediaGroupOptions,
+  RenameMediaGroupOptions,
+  RemoveMediaGroupOptions,
+  MoveMediaOptions,
+  Admin9UIPluginOptions,
   Admin9UIOptions,
 } from './services/types';
 
@@ -27,7 +34,7 @@ export { messages, localePrefix } from './locale';
 export { arcoIconNames } from './components/icon-picker/icon-names';
 
 // 组件命名导出（供按需 import）
-export { AMediaPicker, AIconPicker, AProTable };
+export { AMediaPicker, AMediaLibrary, AIconPicker, AProTable };
 
 /**
  * 安装插件。
@@ -39,9 +46,9 @@ export { AMediaPicker, AIconPicker, AProTable };
  * app.use(Admin9UI)
  */
 const Admin9UI = {
-  install(app: App, options: Admin9UIOptions = {}) {
+  install(app: App, options: Admin9UIPluginOptions = {}) {
     // 名称冲突检测：A 前缀下若与 Arco 原生组件重名，提示及早发现
-    const reserved = ['AMediaPicker', 'AIconPicker', 'AProTable'];
+    const reserved = ['AMediaPicker', 'AMediaLibrary', 'AIconPicker', 'AProTable'];
     reserved.forEach((name) => {
       if (app.component(name)) {
         // eslint-disable-next-line no-console
@@ -53,11 +60,12 @@ const Admin9UI = {
     });
 
     app.component('AMediaPicker', AMediaPicker);
+    app.component('AMediaLibrary', AMediaLibrary);
     app.component('AIconPicker', AIconPicker);
     app.component('AProTable', AProTable);
 
     // 提供默认服务，供使用点不传 :service 时回退
-    app.provide(admin9UIOptionsKey, options);
+    app.provide(admin9UIPluginOptionsKey, options);
   },
 } satisfies Plugin;
 

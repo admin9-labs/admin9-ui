@@ -1,5 +1,6 @@
 /* eslint-disable vue/one-component-per-file */
 import { createApp, defineComponent, h, nextTick, ref, type App } from 'vue';
+import { Message } from '@arco-design/web-vue';
 import { createI18n } from 'vue-i18n';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MediaGroup, MediaItem, MediaService, MediaType } from '../src/services/types';
@@ -31,8 +32,14 @@ const Transparent = defineComponent({
   },
 });
 const ModalStub = defineComponent({
-  setup(_, { slots }) {
-    return () => h('div', [slots.default?.(), slots.footer?.()]);
+  props: { visible: Boolean },
+  setup(props, { slots }) {
+    return () =>
+      h('div', { 'data-testid': 'modal', 'data-visible': String(props.visible) }, [
+        h('div', { 'data-testid': 'modal-title' }, slots.title?.()),
+        slots.default?.(),
+        slots.footer?.(),
+      ]);
   },
 });
 const PopconfirmStub = defineComponent({
@@ -147,9 +154,9 @@ async function flush() {
   await nextTick();
 }
 
-function batchDeleteButton() {
+function batchDeleteButton(count = 1) {
   return Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find((button) =>
-    button.textContent?.includes('Delete 1 selected')
+    button.textContent?.includes(`Delete ${count} selected`)
   );
 }
 
@@ -178,6 +185,7 @@ function mountApp(app: App) {
           'admin9Ui.mediaPicker.delete': 'Delete',
           'admin9Ui.mediaPicker.deleteConfirm': 'Deleted media cannot be recovered. Continue?',
           'admin9Ui.mediaPicker.deleteFailed': 'Delete failed',
+          'admin9Ui.mediaPicker.deletePartial': 'Some media could not be deleted',
           'admin9Ui.mediaPicker.empty': 'Empty',
           'admin9Ui.mediaPicker.confirm': 'OK',
           'admin9Ui.mediaPicker.cancel': 'Cancel',
@@ -231,8 +239,13 @@ function mountApp(app: App) {
   app.mount('#app');
 }
 
-function mountPicker(service: MediaService, props: Record<string, unknown> = {}) {
-  const app = createApp(AMediaPicker, { multiple: true, service, canDelete: true, ...props });
+function mountPicker(service: MediaService, props: Record<string, unknown> = {}, slots: Record<string, () => unknown> = {}) {
+  const Host = defineComponent({
+    setup() {
+      return () => h(AMediaPicker, { multiple: true, service, canDelete: true, ...props }, slots);
+    },
+  });
+  const app = createApp(Host);
   mountApp(app);
 }
 
@@ -317,6 +330,34 @@ describe('AMediaPicker permissions and partial-delete recovery', () => {
     expect(service.remove).toHaveBeenCalledWith(['7']);
   });
 
+  it('keeps unsuccessful selections when delete resolves with a subset and ignores unexpected ids', async () => {
+    const nextMedia = { ...media, id: '8', name: 'next.png', url: '/media/next.png' };
+    const warning = vi.spyOn(Message, 'warning').mockImplementation(() => ({ close: vi.fn() }));
+    const service: MediaService = {
+      list: vi.fn().mockResolvedValue({
+        list: [media, nextMedia],
+        pagination: { page: 1, pageSize: 24, total: 2, hasMore: false },
+      }),
+      upload: vi.fn(),
+      remove: vi.fn().mockResolvedValue(['7', '7', 'foreign-id']),
+    };
+    mountPicker(service);
+
+    document.querySelector('[data-testid="picker-trigger"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+    document.querySelector('[data-testid="select-all-media"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+
+    const deleteButton = batchDeleteButton(2);
+    confirmDelete(deleteButton);
+    await flush();
+
+    expect(service.remove).toHaveBeenCalledWith(['7', '8']);
+    expect(batchDeleteButton()).not.toBeUndefined();
+    expect(warning).toHaveBeenCalledWith('Some media could not be deleted');
+    warning.mockRestore();
+  });
+
   it('clears stale selection after a partial delete failure before allowing a new retry', async () => {
     const nextMedia = { ...media, id: '8', name: 'next.png', url: '/media/next.png' };
     const service: MediaService = {
@@ -354,12 +395,13 @@ describe('AMediaPicker permissions and partial-delete recovery', () => {
   });
 
   it('uploads a selected file exactly once and refreshes the list after success', async () => {
+    const onUploadSuccess = vi.fn();
     const service: MediaService = {
       list: vi.fn().mockResolvedValue({ list: [media], pagination: { page: 1, pageSize: 24, total: 1, hasMore: false } }),
       upload: vi.fn().mockResolvedValue(media),
       remove: vi.fn(),
     };
-    mountPicker(service);
+    mountPicker(service, { onUploadSuccess });
 
     document.querySelector('[data-testid="picker-trigger"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await flush();
@@ -369,15 +411,18 @@ describe('AMediaPicker permissions and partial-delete recovery', () => {
     expect(service.upload).toHaveBeenCalledTimes(1);
     expect(service.upload).toHaveBeenCalledWith(expect.objectContaining({ file: expect.any(File) }));
     expect(service.list).toHaveBeenCalledTimes(2);
+    expect(onUploadSuccess).toHaveBeenCalledWith(media);
   });
 
   it('recovers after an upload failure and allows the next file selection', async () => {
+    const uploadError = new Error('upload failed');
+    const onUploadError = vi.fn();
     const service: MediaService = {
       list: vi.fn().mockResolvedValue({ list: [media], pagination: { page: 1, pageSize: 24, total: 1, hasMore: false } }),
-      upload: vi.fn().mockRejectedValueOnce(new Error('upload failed')).mockResolvedValueOnce(media),
+      upload: vi.fn().mockRejectedValueOnce(uploadError).mockResolvedValueOnce(media),
       remove: vi.fn(),
     };
-    mountPicker(service);
+    mountPicker(service, { onUploadError });
 
     document.querySelector('[data-testid="picker-trigger"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await flush();
@@ -388,6 +433,55 @@ describe('AMediaPicker permissions and partial-delete recovery', () => {
 
     expect(service.upload).toHaveBeenCalledTimes(2);
     expect(service.list).toHaveBeenCalledTimes(2);
+    expect(onUploadError).toHaveBeenCalledWith(uploadError);
+  });
+
+  it('renders the public upload-button slot without changing the service boundary', async () => {
+    const service: MediaService = {
+      list: vi.fn().mockResolvedValue({ list: [], pagination: { page: 1, pageSize: 24, total: 0, hasMore: false } }),
+      upload: vi.fn(),
+      remove: vi.fn(),
+    };
+    mountPicker(service, {}, { 'upload-button': () => h('span', { 'data-testid': 'custom-upload-button' }, 'Choose') });
+    await flush();
+
+    expect(document.querySelector('[data-testid="custom-upload-button"]')?.textContent).toBe('Choose');
+  });
+
+  it.each<[MediaType, string]>([
+    ['image', 'Select image'],
+    ['video', 'Select video'],
+    ['audio', 'Select audio'],
+  ])('uses the %s selection label for both the default trigger and modal title', async (mediaType, label) => {
+    const service: MediaService = {
+      list: vi.fn().mockResolvedValue({ list: [], pagination: { page: 1, pageSize: 24, total: 0, hasMore: false } }),
+      upload: vi.fn(),
+      remove: vi.fn(),
+    };
+    mountPicker(service, { mediaType });
+    await flush();
+
+    expect(document.querySelector('[data-testid="picker-trigger"]')?.textContent?.trim()).toBe(label);
+    expect(document.querySelector('[data-testid="modal-title"]')?.textContent?.trim()).toBe(label);
+  });
+
+  it('renders responsive group controls on component-owned native wrappers', async () => {
+    const service: MediaService = {
+      list: vi.fn().mockResolvedValue({ list: [], pagination: { page: 1, pageSize: 24, total: 0, hasMore: false } }),
+      listGroups: vi.fn().mockResolvedValue([{ id: 'campaign', name: 'Campaign' }]),
+      upload: vi.fn(),
+      remove: vi.fn(),
+    };
+    mountPicker(service);
+    document.querySelector('[data-testid="picker-trigger"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+
+    const compactControl = document.querySelector('.a9-media-picker__group-select');
+    const desktopControl = document.querySelector('.a9-media-picker__groups');
+    expect(compactControl?.tagName).toBe('DIV');
+    expect(compactControl?.textContent).toContain('Campaign');
+    expect(desktopControl?.tagName).toBe('ASIDE');
+    expect(desktopControl?.textContent).toContain('Campaign');
   });
 
   it('keeps existing-media selection available while hiding disallowed upload and delete controls', async () => {
@@ -877,6 +971,7 @@ describe('AMediaPicker permissions and partial-delete recovery', () => {
   it('preserves multi-selection while browsing across backend groups', async () => {
     const groupedMedia: MediaItem = { ...media, id: '8', name: 'campaign.png', groupId: 'campaign' };
     const onChange = vi.fn();
+    const onUpdate = vi.fn();
     const service: MediaService = {
       list: vi.fn().mockImplementation(({ groupId }) =>
         Promise.resolve({
@@ -888,10 +983,12 @@ describe('AMediaPicker permissions and partial-delete recovery', () => {
       upload: vi.fn(),
       remove: vi.fn(),
     };
-    mountPicker(service, { canDelete: false, onChange });
+    mountPicker(service, { 'canDelete': false, onChange, 'onUpdate:modelValue': onUpdate });
 
+    expect(document.querySelector('[data-testid="modal"]')?.getAttribute('data-visible')).toBe('false');
     document.querySelector('[data-testid="picker-trigger"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await flush();
+    expect(document.querySelector('[data-testid="modal"]')?.getAttribute('data-visible')).toBe('true');
     document.querySelector('[data-testid="select-media"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await flush();
     document.querySelector('[data-group-id="campaign"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -904,6 +1001,34 @@ describe('AMediaPicker permissions and partial-delete recovery', () => {
     await flush();
 
     expect(onChange).toHaveBeenCalledWith([media, groupedMedia]);
+    expect(onUpdate).toHaveBeenCalledWith([media, groupedMedia]);
+    expect(document.querySelector('[data-testid="modal"]')?.getAttribute('data-visible')).toBe('false');
+  });
+
+  it('enforces the multi-select limit at the emitted change boundary', async () => {
+    const items: MediaItem[] = [
+      media,
+      { ...media, id: '8', name: 'second.png', url: '/media/second.png' },
+      { ...media, id: '9', name: 'third.png', url: '/media/third.png' },
+    ];
+    const onSelect = vi.fn();
+    const service: MediaService = {
+      list: vi.fn().mockResolvedValue({
+        list: items,
+        pagination: { page: 1, pageSize: 24, total: 3, hasMore: false },
+      }),
+      upload: vi.fn(),
+      remove: vi.fn(),
+    };
+    mountPicker(service, { limit: 1, onSelect });
+
+    document.querySelector('[data-testid="picker-trigger"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+    document.querySelector('[data-testid="select-all-media"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+
+    expect(onSelect).toHaveBeenLastCalledWith([media]);
+    expect(document.body.textContent).toContain('OK (1)');
   });
 
   it.each<MediaType>(['image', 'video', 'audio'])(
