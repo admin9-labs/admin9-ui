@@ -39,6 +39,12 @@ describe('release tarball output safety', () => {
     expect(await findSingleTarball(output)).toBe(join(output, 'package.tgz'));
   });
 
+  it('accepts the argument separator forwarded by pnpm run', async () => {
+    const root = await createTemporaryRoot();
+    expect(resolveOutputDirectory(['--', '--output-dir', 'release-artifacts'], root)).toBe(resolve(root, 'release-artifacts'));
+    expect(() => resolveOutputDirectory(['--', '--', '--output-dir', 'release-artifacts'], root)).toThrow(/Usage/);
+  });
+
   it('rejects unsafe, reserved, and non-empty output directories', async () => {
     const root = await createTemporaryRoot();
     expect(resolveOutputDirectory([], root)).toBeNull();

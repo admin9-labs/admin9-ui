@@ -18,12 +18,13 @@ const RELEASE_TAG = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const GIT_SHA = /^[0-9a-f]{40}$/i;
 
 export function resolveOutputDirectory(args, packageRoot) {
-  if (args.length === 0) return null;
-  if (args.length !== 2 || args[0] !== '--output-dir') {
+  const normalizedArgs = args[0] === '--' ? args.slice(1) : args;
+  if (normalizedArgs.length === 0) return null;
+  if (normalizedArgs.length !== 2 || normalizedArgs[0] !== '--output-dir') {
     throw new Error('Usage: verify-tarball.mjs [--output-dir <repository-child-directory>]');
   }
 
-  const requested = args[1];
+  const requested = normalizedArgs[1];
   if (!requested || isAbsolute(requested) || !SAFE_OUTPUT_DIRECTORY.test(requested)) {
     throw new Error('The output directory must be a safe, relative, single-level directory name.');
   }
