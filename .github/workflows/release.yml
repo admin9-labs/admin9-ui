@@ -80,7 +80,7 @@ jobs:
 
       - name: Publish verified tarball to npm
         if: steps.registry.outputs.published != 'true'
-        run: npm publish "${{ steps.registry.outputs.tarball }}" --access public --provenance
+        run: npm publish "./${{ steps.registry.outputs.tarball }}" --access public --provenance
 
       - name: Create GitHub Release
         env:

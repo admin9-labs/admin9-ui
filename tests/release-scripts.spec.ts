@@ -136,5 +136,10 @@ describe('release command ownership', () => {
     const ciWorkflow = readFileSync(join(packageRoot, '.github', 'workflows', 'ci.yml'), 'utf8');
     expect(ciWorkflow.match(/pnpm run release:check/g)).toHaveLength(1);
     expect(ciWorkflow).not.toMatch(/pnpm run build|pack:check/);
+
+    const releaseWorkflow = readFileSync(join(packageRoot, '.github', 'workflows', 'release.yml'), 'utf8');
+    expect(releaseWorkflow).toMatch(
+      /npm publish "\.\/\$\{\{ steps\.registry\.outputs\.tarball \}\}" --access public --provenance/
+    );
   });
 });
