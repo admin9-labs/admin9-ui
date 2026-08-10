@@ -43,7 +43,7 @@ vi.mock('../src/components/media-picker/index.vue', async () => {
         mediaType: { type: String, default: 'image' },
         valueType: { type: String, default: 'item' },
       },
-      emits: ['change', 'update:modelValue'],
+      emits: ['change', 'update:modelValue', 'visible-change'],
       setup(props, { attrs, emit, slots }) {
         return () => {
           const mediaType = props.mediaType as keyof typeof selectedMedia;
@@ -74,6 +74,22 @@ vi.mock('../src/components/media-picker/index.vue', async () => {
             },
             [
               slots.trigger?.(),
+              vue.h(
+                'button',
+                {
+                  class: 'media-picker-open',
+                  onClick: () => emit('visible-change', true),
+                },
+                'Open picker'
+              ),
+              vue.h(
+                'button',
+                {
+                  class: 'media-picker-close',
+                  onClick: () => emit('visible-change', false),
+                },
+                'Close picker'
+              ),
               vue.h(
                 'button',
                 {
@@ -384,6 +400,22 @@ describe('ATiptapEditor public contract', () => {
     expect(content.getBoundingClientRect().height).toBe(contentHeight);
     expect(content.scrollTop).toBe(100);
     expect(window.scrollY).toBe(pageScrollY);
+
+    document.querySelector('[data-media-replace]')?.querySelector<HTMLButtonElement>('.media-picker-open')?.click();
+    await flush();
+    expect(mediaBubble?.style.visibility).toBe('hidden');
+    expect(mediaBubble?.style.pointerEvents).toBe('none');
+    expect(mediaBubble?.getAttribute('aria-hidden')).toBe('true');
+    expect(mediaBubble?.inert).toBe(true);
+    expect(internalEditor.state.selection).toBeInstanceOf(NodeSelection);
+
+    document.querySelector('[data-media-replace]')?.querySelector<HTMLButtonElement>('.media-picker-close')?.click();
+    await flush();
+    expect(mediaBubble?.style.visibility).toBe('visible');
+    expect(mediaBubble?.style.pointerEvents).toBe('');
+    expect(mediaBubble?.hasAttribute('aria-hidden')).toBe(false);
+    expect(mediaBubble?.inert).toBe(false);
+    expect(internalEditor.state.selection).toBeInstanceOf(NodeSelection);
 
     mediaToolbar?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
     document.querySelector<HTMLButtonElement>('button[data-media-width="50%"]')?.click();

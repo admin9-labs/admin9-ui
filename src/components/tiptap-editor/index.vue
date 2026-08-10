@@ -58,10 +58,15 @@
   const isEditable = computed(() => !props.disabled && !props.readonly);
   const linkPopupVisible = ref(false);
   const altPopupVisible = ref(false);
+  const imagePickerTooltipVisible = ref(false);
+  const videoPickerTooltipVisible = ref(false);
+  const audioPickerTooltipVisible = ref(false);
+  const replacePickerTooltipVisible = ref(false);
   const linkHref = ref('');
   const contentRef = ref<HTMLElement>();
   const mediaToolbarRef = ref<HTMLElement>();
   const bubbleMenuReady = ref(false);
+  const mediaPickerVisible = ref(false);
   const selectedMedia = ref<{
     pos: number;
     type: TiptapMediaNodeName;
@@ -279,13 +284,34 @@
 
   const updateMediaBubbleVisibility = () => {
     const bubbleElement = mediaToolbarRef.value?.parentElement;
-    if (bubbleElement) bubbleElement.style.visibility = getSelectedMediaVisibleRect() ? 'visible' : 'hidden';
+    if (bubbleElement) {
+      const pickerOpen = mediaPickerVisible.value;
+      bubbleElement.style.visibility = !pickerOpen && getSelectedMediaVisibleRect() ? 'visible' : 'hidden';
+      bubbleElement.style.pointerEvents = pickerOpen ? 'none' : '';
+      if (pickerOpen) bubbleElement.setAttribute('aria-hidden', 'true');
+      else bubbleElement.removeAttribute('aria-hidden');
+      bubbleElement.inert = pickerOpen;
+    }
+  };
+
+  const onMediaPickerVisibleChange = (visible: boolean) => {
+    mediaPickerVisible.value = visible;
+    if (visible) {
+      linkPopupVisible.value = false;
+      altPopupVisible.value = false;
+      imagePickerTooltipVisible.value = false;
+      videoPickerTooltipVisible.value = false;
+      audioPickerTooltipVisible.value = false;
+      replacePickerTooltipVisible.value = false;
+    }
+    updateMediaBubbleVisibility();
   };
 
   const shouldShowMediaBubble = ({ editor: currentEditor }: { editor: Editor }) => {
     const { selection } = currentEditor.state;
     return (
       currentEditor.isEditable &&
+      !mediaPickerVisible.value &&
       selection instanceof NodeSelection &&
       mediaNodeNames.includes(selection.node.type.name as TiptapMediaNodeName)
     );
@@ -739,7 +765,11 @@
         </template>
       </a-popover>
 
-      <a-tooltip v-if="resolvedMediaService" :content="t('admin9Ui.tiptapEditor.image')">
+      <a-tooltip
+        v-if="resolvedMediaService"
+        v-model:popup-visible="imagePickerTooltipVisible"
+        :content="t('admin9Ui.tiptapEditor.image')"
+      >
         <AMediaPicker
           class="a9-tiptap-editor__media-picker"
           data-media-type="image"
@@ -749,6 +779,7 @@
           :can-upload="canUploadImage"
           :show-file-list="false"
           @change="insertImages"
+          @visible-change="onMediaPickerVisibleChange"
         >
           <template #trigger>
             <a-button size="small" type="text" :disabled="disabled" :aria-label="t('admin9Ui.tiptapEditor.image')">
@@ -758,7 +789,11 @@
         </AMediaPicker>
       </a-tooltip>
 
-      <a-tooltip v-if="resolvedMediaService" :content="t('admin9Ui.tiptapEditor.video')">
+      <a-tooltip
+        v-if="resolvedMediaService"
+        v-model:popup-visible="videoPickerTooltipVisible"
+        :content="t('admin9Ui.tiptapEditor.video')"
+      >
         <AMediaPicker
           class="a9-tiptap-editor__media-picker"
           data-media-type="video"
@@ -768,6 +803,7 @@
           :can-upload="canUploadVideo"
           :show-file-list="false"
           @change="insertVideos"
+          @visible-change="onMediaPickerVisibleChange"
         >
           <template #trigger>
             <a-button size="small" type="text" :disabled="disabled" :aria-label="t('admin9Ui.tiptapEditor.video')">
@@ -777,7 +813,11 @@
         </AMediaPicker>
       </a-tooltip>
 
-      <a-tooltip v-if="resolvedMediaService" :content="t('admin9Ui.tiptapEditor.audio')">
+      <a-tooltip
+        v-if="resolvedMediaService"
+        v-model:popup-visible="audioPickerTooltipVisible"
+        :content="t('admin9Ui.tiptapEditor.audio')"
+      >
         <AMediaPicker
           class="a9-tiptap-editor__media-picker"
           data-media-type="audio"
@@ -787,6 +827,7 @@
           :can-upload="canUploadAudio"
           :show-file-list="false"
           @change="insertAudios"
+          @visible-change="onMediaPickerVisibleChange"
         >
           <template #trigger>
             <a-button size="small" type="text" :disabled="disabled" :aria-label="t('admin9Ui.tiptapEditor.audio')">
@@ -1067,9 +1108,10 @@
           "
           :show-file-list="false"
           @change="replaceSelectedMedia"
+          @visible-change="onMediaPickerVisibleChange"
         >
           <template #trigger>
-            <a-tooltip :content="replaceMediaLabel">
+            <a-tooltip v-model:popup-visible="replacePickerTooltipVisible" :content="replaceMediaLabel">
               <a-button size="mini" type="text" :aria-label="replaceMediaLabel">
                 <template #icon><icon-refresh /></template>
               </a-button>

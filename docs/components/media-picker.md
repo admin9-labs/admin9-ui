@@ -58,6 +58,7 @@
 | `change`            | `MediaItem[]`                                                 | 选择确认或移除外部已选项                   |
 | `selection-change`  | `MediaItem[]`                                                 | 弹窗草稿选择变化；单选和多选均不等同于确认 |
 | `select`            | `MediaItem[]`                                                 | `selection-change` 的弃用兼容别名          |
+| `visible-change`    | `boolean`                                                     | 选择弹窗打开或关闭                         |
 | `upload-success`    | `MediaItem`                                                   | service 上传成功                           |
 | `upload-error`      | `unknown`                                                     | service 上传失败                           |
 

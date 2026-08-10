@@ -293,6 +293,35 @@ describe('AMediaPicker selection and capability contract', () => {
     mountedApps.splice(0).forEach((app) => app.unmount());
   });
 
+  it('emits modal visibility changes for open, cancel, and confirm flows', async () => {
+    const onVisibleChange = vi.fn();
+    const service: MediaPickerService = {
+      list: vi.fn().mockResolvedValue({ list: [media], pagination: { page: 1, pageSize: 24, total: 1, hasMore: false } }),
+    };
+    mountPicker(service, { onVisibleChange });
+
+    document.querySelector('[data-testid="picker-trigger"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+    expect(onVisibleChange).toHaveBeenLastCalledWith(true);
+
+    Array.from(document.querySelectorAll<HTMLButtonElement>('button'))
+      .find((button) => button.textContent?.trim() === 'Cancel')
+      ?.click();
+    await flush();
+    expect(onVisibleChange).toHaveBeenLastCalledWith(false);
+
+    document.querySelector('[data-testid="picker-trigger"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+    document.querySelector('[data-testid="select-media"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+    Array.from(document.querySelectorAll<HTMLButtonElement>('button'))
+      .find((button) => button.textContent?.trim() === 'OK (1)')
+      ?.click();
+    await flush();
+
+    expect(onVisibleChange.mock.calls.map(([visible]) => visible)).toEqual([true, false, true, false]);
+  });
+
   it('uploads a selected file exactly once and refreshes the list after success', async () => {
     const onUploadSuccess = vi.fn();
     const service: MediaPickerService = {

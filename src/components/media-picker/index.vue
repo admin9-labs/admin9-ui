@@ -46,6 +46,7 @@
     (e: 'selection-change', items: MediaItem[]): void;
     /** @deprecated Use selection-change. */
     (e: 'select', items: MediaItem[]): void;
+    (e: 'visible-change', visible: boolean): void;
     (e: 'upload-success', item: MediaItem): void;
     (e: 'upload-error', error: unknown): void;
   }>();
@@ -426,6 +427,10 @@
   watch([() => props.modelValue, () => props.valueType], ([value]) => {
     syncFromModel(value);
     if (visible.value) restoreDialogSelection();
+  });
+  watch(visible, (value) => {
+    // eslint-disable-next-line vue/custom-event-name-casing
+    emit('visible-change', value);
   });
   watch([resolvedService, () => props.mediaType], () => {
     viewGeneration += 1;
