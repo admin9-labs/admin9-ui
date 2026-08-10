@@ -111,9 +111,15 @@ const EmptyStub = defineComponent({
   },
 });
 const ImageStub = defineComponent({
-  props: { src: String },
+  props: { src: String, preview: Boolean },
   setup(props) {
-    return () => h('img', { 'data-testid': 'media-preview', 'data-src': props.src });
+    return () => h('img', { 'data-testid': 'media-preview', 'data-src': props.src, 'data-preview': String(props.preview) });
+  },
+});
+const ImagePreviewStub = defineComponent({
+  props: { src: String, visible: Boolean },
+  setup(props) {
+    return () => h('div', { 'data-testid': 'explicit-preview', 'data-src': props.src, 'data-visible': String(props.visible) });
   },
 });
 const InputSearchStub = defineComponent({
@@ -293,7 +299,7 @@ function installStubs(app: App) {
     createI18n({
       legacy: false,
       locale: 'en-US',
-      messages: { 'en-US': { admin9Ui: { mediaLibrary: mediaLibraryMessages } } },
+      messages: { 'en-US': { admin9Ui: { mediaItem: { preview: 'Preview {name}' }, mediaLibrary: mediaLibraryMessages } } },
     })
   );
   app.component('AButton', ButtonStub);
@@ -311,12 +317,14 @@ function installStubs(app: App) {
   app.component('ACheckboxGroup', CheckboxGroupStub);
   app.component('ACheckbox', CheckboxStub);
   app.component('AImage', ImageStub);
+  app.component('AImagePreview', ImagePreviewStub);
   app.component('IconRefresh', Transparent);
   app.component('IconUpload', Transparent);
   app.component('IconPlus', Transparent);
   app.component('IconEdit', Transparent);
   app.component('IconDelete', Transparent);
   app.component('IconPlayArrow', Transparent);
+  app.component('IconEye', Transparent);
 }
 
 function mountLibrary(
@@ -1175,7 +1183,7 @@ describe('AMediaLibrary', () => {
       mountLibrary(service, { mediaType });
       await flush();
 
-      expect(document.querySelectorAll('[data-selectable="false"]')).toHaveLength(4);
+      expect(document.querySelectorAll('[data-available="false"]')).toHaveLength(4);
       expect(document.querySelector('[data-testid="select-pending"]')?.hasAttribute('disabled')).toBe(true);
       expect(document.querySelector('[data-testid="move-media-pending"]')).toBeNull();
       expect(document.querySelector('[data-testid="delete-media-pending"]')).not.toBeNull();
@@ -1183,7 +1191,10 @@ describe('AMediaLibrary', () => {
       expect(document.querySelector('[data-testid="delete-media-wrong"]')).toBeNull();
       expect(document.body.textContent).toContain('Processing');
       expect(document.body.textContent).toContain('Media type mismatch');
-      if (mediaType === 'image') expect(document.querySelector('img[data-testid="media-preview"]')).not.toBeNull();
+      if (mediaType === 'image') {
+        expect(document.querySelector('img[data-testid="media-preview"]')).not.toBeNull();
+        expect(document.querySelector('.a9-media-item__preview')?.getAttribute('aria-label')).toBe('Preview valid.png');
+      }
       if (mediaType === 'video') expect(document.querySelector('video')).not.toBeNull();
       if (mediaType === 'audio') expect(document.querySelector('audio')).not.toBeNull();
     }

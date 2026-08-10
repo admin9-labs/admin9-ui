@@ -153,7 +153,7 @@ export type MediaLibraryService = MediaService & MediaGroupCapability & MediaMov
 
 /** Plugin installation options for app.use(Admin9UI, options). */
 export interface Admin9UIPluginOptions {
-  mediaService?: MediaService;
+  mediaService?: MediaLibraryAdapter;
 }
 
 /** @deprecated Use Admin9UIPluginOptions. */

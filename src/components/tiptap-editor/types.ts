@@ -1,4 +1,4 @@
-import type { MediaService } from '../../services/types';
+import type { MediaPickerService } from '../../services/types';
 
 export type TiptapImageDisplay = 'block' | 'inline';
 export type TiptapMediaAlign = 'left' | 'center' | 'right';
@@ -15,7 +15,7 @@ export interface ATiptapEditorProps {
   maxHeight?: number | string;
   maxLength?: number;
   showWordCount?: boolean;
-  service?: MediaService;
+  service?: MediaPickerService;
   canUploadImage?: boolean;
   canUploadVideo?: boolean;
   canUploadAudio?: boolean;

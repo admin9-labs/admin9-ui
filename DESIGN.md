@@ -59,9 +59,9 @@ admin9-ui/
 
 | 导出                                                   | 定位                            | 数据依赖                   |
 | ------------------------------------------------------ | ------------------------------- | -------------------------- |
-| default `Admin9UI`                                     | 全局组件注册与默认 service 注入 | 可选 `MediaService`        |
-| `AMediaPicker`                                         | 素材选择、上传与删除交互        | `MediaService` 注入        |
-| `AMediaLibrary`                                        | 页面级素材与单级分组管理        | `MediaLibraryService` 注入 |
+| default `Admin9UI`                                     | 全局组件注册与默认 service 注入 | 可选 `MediaLibraryAdapter` |
+| `AMediaPicker`                                         | 表单级素材浏览、选择与可选上传  | `MediaPickerService` 注入  |
+| `AMediaLibrary`                                        | 页面级素材与单级分组管理        | `MediaLibraryAdapter` 注入 |
 | `AIconPicker`                                          | Arco 图标搜索与选择             | 无                         |
 | `AProTable`                                            | fetcher 驱动的页面级表格        | fetcher prop 注入          |
 | `ATiptapEditor`                                        | Tiptap 驱动的 HTML 富文本编辑器 | 可选 `MediaService`        |
@@ -215,10 +215,12 @@ app.use(Admin9UI, {
 ### AMediaPicker
 
 - 表单级轻量选择表面；单个实例只处理一种 `MediaType`，并支持单选或带上限的多选。
-- 列表筛选、分页、分组和上传均通过 `MediaService` 交给 adapter，不在分页结果上做前端筛选。
+- 列表筛选、分页、分组和可选上传均通过 `MediaPickerService` 交给 adapter，不在分页结果上做前端筛选。
 - `listGroups` 保持可选；未实现时 Picker 仍可作为无分组选择器使用。
-- 组件只暴露选择、上传和可选删除，不吸收分组管理、批量移动或应用业务能力。
-- 能力开关只控制界面；删除默认关闭，后端授权始终由消费方负责。
+- 单选与多选都使用“草稿选择 -> 显式确认”流程；`valueType` 明确决定写回完整项还是 URL，不猜测消费方意图。
+- 图片预览、音视频播放和选择是独立能力；点击选择不会隐式打开预览。
+- 组件只暴露选择和可选上传，不提供删除、分组管理、批量移动或应用业务能力。
+- `canUpload` 默认关闭；启用时才要求 `MediaUploadCapability`，后端授权始终由消费方负责。
 
 Props、Events、Slots、状态行为和示例见 [AMediaPicker 使用文档](./docs/components/media-picker.md)。
 

@@ -49,13 +49,13 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 
 ## 公开能力
 
-- 默认导出的 `Admin9UI` 插件：全局注册五个组件，并可注入默认 `MediaService`
+- 默认导出的 `Admin9UI` 插件：全局注册五个组件，并可注入默认 `MediaLibraryAdapter`
 - [`AMediaPicker`](./docs/components/media-picker.md)：支持图片、视频和音频的表单级轻量素材选择器
 - [`AMediaLibrary`](./docs/components/media-library.md)：支持分组、上传、移动和删除的页面级素材管理组件
 - [`AIconPicker`](./docs/components/icon-picker.md)：支持分类、搜索、键盘导航和表单状态的 Arco 图标选择器
 - `AProTable`：通过 fetcher 注入数据源的页面级表格
 - [`ATiptapEditor`](./docs/components/tiptap-editor.md)：基于 Tiptap，支持内部滚动工作区、悬浮媒体工具栏、独占一行/跟随文字图片、可调尺寸视频与三档播放器宽度的表单级 HTML 富文本编辑器
-- `Admin9UIPluginOptions`、`MediaService`、`MediaLibraryService`、`ATiptapEditorProps` 及相关数据类型
+- `Admin9UIPluginOptions`、`MediaPickerService`、`MediaLibraryAdapter`、兼容的完整 service 类型及相关数据类型
 - `messages`、`localePrefix`、`zhCN`、`enUS` 和 `arcoIconNames`
 - `@admin9-labs/admin9-ui/styles`：五个组件的统一样式入口
 
@@ -64,7 +64,7 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 组件库只定义接口契约和渲染行为，不包含具体 API URL、认证、store、router、权限或应用业务字段。
 消费方通过使用点的 `service` prop，或 `app.use(Admin9UI, { mediaService })` 注入 adapter。
 
-- `AMediaPicker` 面向表单中的轻量选择、上传和按分组浏览，不提供分组管理或完整素材管理操作。
+- `AMediaPicker` 面向表单中的轻量选择和按分组浏览，可显式启用上传，不提供删除、分组管理或其他素材管理操作。
 - `AMediaLibrary` 面向完整页面管理：单级分组 CRUD、后端分页查询、上传、单项/批量移动和删除，以及跨页/跨组选择。
 - 多级目录、排序、标签、版权、审核、版本、转码、审计和业务权限不属于本包。能力开关只控制界面，后端仍需执行授权。
 

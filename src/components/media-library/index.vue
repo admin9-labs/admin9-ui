@@ -6,7 +6,7 @@
   import { useLoading } from '../../hooks';
   import MediaItemView from '../../internal/media-item.vue';
   import admin9UIOptionsKey from '../../internal/options';
-  import type { MediaGroup, MediaItem, MediaLibraryService, MediaService, MediaType } from '../../services/types';
+  import type { MediaGroup, MediaItem, MediaLibraryAdapter, MediaLibraryService, MediaType } from '../../services/types';
 
   type GroupId = string | null | undefined;
 
@@ -45,7 +45,7 @@
     (e: 'moveSuccess', ids: string[], groupId: string | null): void;
   }>();
 
-  const isLibraryService = (value: MediaService | undefined): value is MediaLibraryService =>
+  const isLibraryService = (value: MediaLibraryAdapter | undefined): value is MediaLibraryService =>
     Boolean(
       value &&
         typeof value.list === 'function' &&
@@ -708,7 +708,9 @@
                   <MediaItemView
                     :item="item"
                     :media-type="mediaType"
-                    :selectable="isAvailable(item)"
+                    :available="isAvailable(item)"
+                    :previewable="mediaType === 'image' && isAvailable(item)"
+                    :playable="mediaType !== 'image' && isAvailable(item)"
                     :status-label="statusLabel(item)"
                   />
                 </slot>

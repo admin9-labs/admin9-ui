@@ -304,10 +304,10 @@
               :limit="3"
               :page-size="8"
               multiple
-              can-delete
+              can-upload
               data-testid="media-picker"
               @change="recordMediaEvent"
-              @select="recordMediaEvent"
+              @selection-change="recordMediaEvent"
             />
           </div>
           <dl class="event-readout" aria-live="polite">

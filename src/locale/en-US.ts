@@ -1,4 +1,7 @@
 export default {
+  mediaItem: {
+    preview: 'Preview {name}',
+  },
   mediaPicker: {
     title: 'Select Media',
     select: {
@@ -13,18 +16,14 @@ export default {
     },
     searchPlaceholder: 'Search media',
     refresh: 'Refresh media',
+    retry: 'Retry',
     groupAll: 'All',
     groupUngrouped: 'Ungrouped',
     groupLoadFailed: 'Failed to load groups',
-    deleteCount: 'Delete {count} selected',
-    delete: 'Delete',
-    deleteConfirm: 'Deleted media cannot be recovered. Continue?',
     confirm: 'OK',
     cancel: 'Cancel',
     uploadFailed: 'Upload failed',
     loadFailed: 'Load failed',
-    deleteFailed: 'Delete failed',
-    deletePartial: 'Some media could not be deleted',
     empty: 'No media',
     processing: 'Processing',
     failed: 'Failed',

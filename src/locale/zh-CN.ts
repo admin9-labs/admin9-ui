@@ -1,4 +1,7 @@
 export default {
+  mediaItem: {
+    preview: '预览 {name}',
+  },
   mediaPicker: {
     title: '选择素材',
     select: {
@@ -13,18 +16,14 @@ export default {
     },
     searchPlaceholder: '搜索素材',
     refresh: '刷新素材',
+    retry: '重试',
     groupAll: '全部',
     groupUngrouped: '未分组',
     groupLoadFailed: '分组加载失败',
-    deleteCount: '删除已选 {count} 项',
-    delete: '删除',
-    deleteConfirm: '删除后无法恢复，确定继续吗？',
     confirm: '确定',
     cancel: '取消',
     uploadFailed: '上传失败',
     loadFailed: '加载失败',
-    deleteFailed: '删除失败',
-    deletePartial: '部分素材删除失败',
     empty: '暂无素材',
     processing: '处理中',
     failed: '处理失败',

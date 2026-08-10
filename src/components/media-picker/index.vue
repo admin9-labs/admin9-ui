@@ -5,10 +5,10 @@
   import { useI18n } from 'vue-i18n';
   import { useLoading, useVisible } from '../../hooks';
   import admin9UIOptionsKey from '../../internal/options';
-  import type { MediaGroup, MediaItem, MediaService, MediaType } from '../../services/types';
+  import type { MediaGroup, MediaItem, MediaPickerService, MediaType } from '../../services/types';
   import MediaItemView from '../../internal/media-item.vue';
 
-  type ModelValue = MediaItem[] | MediaItem | string | undefined;
+  type ModelValue = MediaItem[] | MediaItem | string[] | string | undefined;
   type GroupId = string | null | undefined;
 
   const props = withDefaults(
@@ -23,8 +23,8 @@
       buttonText?: string;
       accept?: string;
       canUpload?: boolean;
-      canDelete?: boolean;
-      service?: MediaService;
+      valueType?: 'item' | 'url';
+      service?: MediaPickerService;
       showFileList?: boolean;
     }>(),
     {
@@ -34,8 +34,8 @@
       pageSize: 24,
       buttonText: '',
       accept: undefined,
-      canUpload: true,
-      canDelete: false,
+      canUpload: false,
+      valueType: 'item',
       showFileList: true,
     }
   );
@@ -43,20 +43,36 @@
   const emit = defineEmits<{
     (e: 'update:modelValue', value: ModelValue): void;
     (e: 'change', items: MediaItem[]): void;
+    (e: 'selection-change', items: MediaItem[]): void;
+    /** @deprecated Use selection-change. */
     (e: 'select', items: MediaItem[]): void;
     (e: 'upload-success', item: MediaItem): void;
     (e: 'upload-error', error: unknown): void;
+  }>();
+
+  defineSlots<{
+    'trigger'?: () => unknown;
+    /** @deprecated Use trigger. */
+    'upload-button'?: () => unknown;
   }>();
 
   const { t } = useI18n();
   const { visible, setVisible } = useVisible();
   const { loading, setLoading } = useLoading();
   const globalOptions = inject(admin9UIOptionsKey, undefined);
-  const service = props.service ?? globalOptions?.mediaService;
-  if (!service) {
-    throw new Error(
-      '[admin9-ui] AMediaPicker requires a MediaService. Pass the service prop or install Admin9UI with { mediaService }.'
-    );
+  const resolvedService = computed<MediaPickerService | undefined>(() => props.service ?? globalOptions?.mediaService);
+  const requireService = () => {
+    const { value } = resolvedService;
+    if (!value || typeof value.list !== 'function') {
+      throw new Error(
+        '[admin9-ui] AMediaPicker requires MediaBrowseService. Pass the service prop or install Admin9UI with { mediaService }.'
+      );
+    }
+    return value;
+  };
+  const initialService = requireService();
+  if (props.canUpload && typeof initialService.upload !== 'function') {
+    throw new Error('[admin9-ui] AMediaPicker requires MediaUploadCapability when canUpload is true.');
   }
 
   const acceptByType: Record<MediaType, string> = {
@@ -77,7 +93,9 @@
   const activeGroupId = ref<GroupId>(undefined);
   const groups = ref<MediaGroup[]>([]);
   const groupLoading = ref(false);
-  const hasGroupNavigation = typeof service.listGroups === 'function';
+  const listError = ref(false);
+  const hasGroupNavigation = computed(() => typeof resolvedService.value?.listGroups === 'function');
+  let viewGeneration = 0;
   let latestListRequest = 0;
   let latestGroupRequest = 0;
 
@@ -86,13 +104,15 @@
   const GROUP_PREFIX = '__admin9_ui_group__:';
   const groupOptionValue = (id: string) => `${GROUP_PREFIX}${id}`;
 
-  const isEmpty = computed(() => list.value.length === 0 && !loading.value);
+  const isEmpty = computed(() => list.value.length === 0 && !loading.value && !listError.value);
   type SelectableMediaItem = MediaItem & { url: string };
   const isSelectable = (item: MediaItem): item is SelectableMediaItem =>
     item.type === props.mediaType &&
     (!item.status || item.status === 'ready') &&
     typeof item.url === 'string' &&
     item.url.length > 0;
+  const isPreviewable = (item: MediaItem) => props.mediaType === 'image' && isSelectable(item);
+  const isPlayable = (item: MediaItem) => props.mediaType !== 'image' && isSelectable(item);
   const statusLabel = (item: MediaItem) => {
     if (item.type !== props.mediaType) return t('admin9Ui.mediaPicker.wrongType');
     if (item.status === 'pending') return t('admin9Ui.mediaPicker.processing');
@@ -100,47 +120,103 @@
     return t('admin9Ui.mediaPicker.unavailable');
   };
 
+  /* ------------------------------ 选择状态 ------------------------------ */
+  const selectedItems = ref<MediaItem[]>([]);
+  const fileList = ref<FileItem[]>([]);
+  const selectedMap = ref(new Map<string, MediaItem>());
+  const selectedKeys = computed(() => Array.from(selectedMap.value.keys()));
+  const selectCount = computed(() => selectedMap.value.size);
+  const singleKey = ref('');
+  const limitReached = computed(() => props.multiple && props.limit > 0 && selectCount.value >= props.limit);
+
+  const toFileItem = (item: MediaItem): FileItem => ({
+    uid: item.id,
+    name: item.name,
+    url: item.url ?? undefined,
+    status: 'done',
+  });
+
+  const reconcileDialogSelection = (items: MediaItem[]) => {
+    if (selectedMap.value.size === 0) return;
+    const resolveListItem = (selected: MediaItem) => {
+      const idMatch = items.find((item) => item.id === selected.id);
+      if (idMatch) return idMatch;
+      const isSyntheticUrl = props.valueType === 'url' && selected.id === selected.url;
+      return isSyntheticUrl ? items.find((item) => selected.url && item.url === selected.url) : undefined;
+    };
+    const next = new Map<string, MediaItem>();
+    selectedMap.value.forEach((selected) => {
+      const match = resolveListItem(selected);
+      const resolved = match && isSelectable(match) ? match : selected;
+      if (isSelectable(resolved)) next.set(resolved.id, resolved);
+    });
+    selectedMap.value = next;
+    if (!props.multiple) {
+      const keys = Array.from(next.keys());
+      singleKey.value = keys[keys.length - 1] ?? '';
+    }
+
+    const committed = selectedItems.value.map((selected) => {
+      const match = resolveListItem(selected);
+      return match && isSelectable(match) ? match : selected;
+    });
+    selectedItems.value = committed;
+    fileList.value = committed.map(toFileItem);
+  };
+
   const fetchList = async () => {
     const request = latestListRequest + 1;
     latestListRequest = request;
+    const generation = viewGeneration;
+    const service = requireService();
+    const params = {
+      page: current.value,
+      pageSize: pageSize.value,
+      keyword: keyword.value.trim() || undefined,
+      mediaType: props.mediaType,
+      groupId: activeGroupId.value,
+    };
+    listError.value = false;
     setLoading(true);
     try {
-      const { list: items, pagination } = await service.list({
-        page: current.value,
-        pageSize: pageSize.value,
-        keyword: keyword.value.trim() || undefined,
-        mediaType: props.mediaType,
-        groupId: activeGroupId.value,
-      });
-      if (request !== latestListRequest) return;
+      const { list: items, pagination } = await service.list(params);
+      if (request !== latestListRequest || generation !== viewGeneration || service !== resolvedService.value) return;
       list.value = items;
       total.value = pagination.total;
       pageSize.value = pagination.pageSize;
+      reconcileDialogSelection(items);
     } catch {
-      if (request !== latestListRequest) return;
+      if (request !== latestListRequest || generation !== viewGeneration || service !== resolvedService.value) return;
       Message.error(t('admin9Ui.mediaPicker.loadFailed'));
-      list.value = [];
-      total.value = 0;
+      listError.value = true;
     } finally {
-      if (request === latestListRequest) setLoading(false);
+      if (request === latestListRequest && generation === viewGeneration && service === resolvedService.value)
+        setLoading(false);
     }
   };
 
   const fetchGroups = async () => {
+    const service = requireService();
     if (!service.listGroups) return;
     const request = latestGroupRequest + 1;
     latestGroupRequest = request;
+    const generation = viewGeneration;
+    const { mediaType } = props;
     groups.value = [];
     groupLoading.value = true;
     try {
-      const nextGroups = await service.listGroups(props.mediaType);
-      if (request === latestGroupRequest) groups.value = nextGroups;
+      const nextGroups = await service.listGroups(mediaType);
+      if (request === latestGroupRequest && generation === viewGeneration && service === resolvedService.value) {
+        groups.value = nextGroups;
+      }
     } catch {
-      if (request !== latestGroupRequest) return;
+      if (request !== latestGroupRequest || generation !== viewGeneration || service !== resolvedService.value) return;
       groups.value = [];
       Message.error(t('admin9Ui.mediaPicker.groupLoadFailed'));
     } finally {
-      if (request === latestGroupRequest) groupLoading.value = false;
+      if (request === latestGroupRequest && generation === viewGeneration && service === resolvedService.value) {
+        groupLoading.value = false;
+      }
     }
   };
 
@@ -174,29 +250,17 @@
     fetchList();
   };
 
-  /* ------------------------------ 选择状态 ------------------------------ */
-  const selectedItems = ref<MediaItem[]>([]);
-  const fileList = ref<FileItem[]>([]);
-  const selectedMap = ref(new Map<string, MediaItem>());
-  const selectedKeys = computed(() => Array.from(selectedMap.value.keys()));
-  const selectCount = computed(() => selectedMap.value.size);
-  const singleKey = ref('');
-  const limitReached = computed(() => props.multiple && props.limit > 0 && selectCount.value >= props.limit);
+  const emitDraftSelection = (items: MediaItem[]) => {
+    // eslint-disable-next-line vue/custom-event-name-casing
+    emit('selection-change', items);
+    emit('select', items);
+  };
 
-  const toFileItem = (item: MediaItem): FileItem => ({
-    uid: item.id,
-    name: item.name,
-    url: item.url ?? undefined,
-    status: 'done',
-  });
-  const isStringModel = computed(() => typeof props.modelValue === 'string');
-
-  const emitSingle = (item: MediaItem | undefined) => {
-    if (!item) {
-      emit('update:modelValue', undefined);
-      return;
-    }
-    emit('update:modelValue', isStringModel.value ? item.url ?? undefined : item);
+  const toModelValue = (items: SelectableMediaItem[]): ModelValue => {
+    if (props.multiple) return props.valueType === 'url' ? items.map((item) => item.url) : items;
+    const item = items[items.length - 1];
+    if (!item) return undefined;
+    return props.valueType === 'url' ? item.url : item;
   };
 
   const confirmSelection = (items: MediaItem[]) => {
@@ -205,8 +269,7 @@
     selectedItems.value = selectableItems;
     fileList.value = selectableItems.map(toFileItem);
     emit('change', selectableItems);
-    if (props.multiple) emit('update:modelValue', selectableItems);
-    else emitSingle(selectableItems[selectableItems.length - 1]);
+    emit('update:modelValue', toModelValue(selectableItems));
   };
 
   const onMultiSelect = (value: (string | number | boolean)[]) => {
@@ -227,7 +290,7 @@
       next.set(item.id, item);
     });
     selectedMap.value = next;
-    emit('select', Array.from(next.values()));
+    emitDraftSelection(Array.from(next.values()));
   };
 
   const onSingleSelect = (value: string | number | boolean) => {
@@ -235,48 +298,11 @@
     const item = list.value.find((entry) => entry.id === id);
     if (!item || !isSelectable(item)) return;
     singleKey.value = id;
-    confirmSelection([item]);
+    selectedMap.value = new Map([[item.id, item]]);
+    emitDraftSelection([item]);
   };
 
   const onConfirm = () => confirmSelection(Array.from(selectedMap.value.values()));
-
-  /* ------------------------------ 删除 ------------------------------ */
-  const deletingIds = ref(new Set<string>());
-  const deleteLoading = computed(() => selectedKeys.value.some((id) => deletingIds.value.has(id)));
-  const isDeleting = (id: string) => deletingIds.value.has(id);
-  const successfulRequestedIds = (returnedIds: string[], requestedIds: string[]) => {
-    const requested = new Set(requestedIds);
-    const successful = new Set<string>();
-    returnedIds.forEach((id) => {
-      if (requested.has(id)) successful.add(id);
-    });
-    return Array.from(successful);
-  };
-  const removeItems = async (inputIds: string[]) => {
-    const ids = Array.from(new Set(inputIds));
-    if (ids.length === 0 || ids.some(isDeleting)) return;
-    deletingIds.value = new Set([...deletingIds.value, ...ids]);
-    try {
-      const returnedIds = await service.remove(ids);
-      const removedIds = successfulRequestedIds(returnedIds, ids);
-      const next = new Map(selectedMap.value);
-      removedIds.forEach((id) => next.delete(id));
-      selectedMap.value = next;
-      if (removedIds.length !== ids.length) Message.warning(t('admin9Ui.mediaPicker.deletePartial'));
-      await fetchList();
-    } catch {
-      selectedMap.value = new Map();
-      emit('select', []);
-      await fetchList();
-      Message.error(t('admin9Ui.mediaPicker.deleteFailed'));
-    } finally {
-      const remaining = new Set(deletingIds.value);
-      ids.forEach((id) => remaining.delete(id));
-      deletingIds.value = remaining;
-    }
-  };
-  const onDeleteItems = () => removeItems(selectedKeys.value);
-  const onDeleteFailed = (id: string) => removeItems([id]);
 
   /* ------------------------------ 上传 ------------------------------ */
   const uploadCount = ref(0);
@@ -290,29 +316,44 @@
       option.onError(new Error('No file'));
       return { abort: () => controller.abort() };
     }
+    const service = requireService();
+    const { upload } = service;
+    if (!upload) {
+      const error = new Error('[admin9-ui] AMediaPicker requires MediaUploadCapability when canUpload is true.');
+      option.onError(error);
+      // eslint-disable-next-line vue/custom-event-name-casing
+      emit('upload-error', error);
+      return { abort: () => controller.abort() };
+    }
+    const generation = viewGeneration;
+    const { mediaType } = props;
+    const groupId = uploadGroupId.value;
     uploadCount.value += 1;
-    service
-      .upload({
-        file,
-        mediaType: props.mediaType,
-        groupId: uploadGroupId.value,
-        onProgress: option.onProgress,
-        signal: controller.signal,
-      })
-      .then((item) => {
+    upload({
+      file,
+      mediaType,
+      groupId,
+      onProgress: option.onProgress,
+      signal: controller.signal,
+    })
+      .then(async (item) => {
         option.onSuccess(item);
         // eslint-disable-next-line vue/custom-event-name-casing
         emit('upload-success', item);
-        fetchList();
+        if (generation === viewGeneration && service === resolvedService.value && mediaType === props.mediaType) {
+          await Promise.all([fetchList(), fetchGroups()]);
+        }
       })
       .catch((error: unknown) => {
         option.onError(error);
         // eslint-disable-next-line vue/custom-event-name-casing
         emit('upload-error', error);
-        Message.error(t('admin9Ui.mediaPicker.uploadFailed'));
+        if (generation === viewGeneration && service === resolvedService.value && mediaType === props.mediaType) {
+          Message.error(t('admin9Ui.mediaPicker.uploadFailed'));
+        }
       })
       .finally(() => {
-        uploadCount.value -= 1;
+        if (generation === viewGeneration) uploadCount.value = Math.max(0, uploadCount.value - 1);
       });
     return { abort: () => controller.abort() };
   };
@@ -323,12 +364,18 @@
     singleKey.value = '';
   };
 
+  const restoreDialogSelection = () => {
+    const items = selectedItems.value.filter(isSelectable);
+    selectedMap.value = new Map(items.map((item) => [item.id, item]));
+    singleKey.value = props.multiple ? '' : items[items.length - 1]?.id ?? '';
+  };
+
   const openModal = () => {
     setVisible(true);
     current.value = 1;
     keyword.value = '';
     activeGroupId.value = undefined;
-    clearDialogSelection();
+    restoreDialogSelection();
     fetchList();
     fetchGroups();
   };
@@ -350,8 +397,7 @@
       selectedItems.value = selectedItems.value.filter((item) => item.id !== fileItem.uid);
       const items = selectedItems.value;
       emit('change', items);
-      if (props.multiple) emit('update:modelValue', items);
-      else emitSingle(items[items.length - 1]);
+      emit('update:modelValue', toModelValue(items.filter(isSelectable)));
       resolve(true);
     });
 
@@ -361,11 +407,12 @@
   };
 
   const normalizeModelToItems = (value: ModelValue): MediaItem[] => {
-    if (value === undefined || value === null || value === '') return [];
-    if (typeof value === 'string') {
-      return [{ id: value, name: basename(value), type: props.mediaType, groupId: null, url: value }];
+    if (value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0)) return [];
+    if (props.valueType === 'url') {
+      const urls = (Array.isArray(value) ? value : [value]).filter((entry): entry is string => typeof entry === 'string');
+      return urls.map((url) => ({ id: url, name: basename(url), type: props.mediaType, groupId: null, url }));
     }
-    const items = Array.isArray(value) ? value.filter(Boolean) : [value];
+    const items = (Array.isArray(value) ? value : [value]).filter((entry): entry is MediaItem => typeof entry === 'object');
     return items.filter((item) => item.type === props.mediaType);
   };
 
@@ -376,19 +423,41 @@
   };
 
   onMounted(() => syncFromModel(props.modelValue));
-  watch(() => props.modelValue, syncFromModel);
+  watch([() => props.modelValue, () => props.valueType], ([value]) => {
+    syncFromModel(value);
+    if (visible.value) restoreDialogSelection();
+  });
+  watch([resolvedService, () => props.mediaType], () => {
+    viewGeneration += 1;
+    latestListRequest += 1;
+    latestGroupRequest += 1;
+    setLoading(false);
+    groupLoading.value = false;
+    uploadCount.value = 0;
+    list.value = [];
+    total.value = 0;
+    pageSize.value = props.pageSize;
+    groups.value = [];
+    listError.value = false;
+    activeGroupId.value = undefined;
+    current.value = 1;
+    keyword.value = '';
+    clearDialogSelection();
+    syncFromModel(props.modelValue);
+    if (visible.value) {
+      restoreDialogSelection();
+      fetchList();
+      fetchGroups();
+    }
+  });
   watch(
-    () => props.mediaType,
-    () => {
-      activeGroupId.value = undefined;
+    () => props.pageSize,
+    (value) => {
+      pageSize.value = value;
       current.value = 1;
-      keyword.value = '';
-      clearDialogSelection();
-      syncFromModel(props.modelValue);
-      if (visible.value) {
-        fetchList();
-        fetchGroups();
-      }
+      latestListRequest += 1;
+      setLoading(false);
+      if (visible.value) fetchList();
     }
   );
 </script>
@@ -406,11 +475,13 @@
       @button-click="onTriggerClick"
     >
       <template #upload-button>
-        <slot name="upload-button">
-          <a-button :loading="uploadLoading" type="primary">
-            <template #icon><icon-upload /></template>
-            {{ buttonText || selectLabel }}
-          </a-button>
+        <slot name="trigger">
+          <slot name="upload-button">
+            <a-button type="primary">
+              <template #icon><icon-folder /></template>
+              {{ buttonText || selectLabel }}
+            </a-button>
+          </slot>
         </slot>
       </template>
     </a-upload>
@@ -461,6 +532,12 @@
         </aside>
 
         <main class="a9-media-picker__main">
+          <a-alert v-if="listError" type="error" :show-icon="true" class="a9-media-picker__error">
+            {{ t('admin9Ui.mediaPicker.loadFailed') }}
+            <template #action>
+              <a-button size="small" @click="fetchList">{{ t('admin9Ui.mediaPicker.retry') }}</a-button>
+            </template>
+          </a-alert>
           <div class="a9-media-picker__toolbar">
             <a-input-search
               v-model="keyword"
@@ -486,18 +563,6 @@
                   </a-button>
                 </template>
               </a-upload>
-              <a-popconfirm
-                v-if="canDelete && selectCount"
-                :content="t('admin9Ui.mediaPicker.deleteConfirm')"
-                :ok-text="t('admin9Ui.mediaPicker.delete')"
-                :cancel-text="t('admin9Ui.mediaPicker.cancel')"
-                :ok-loading="deleteLoading"
-                @ok="onDeleteItems"
-              >
-                <a-button :loading="deleteLoading" type="primary" status="danger">
-                  {{ t('admin9Ui.mediaPicker.deleteCount', { count: selectCount }) }}
-                </a-button>
-              </a-popconfirm>
               <a-button :aria-label="t('admin9Ui.mediaPicker.refresh')" @click="fetchList">
                 <template #icon><icon-refresh /></template>
               </a-button>
@@ -513,29 +578,12 @@
                     <media-item-view
                       :item="item"
                       :media-type="mediaType"
-                      :selectable="isSelectable(item)"
+                      :available="isSelectable(item)"
+                      :previewable="isPreviewable(item)"
+                      :playable="isPlayable(item)"
                       :status-label="statusLabel(item)"
                     />
                   </a-radio>
-                  <a-popconfirm
-                    v-if="item.status === 'failed' && canDelete"
-                    :content="t('admin9Ui.mediaPicker.deleteConfirm')"
-                    :ok-text="t('admin9Ui.mediaPicker.delete')"
-                    :cancel-text="t('admin9Ui.mediaPicker.cancel')"
-                    :ok-loading="isDeleting(item.id)"
-                    @ok="onDeleteFailed(item.id)"
-                  >
-                    <a-button
-                      class="a9-media-picker__delete"
-                      size="mini"
-                      status="danger"
-                      :loading="isDeleting(item.id)"
-                      :disabled="isDeleting(item.id)"
-                      @click.stop
-                    >
-                      {{ t('admin9Ui.mediaPicker.delete') }}
-                    </a-button>
-                  </a-popconfirm>
                 </div>
               </div>
             </a-radio-group>
@@ -550,29 +598,12 @@
                     <media-item-view
                       :item="item"
                       :media-type="mediaType"
-                      :selectable="isSelectable(item)"
+                      :available="isSelectable(item)"
+                      :previewable="isPreviewable(item)"
+                      :playable="isPlayable(item)"
                       :status-label="statusLabel(item)"
                     />
                   </a-checkbox>
-                  <a-popconfirm
-                    v-if="item.status === 'failed' && canDelete"
-                    :content="t('admin9Ui.mediaPicker.deleteConfirm')"
-                    :ok-text="t('admin9Ui.mediaPicker.delete')"
-                    :cancel-text="t('admin9Ui.mediaPicker.cancel')"
-                    :ok-loading="isDeleting(item.id)"
-                    @ok="onDeleteFailed(item.id)"
-                  >
-                    <a-button
-                      class="a9-media-picker__delete"
-                      size="mini"
-                      status="danger"
-                      :loading="isDeleting(item.id)"
-                      :disabled="isDeleting(item.id)"
-                      @click.stop
-                    >
-                      {{ t('admin9Ui.mediaPicker.delete') }}
-                    </a-button>
-                  </a-popconfirm>
                 </div>
               </div>
             </a-checkbox-group>
@@ -585,8 +616,8 @@
           <a-pagination :total="total" :current="current" :page-size="pageSize" show-total @change="onPageChange" />
           <a-space>
             <a-button @click="closeModal">{{ t('admin9Ui.mediaPicker.cancel') }}</a-button>
-            <a-button v-if="multiple" type="primary" :disabled="selectCount === 0" @click="onConfirm">
-              {{ t('admin9Ui.mediaPicker.confirm') }}{{ selectCount ? ` (${selectCount})` : '' }}
+            <a-button type="primary" :disabled="selectCount === 0" @click="onConfirm">
+              {{ t('admin9Ui.mediaPicker.confirm') }}{{ multiple && selectCount ? ` (${selectCount})` : '' }}
             </a-button>
           </a-space>
         </div>
@@ -713,13 +744,6 @@
     &__item {
       position: relative;
       min-width: 0;
-    }
-
-    &__delete {
-      position: absolute;
-      top: 6px;
-      left: 26px;
-      z-index: 2;
     }
 
     &__footer {
