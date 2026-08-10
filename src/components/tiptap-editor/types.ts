@@ -29,8 +29,11 @@ export interface ATiptapEditorProps {
   maxLength?: number;
   showWordCount?: boolean;
   service?: MediaPickerService;
+  /** Enable image upload in the picker. Defaults to false and requires upload capability when enabled. */
   canUploadImage?: boolean;
+  /** Enable video upload in the picker. Defaults to false and requires upload capability when enabled. */
   canUploadVideo?: boolean;
+  /** Enable audio upload in the picker. Defaults to false and requires upload capability when enabled. */
   canUploadAudio?: boolean;
   defaultImageDisplay?: TiptapImageDisplay;
 }

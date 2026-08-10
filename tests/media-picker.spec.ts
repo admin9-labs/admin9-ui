@@ -1,5 +1,6 @@
 /* eslint-disable vue/one-component-per-file */
 import { createApp, defineComponent, h, nextTick, ref, shallowRef, type App } from 'vue';
+import { Message } from '@arco-design/web-vue';
 import { createI18n } from 'vue-i18n';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MediaGroup, MediaItem, MediaPickerService, MediaType } from '../src/services/types';
@@ -291,6 +292,7 @@ describe('AMediaPicker selection and capability contract', () => {
   });
   afterEach(() => {
     mountedApps.splice(0).forEach((app) => app.unmount());
+    vi.restoreAllMocks();
   });
 
   it('emits modal visibility changes for open, cancel, and confirm flows', async () => {
@@ -1007,6 +1009,7 @@ describe('AMediaPicker selection and capability contract', () => {
   });
 
   it('keeps a persistent load error with an explicit retry action', async () => {
+    const messageError = vi.spyOn(Message, 'error').mockImplementation(() => ({ close: vi.fn() }));
     const service: MediaPickerService = {
       list: vi
         .fn()
@@ -1019,11 +1022,29 @@ describe('AMediaPicker selection and capability contract', () => {
     await flush();
     expect(document.querySelector('[data-testid="load-error"]')?.textContent).toContain('Load failed');
     expect(document.body.textContent).not.toContain('Empty');
+    expect(messageError).not.toHaveBeenCalled();
 
     document.querySelector<HTMLButtonElement>('[data-testid="load-error"] button')?.click();
     await flush();
+    expect(service.list).toHaveBeenCalledTimes(2);
     expect(document.querySelector('[data-testid="load-error"]')).toBeNull();
     expect(document.querySelector('[data-testid="media-preview"]')?.getAttribute('data-src')).toBe(media.url);
+  });
+
+  it('keeps the group load failure toast because it has no persistent error state', async () => {
+    const messageError = vi.spyOn(Message, 'error').mockImplementation(() => ({ close: vi.fn() }));
+    const service: MediaPickerService = {
+      list: vi.fn().mockResolvedValue({ list: [], pagination: { page: 1, pageSize: 24, total: 0, hasMore: false } }),
+      listGroups: vi.fn().mockRejectedValue(new Error('offline')),
+    };
+    mountPicker(service);
+
+    document.querySelector('[data-testid="picker-trigger"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flush();
+
+    expect(messageError).toHaveBeenCalledTimes(1);
+    expect(messageError).toHaveBeenCalledWith('Group load failed');
+    expect(document.querySelector('[data-testid="load-error"]')).toBeNull();
   });
 
   it('enforces the multi-select limit at the emitted change boundary', async () => {

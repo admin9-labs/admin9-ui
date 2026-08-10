@@ -13,6 +13,7 @@ import {
   type Slots,
 } from 'vue';
 import { createI18n } from 'vue-i18n';
+import { Message } from '@arco-design/web-vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AMediaLibrary from '../src/components/media-library/index.vue';
 import type { MediaGroup, MediaItem, MediaLibraryAdapter, MediaLibraryService, MediaType } from '../src/services/types';
@@ -371,6 +372,31 @@ function mountDynamicLibrary(service: MediaLibraryAdapter, props: Record<string,
   };
 }
 
+function mountDynamicCapabilities(service: MediaLibraryAdapter) {
+  const canDelete = ref(true);
+  const canMove = ref(true);
+  const Host = defineComponent({
+    setup() {
+      return () =>
+        h(AMediaLibrary, {
+          service,
+          canDelete: canDelete.value,
+          canMove: canMove.value,
+        });
+    },
+  });
+  const app = createApp(Host);
+  installStubs(app);
+  mountedApps.push(app);
+  app.mount('#app');
+  return {
+    setCapabilities(next: { canDelete: boolean; canMove: boolean }) {
+      canDelete.value = next.canDelete;
+      canMove.value = next.canMove;
+    },
+  };
+}
+
 function mountDynamicService(initialService: MediaLibraryAdapter) {
   const service = shallowRef(initialService);
   const Host = defineComponent({
@@ -435,6 +461,39 @@ describe('AMediaLibrary', () => {
     expect(document.querySelector('[data-testid="library-upload"]')).toBeNull();
     expect(document.querySelector('[data-testid="move-media-media-1"]')).toBeNull();
     expect(document.querySelector('[data-testid="delete-media-media-1"]')).toBeNull();
+    expect(document.querySelector('.a9-media-library__batch')).toBeNull();
+    expect(document.querySelector('[data-testid="select-media-1"]')).toBeNull();
+    expect(document.querySelector('.a9-media-library__item-actions')).toBeNull();
+  });
+
+  it('clears selection and move targets when capabilities switch to browse-only mode', async () => {
+    const service = makeService();
+    const library = mountDynamicCapabilities(service);
+    await flush();
+
+    click('[data-testid="select-media-1"]');
+    await flush();
+    changeSelect('[data-testid="batch-move-target"]', moveGroupValue('campaign'));
+    changeSelect('[data-testid="move-media-media-1"]', moveGroupValue('campaign'));
+    await flush();
+    expect(document.body.textContent).toContain('1 selected');
+
+    library.setCapabilities({ canDelete: false, canMove: false });
+    await flush();
+
+    expect(document.querySelector('.a9-media-library__batch')).toBeNull();
+    expect(document.querySelector('[data-testid="select-media-1"]')).toBeNull();
+    expect(document.querySelector('.a9-media-library__item-actions')).toBeNull();
+
+    library.setCapabilities({ canDelete: false, canMove: true });
+    await flush();
+
+    expect(document.body.textContent).toContain('0 selected');
+    expect(document.querySelector('[data-testid="select-media-1"]')?.getAttribute('data-selected')).toBe('false');
+    expect(document.querySelector<HTMLSelectElement>('[data-testid="move-media-media-1"]')?.value).toBe('');
+    click('[data-testid="select-media-1"]');
+    await flush();
+    expect(document.querySelector<HTMLSelectElement>('[data-testid="batch-move-target"]')?.value).toBe('');
   });
 
   it('always requires the browse list method', () => {
@@ -984,6 +1043,7 @@ describe('AMediaLibrary', () => {
   });
 
   it('shows a retryable error state after a list failure', async () => {
+    const messageError = vi.spyOn(Message, 'error');
     const service = makeService({
       list: vi
         .fn()
@@ -997,14 +1057,18 @@ describe('AMediaLibrary', () => {
     await flush();
 
     expect(document.body.textContent).toContain('Failed to load media');
+    expect(messageError).not.toHaveBeenCalled();
     click('[data-testid="retry-list"]');
     await flush();
 
     expect(service.list).toHaveBeenCalledTimes(2);
     expect(document.querySelector('[data-media-id="media-1"]')).not.toBeNull();
+    expect(messageError).not.toHaveBeenCalled();
+    messageError.mockRestore();
   });
 
   it('keeps group failures visible and retries group loading', async () => {
+    const messageError = vi.spyOn(Message, 'error');
     const service = makeService({
       listGroups: vi
         .fn()
@@ -1016,12 +1080,15 @@ describe('AMediaLibrary', () => {
 
     expect(document.querySelector('.a9-media-library__group-error')?.textContent).toContain('Failed to load groups');
     expect(document.body.textContent).not.toContain('Campaign');
+    expect(messageError).not.toHaveBeenCalled();
     click('[data-testid="retry-groups"]');
     await flush();
 
     expect(service.listGroups).toHaveBeenCalledTimes(2);
     expect(document.querySelector('.a9-media-library__group-error')).toBeNull();
     expect(document.body.textContent).toContain('Campaign');
+    expect(messageError).not.toHaveBeenCalled();
+    messageError.mockRestore();
   });
 
   it('preserves selections across pages and groups and exposes an explicit clear action', async () => {

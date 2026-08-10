@@ -86,6 +86,7 @@
   const resolvedAccept = computed(() => props.accept || acceptByType[props.mediaType]);
   const uploadLabel = computed(() => t(`admin9Ui.mediaLibrary.upload.${props.mediaType}`));
   const hasGroupNavigation = computed(() => typeof libraryService.value.listGroups === 'function');
+  const selectionEnabled = computed(() => props.canMove || props.canDelete);
 
   /* ------------------------------ 查询与分组 ------------------------------ */
   const list = ref<MediaItem[]>([]);
@@ -148,19 +149,20 @@
       list.value = result.list;
       total.value = result.pagination.total;
       resolvedPageSize.value = result.pagination.pageSize;
-      const selected = new Map(selectedMap.value);
-      result.list.forEach((item) => {
-        if (!selected.has(item.id)) return;
-        if (isAvailable(item)) selected.set(item.id, item);
-        else selected.delete(item.id);
-      });
-      selectedMap.value = selected;
+      if (selectionEnabled.value) {
+        const selected = new Map(selectedMap.value);
+        result.list.forEach((item) => {
+          if (!selected.has(item.id)) return;
+          if (isAvailable(item)) selected.set(item.id, item);
+          else selected.delete(item.id);
+        });
+        selectedMap.value = selected;
+      }
     } catch {
       if (request !== latestListRequest || generation !== viewGeneration.value) return;
       list.value = [];
       total.value = 0;
       listError.value = true;
-      Message.error(t('admin9Ui.mediaLibrary.loadFailed'));
     } finally {
       if (request === latestListRequest && generation === viewGeneration.value) setLoading(false);
     }
@@ -187,7 +189,6 @@
       if (request !== latestGroupRequest || generation !== viewGeneration.value) return;
       groups.value = [];
       groupError.value = true;
-      Message.error(t('admin9Ui.mediaLibrary.groupLoadFailed'));
     } finally {
       if (request === latestGroupRequest && generation === viewGeneration.value) groupLoading.value = false;
     }
@@ -233,6 +234,7 @@
     selectedMap.value = new Map();
   };
   const onSelectionChange = (values: (string | number | boolean)[]) => {
+    if (!selectionEnabled.value) return;
     const incoming = new Set(values.map((value) => String(value)));
     const next = new Map(selectedMap.value);
     list.value.forEach((item) => {
@@ -521,9 +523,17 @@
     clearSelection();
     refresh();
   });
-  watch([() => props.canUpload, () => props.canDelete, () => props.canMove, () => props.canManageGroups], () => {
-    resolveLibraryService();
-  });
+  watch(
+    [() => props.canUpload, () => props.canDelete, () => props.canMove, () => props.canManageGroups],
+    ([, canDelete, canMove]) => {
+      resolveLibraryService();
+      if (!canMove) {
+        batchMoveTarget.value = undefined;
+        singleMoveTargets.value = new Map();
+      }
+      if (!canMove && !canDelete) clearSelection();
+    }
+  );
   watch(
     () => props.pageSize,
     (value) => {
@@ -701,7 +711,7 @@
       </aside>
 
       <main class="a9-media-library__main">
-        <div class="a9-media-library__batch" :class="{ 'has-selection': selectedCount > 0 }">
+        <div v-if="selectionEnabled" class="a9-media-library__batch" :class="{ 'has-selection': selectedCount > 0 }">
           <span>{{ t('admin9Ui.mediaLibrary.selectedCount', { count: selectedCount }) }}</span>
           <template v-if="selectedCount > 0">
             <a-select
@@ -765,7 +775,7 @@
                     :status-label="statusLabel(item)"
                   />
                 </slot>
-                <footer class="a9-media-library__item-actions">
+                <footer v-if="selectionEnabled" class="a9-media-library__item-actions">
                   <a-checkbox
                     :value="item.id"
                     :disabled="!isAvailable(item)"

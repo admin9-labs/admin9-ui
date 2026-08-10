@@ -25,6 +25,8 @@
 
 若应用已经通过 `app.use(Admin9UI, { mediaService })` 注入素材服务，编辑器会自动显示图片、视频和音频按钮；也可在使用点通过 `service` prop 覆盖。未提供服务时只隐藏三个素材按钮，不影响其他编辑能力。
 
+素材服务默认只需实现 `list()`。若需要在某一类 Picker 中上传，显式开启对应的 `canUploadImage`、`canUploadVideo` 或 `canUploadAudio`，并为 service 提供 `upload()`。
+
 ## Props
 
 | 属性                  | 类型                  | 默认值              | 说明                                               |
@@ -38,9 +40,9 @@
 | `maxLength`           | `number`              | `0`                 | 最大字符数，`0` 表示不限                           |
 | `showWordCount`       | `boolean`             | `true`              | 是否显示字符统计                                   |
 | `service`             | `MediaPickerService`  | 插件注入值          | 图片、视频和音频素材浏览服务；启用上传时需上传能力 |
-| `canUploadImage`      | `boolean`             | `true`              | 图片素材弹窗是否允许上传                           |
-| `canUploadVideo`      | `boolean`             | `true`              | 视频素材弹窗是否允许上传                           |
-| `canUploadAudio`      | `boolean`             | `true`              | 音频素材弹窗是否允许上传                           |
+| `canUploadImage`      | `boolean`             | `false`             | 图片素材弹窗是否允许上传                           |
+| `canUploadVideo`      | `boolean`             | `false`             | 视频素材弹窗是否允许上传                           |
+| `canUploadAudio`      | `boolean`             | `false`             | 音频素材弹窗是否允许上传                           |
 | `defaultImageDisplay` | `'block' \| 'inline'` | `'block'`           | 新图片默认独占一行或跟随文字，不按素材尺寸推断     |
 
 `maxLength` 可动态调整。降低限制时不会截断已有内容，但会阻止内容继续增长；提高限制或改为 `0` 后，新的限制会从下一次编辑立即生效。

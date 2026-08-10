@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { computed, inject, onMounted, ref, watch } from 'vue';
+  import { computed, inject, nextTick, onMounted, ref, watch, type Ref } from 'vue';
   import { Message } from '@arco-design/web-vue';
   import { Extension, type Editor } from '@tiptap/core';
   import CharacterCount from '@tiptap/extension-character-count';
@@ -38,9 +38,9 @@
     maxLength: 0,
     showWordCount: true,
     service: undefined,
-    canUploadImage: true,
-    canUploadVideo: true,
-    canUploadAudio: true,
+    canUploadImage: false,
+    canUploadVideo: false,
+    canUploadAudio: false,
     defaultImageDisplay: 'block',
   });
 
@@ -67,6 +67,10 @@
   const mediaToolbarRef = ref<HTMLElement>();
   const bubbleMenuReady = ref(false);
   const mediaPickerVisible = ref(false);
+  const imagePickerValue = ref<MediaItem>();
+  const videoPickerValue = ref<MediaItem>();
+  const audioPickerValue = ref<MediaItem>();
+  const replacementPickerValue = ref<MediaItem>();
   const selectedMedia = ref<{
     pos: number;
     type: TiptapMediaNodeName;
@@ -445,10 +449,10 @@
   };
 
   const insertImages = (items: MediaItem[]) => {
-    if (!items.length) return;
+    if (!items.length) return false;
     const { valid, rejected } = partitionMediaSelection(items, 'image');
     if (rejected.length) reportMediaError('insert', 'image', 'invalid-selection', items, rejected);
-    if (!valid.length) return;
+    if (!valid.length) return false;
     const type: TiptapMediaNodeName = props.defaultImageDisplay === 'inline' ? 'inlineImage' : 'blockImage';
     const content = valid.map((item) => ({
       type,
@@ -459,14 +463,14 @@
         ...(type === 'inlineImage' ? { size: '1em' } : { width: 'natural', align: 'left' }),
       },
     }));
-    insertMediaContent(content, type === 'blockImage', 'image', valid);
+    return insertMediaContent(content, type === 'blockImage', 'image', valid);
   };
 
   const insertMedia = (items: MediaItem[], mediaType: 'video' | 'audio') => {
-    if (!items.length) return;
+    if (!items.length) return false;
     const { valid, rejected } = partitionMediaSelection(items, mediaType);
     if (rejected.length) reportMediaError('insert', mediaType, 'invalid-selection', items, rejected);
-    if (!valid.length) return;
+    if (!valid.length) return false;
     const content = valid.map((item) => ({
       type: mediaType,
       attrs: {
@@ -476,11 +480,24 @@
         align: 'left',
       },
     }));
-    insertMediaContent(content, true, mediaType, valid);
+    return insertMediaContent(content, true, mediaType, valid);
   };
 
-  const insertVideos = (items: MediaItem[]) => insertMedia(items, 'video');
-  const insertAudios = (items: MediaItem[]) => insertMedia(items, 'audio');
+  const clearPickerValueAfterUpdate = (pickerValue: Ref<MediaItem | undefined>) => {
+    nextTick(() => {
+      pickerValue.value = undefined;
+    });
+  };
+
+  const insertImagesFromPicker = (items: MediaItem[]) => {
+    if (insertImages(items)) clearPickerValueAfterUpdate(imagePickerValue);
+  };
+  const insertVideosFromPicker = (items: MediaItem[]) => {
+    if (insertMedia(items, 'video')) clearPickerValueAfterUpdate(videoPickerValue);
+  };
+  const insertAudiosFromPicker = (items: MediaItem[]) => {
+    if (insertMedia(items, 'audio')) clearPickerValueAfterUpdate(audioPickerValue);
+  };
 
   const getSelectedNode = () => {
     if (!editor.value || !selectedMedia.value) return undefined;
@@ -518,22 +535,28 @@
   };
 
   const replaceSelectedMedia = (items: MediaItem[]) => {
-    if (!items.length) return;
+    if (!items.length) return false;
     const current = getSelectedNode();
     const expectedType = selectedMediaKind.value;
     if (!current || !expectedType) {
       reportMediaError('replace', expectedType ?? items[0].type, 'command-failed', items, []);
-      return;
+      return false;
     }
     const { valid, rejected } = partitionMediaSelection(items, expectedType);
     if (items.length !== 1 || rejected.length || valid.length !== 1) {
       reportMediaError('replace', expectedType, 'invalid-selection', items, rejected.length ? rejected : items);
-      return;
+      return false;
     }
     const replacement = valid[0];
     if (!updateSelectedMedia({ src: replacement.url, title: replacement.name })) {
       reportMediaError('replace', expectedType, 'command-failed', items, []);
+      return false;
     }
+    return true;
+  };
+
+  const replaceSelectedMediaFromPicker = (items: MediaItem[]) => {
+    if (replaceSelectedMedia(items)) clearPickerValueAfterUpdate(replacementPickerValue);
   };
 
   const applyAltText = () => {
@@ -771,6 +794,7 @@
         :content="t('admin9Ui.tiptapEditor.image')"
       >
         <AMediaPicker
+          v-model="imagePickerValue"
           class="a9-tiptap-editor__media-picker"
           data-media-type="image"
           media-type="image"
@@ -778,7 +802,7 @@
           :service="resolvedMediaService"
           :can-upload="canUploadImage"
           :show-file-list="false"
-          @change="insertImages"
+          @change="insertImagesFromPicker"
           @visible-change="onMediaPickerVisibleChange"
         >
           <template #trigger>
@@ -795,6 +819,7 @@
         :content="t('admin9Ui.tiptapEditor.video')"
       >
         <AMediaPicker
+          v-model="videoPickerValue"
           class="a9-tiptap-editor__media-picker"
           data-media-type="video"
           media-type="video"
@@ -802,7 +827,7 @@
           :service="resolvedMediaService"
           :can-upload="canUploadVideo"
           :show-file-list="false"
-          @change="insertVideos"
+          @change="insertVideosFromPicker"
           @visible-change="onMediaPickerVisibleChange"
         >
           <template #trigger>
@@ -819,6 +844,7 @@
         :content="t('admin9Ui.tiptapEditor.audio')"
       >
         <AMediaPicker
+          v-model="audioPickerValue"
           class="a9-tiptap-editor__media-picker"
           data-media-type="audio"
           media-type="audio"
@@ -826,7 +852,7 @@
           :service="resolvedMediaService"
           :can-upload="canUploadAudio"
           :show-file-list="false"
-          @change="insertAudios"
+          @change="insertAudiosFromPicker"
           @visible-change="onMediaPickerVisibleChange"
         >
           <template #trigger>
@@ -1092,6 +1118,7 @@
 
         <AMediaPicker
           v-if="resolvedMediaService"
+          v-model="replacementPickerValue"
           class="a9-tiptap-editor__media-picker a9-tiptap-editor__replacement-picker"
           data-media-replace
           value-type="item"
@@ -1107,7 +1134,7 @@
               : canUploadAudio
           "
           :show-file-list="false"
-          @change="replaceSelectedMedia"
+          @change="replaceSelectedMediaFromPicker"
           @visible-change="onMediaPickerVisibleChange"
         >
           <template #trigger>

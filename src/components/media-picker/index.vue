@@ -188,7 +188,6 @@
       reconcileDialogSelection(items);
     } catch {
       if (request !== latestListRequest || generation !== viewGeneration || service !== resolvedService.value) return;
-      Message.error(t('admin9Ui.mediaPicker.loadFailed'));
       listError.value = true;
     } finally {
       if (request === latestListRequest && generation === viewGeneration && service === resolvedService.value)
