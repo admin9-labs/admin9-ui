@@ -325,7 +325,17 @@ Vue、Arco Design Vue 和 vue-i18n 是 peer dependencies，并在构建中 exter
 
 提交发布候选前最多在本地执行一次 `pnpm run release:check`。它只组合一次 typecheck、验收 typecheck、lint、测试、验收 build 和 `verify:tarball`；library build 与 `npm pack` 仅由 `verify:tarball` 执行一次。日常开发只运行与改动相关的检查，GitHub Actions 才是 PR、`main` push 和发布的最终质量结论。
 
-正式发布由语义版本 tag 触发 GitHub Actions。工作流要求 tag 与 package 版本一致且位于远程 `main` 的准确 HEAD，并通过 npm Trusted Publishing/OIDC 发布隔离验证过的同一个 tgz；npm 成功后才创建 GitHub Release。tag、GitHub Release 与 npm 产物必须指向同一发布提交，不得在未验证的工作区或不同提交上生成同版本产物。
+正式发布由语义版本 tag 触发 GitHub Actions，且单一 concurrency group 确保同一时刻最多只有一个发布 workflow 正在运行，避免并发修改 npm `latest`。GitHub concurrency 只保留一个 running 和一个 pending，新的 pending 可能替换旧的 pending，因此维护者必须一次只推送一个发布 tag，并等待其 workflow 完成后再推送下一版本。工作流要求 tag 与 package 版本一致、Actions 事件提交等于 checkout HEAD，并通过 Git ancestry 证明 tag 提交已进入远程 `main`。这里不再要求 tag 等于执行时的 `main` HEAD，因此 `main` 前进后仍可安全重跑旧的发布提交；在 npm 发布和 GitHub Release 操作前还会分别重新读取远端 tag，要求其最终 peeled commit 仍严格等于 Actions 事件提交。
+
+Release workflow 按权限拆为三个 job：
+
+1. `verify` 只有 `contents: read`，运行完整门禁并保留通过隔离消费验证的真实 tgz；
+2. `publish` 只有 `contents: read` 和 `id-token: write`，下载该 artifact，核对已存在版本的 integrity，并通过 Trusted Publishing/OIDC 发布；
+3. `github-release` 只有 `contents: write`，仅在 npm 发布后创建或核验 GitHub Release。
+
+发布后校验不是可选提示。Registry 必须返回同一包名、版本和 tgz SHA-512 integrity，`dist-tags.latest` 必须指向本次稳定版本；npm SLSA provenance 的 subject digest、GitHub 仓库、`.github/workflows/release.yml`、tag ref 和 Git commit 必须全部匹配。GitHub Release 已存在时，tag、唯一同名附件、文件大小和 SHA-256 必须一致；完全一致的 draft 会转为正式 Release，prerelease 或任何附件冲突都会失败。不存在时由 gh CLI 通过临时 draft 上传同一 artifact、发布并再次核验，失败时由 gh CLI 清理临时 draft，禁止 `--clobber`。
+
+维护者应先提交版本变更并等待 `main` CI 通过，再在计划的发布提交上创建并推送 `vX.Y.Z` annotated tag。发布失败时重跑同一 Actions workflow，不移动或复用 tag。已发布错误版本通过 npm deprecate 标记，并发布新的 patch 版本；不得重新打包同版本或覆盖 Release 附件。新 workflow 进入远端 `main` 后应启用 GitHub Release immutability，npm Trusted Publisher 的组织、仓库和 workflow 字段仍是必须单独维护的仓库外配置。
 
 ## 9. 约束与风险
 

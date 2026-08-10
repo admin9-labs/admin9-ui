@@ -107,9 +107,26 @@ pnpm run release:check
 
 `dev/` 只服务于组件库开发验收，不属于 package 公共 API，也不会进入 tarball。`tests/consumer-fixture/` 只会被复制到临时目录，并从真实 `.tgz` 安装 `@admin9-labs/admin9-ui`；它不会从 `src/` 回源。
 
-GitHub Actions 是 PR、`main` push 和正式发布的最终质量权威。推送与 `package.json` 版本严格一致的 `vX.Y.Z` tag 后，`.github/workflows/release.yml` 会确认 tag 位于远程 `main` 的准确 HEAD，运行完整门禁，并把通过隔离消费者验证的同一个 tgz 发布到 npm；发布成功后才创建 GitHub Release。不要在本地重新打包或使用本地 npm 凭据发布。
+GitHub Actions 是 PR、`main` push 和正式发布的最终质量权威。正式发布的唯一入口是推送与 `package.json` 版本严格一致的 `vX.Y.Z` tag；不要在本地重新打包、执行 `npm publish` 或使用本地 npm 凭据发布。
 
-npm 发布使用 Trusted Publishing/OIDC。仓库外必须先在 npm package 设置中配置 GitHub Actions Trusted Publisher：组织 `admin9-labs`、仓库 `admin9-ui`、工作流文件 `release.yml`，并允许 `npm publish`。该配置不包含任何仓库 secret；未配置或字段不精确时，发布工作流会在 npm 认证阶段失败。
+`.github/workflows/release.yml` 使用全局 concurrency group，确保同一时刻最多只有一个发布 workflow 正在运行，并依次完成：
+
+1. 确认 tag 提交等于 Actions checkout 的提交，且是远程 `main` 的祖先；
+2. 运行完整质量门禁，构建真实 tgz，并在隔离消费工程验证该 tgz；
+3. 通过 artifact 原样传递该 tgz，使用 npm Trusted Publishing/OIDC 发布；已存在版本仅在 Registry integrity 一致时跳过；
+4. 有限重试校验 Registry 包名、版本、`dist.integrity`、`dist-tags.latest`，以及 SLSA provenance 中的仓库、workflow、tag、Git SHA 和 subject digest；
+5. 创建 GitHub Release、转正式发布完全一致的 draft，或确认已有正式 Release 的 tag、附件名称、大小和 SHA-256 完全一致。工作流不会覆盖不一致的已有附件，也不会接受 prerelease。
+
+### 维护者发版步骤
+
+1. 确认下一版本号，在一个可审查的提交中更新 `package.json`，完成变更记录，并将该提交推送到 `main`。不要直接复用当前已发布的 `0.2.0`。
+2. 等待该提交的 `main` CI 通过。首次发版通常在这个计划好的发布提交上创建 annotated tag；ancestor 校验只用于允许 `main` 前进后的安全重跑。
+3. 创建规范 tag，例如 `git tag -a v0.3.0 <release-commit> -m "v0.3.0"`，再次确认 tag、package 版本和提交后，单独推送该 tag。一次只能推送一个发布 tag，必须等该 workflow 完成后再推送下一版本；GitHub concurrency 只保留一个 running 和一个 pending，新的 pending 可能替换旧的 pending。
+4. 观察 Release workflow 的三个 job 全部通过，再核对 npm package 页、`latest` dist-tag、provenance 和 GitHub Release 附件。
+
+失败时优先在 GitHub Actions 中重跑同一个 workflow。相同版本和相同 integrity 会安全跳过重复 npm 发布；一致的 GitHub Release 也会跳过。若 Registry integrity、`latest`、provenance 或 Release 附件不一致，工作流会失败，维护者不得通过移动 tag、复用版本或覆盖附件绕过校验。已发布的错误版本应执行 `npm deprecate @admin9-labs/admin9-ui@<bad-version> "<reason>"`，修复后发布新的 patch 版本；除 npm 安全事件和官方策略允许的紧急情况外，不使用 unpublish。
+
+npm 发布使用 Trusted Publishing/OIDC。仓库外必须在 npm package 设置中保持 GitHub Actions Trusted Publisher：组织 `admin9-labs`、仓库 `admin9-ui`、工作流文件 `release.yml`，并允许 `npm publish`。该配置不包含仓库 secret。新 workflow 进入远端 `main` 后，再启用 GitHub Release immutability；从此不得移动或删除已发布 tag。branch protection/ruleset 可按维护者规模配置为要求 `CI` 通过，但不是当前发布脚本的前置条件。
 
 完整设计边界与历史决策见 [DESIGN.md](./DESIGN.md)。
 

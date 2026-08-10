@@ -6,15 +6,14 @@ on:
       - 'v*.*.*'
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
 jobs:
-  publish:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout release commit
@@ -33,15 +32,14 @@ jobs:
           node-version: 20
           cache: pnpm
 
-      - name: Validate tag and main head
-        id: release
+      - name: Validate tag and main ancestry
         run: |
           git fetch --no-tags origin main:refs/remotes/origin/main
           node scripts/check-release.mjs \
             --tag "$GITHUB_REF_NAME" \
             --commit "$GITHUB_SHA" \
             --checkout-head "$(git rev-parse HEAD)" \
-            --main-head "$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
+            --main-head "$(git rev-parse origin/main)"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -64,6 +62,42 @@ jobs:
       - name: Build and verify release tarball
         run: pnpm run verify:tarball -- --output-dir release-artifacts
 
+      - name: Record verified tarball digest
+        working-directory: release-artifacts
+        run: sha256sum *.tgz > SHA256SUMS
+
+      - name: Retain verified release tarball
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-tarball
+          path: |
+            release-artifacts/*.tgz
+            release-artifacts/SHA256SUMS
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+          retention-days: 5
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Download verified release tarball
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-tarball
+          path: release-artifacts
+
+      - name: Verify transferred tarball digest
+        working-directory: release-artifacts
+        run: sha256sum --check SHA256SUMS
+
       - name: Set up trusted-publishing Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
@@ -74,6 +108,13 @@ jobs:
       - name: Install trusted-publishing npm CLI
         run: npm install --global npm@11.19.0
 
+      - name: Revalidate remote tag before npm publication
+        run: |
+          node scripts/check-release.mjs \
+            --remote-tag \
+            --tag "$GITHUB_REF_NAME" \
+            --commit "$GITHUB_SHA"
+
       - name: Check npm publication state
         id: registry
         run: node scripts/check-publish-status.mjs --tarball-dir release-artifacts >> "$GITHUB_OUTPUT"
@@ -82,16 +123,78 @@ jobs:
         if: steps.registry.outputs.published != 'true'
         run: npm publish "./${{ steps.registry.outputs.tarball }}" --access public --provenance
 
+      - name: Verify published package and provenance
+        run: |
+          node scripts/verify-published-package.mjs \
+            --tarball-dir release-artifacts \
+            --tag "$GITHUB_REF_NAME" \
+            --commit "$GITHUB_SHA" \
+            --repository "$GITHUB_REPOSITORY" \
+            --workflow ".github/workflows/release.yml"
+
+  github-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Download published release tarball
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-tarball
+          path: release-artifacts
+
+      - name: Verify transferred tarball digest
+        working-directory: release-artifacts
+        run: sha256sum --check SHA256SUMS
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+
+      - name: Revalidate remote tag before GitHub Release
+        run: |
+          node scripts/check-release.mjs \
+            --remote-tag \
+            --tag "$GITHUB_REF_NAME" \
+            --commit "$GITHUB_SHA"
+
+      - name: Check GitHub Release state
+        id: github-release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/check-github-release-status.mjs \
+            --tarball-dir release-artifacts \
+            --tag "$GITHUB_REF_NAME" \
+            --repository "$GITHUB_REPOSITORY" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
+        if: steps.github-release.outputs.disposition == 'create'
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TARBALL: ${{ steps.registry.outputs.tarball }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" "$RELEASE_TARBALL" --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" "$RELEASE_TARBALL" \
-              --verify-tag \
-              --generate-notes \
-              --title "$GITHUB_REF_NAME"
-          fi
+          gh release create "$GITHUB_REF_NAME" "./${{ steps.github-release.outputs.tarball }}" \
+            --verify-tag \
+            --generate-notes \
+            --title "$GITHUB_REF_NAME"
+
+      - name: Publish existing verified draft release
+        if: steps.github-release.outputs.disposition == 'promote'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false --prerelease=false --verify-tag
+
+      - name: Verify GitHub Release asset
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/check-github-release-status.mjs \
+            --tarball-dir release-artifacts \
+            --tag "$GITHUB_REF_NAME" \
+            --repository "$GITHUB_REPOSITORY" \
+            --require-existing
