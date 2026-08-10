@@ -310,6 +310,23 @@ describe('ATiptapEditor public contract', () => {
     expect(onChange).toHaveBeenLastCalledWith('');
   });
 
+  it('toggles the focused class with the editable surface focus state', async () => {
+    mountEditor();
+    await flush();
+    const root = document.querySelector<HTMLElement>('.a9-tiptap-editor');
+    const prose = document.querySelector<HTMLElement>('.a9-tiptap-editor__prose');
+
+    if (!root || !prose) throw new Error('ATiptapEditor did not mount');
+
+    prose.focus();
+    await nextTick();
+    expect(root.classList.contains('is-focused')).toBe(true);
+
+    prose.blur();
+    await nextTick();
+    expect(root.classList.contains('is-focused')).toBe(false);
+  });
+
   it('keeps ordinary toolbar actions neutral and reserves primary state for active formatting', async () => {
     const instance = mountEditor({ modelValue: '<p>Toolbar state</p>', service: {} });
     await flush();

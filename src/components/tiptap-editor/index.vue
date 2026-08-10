@@ -66,6 +66,7 @@
   const contentRef = ref<HTMLElement>();
   const mediaToolbarRef = ref<HTMLElement>();
   const bubbleMenuReady = ref(false);
+  const isFocused = ref(false);
   const mediaPickerVisible = ref(false);
   const imagePickerValue = ref<MediaItem>();
   const videoPickerValue = ref<MediaItem>();
@@ -199,8 +200,14 @@
     },
     onSelectionUpdate: ({ editor: currentEditor }) => syncSelectedMedia(currentEditor),
     onTransaction: ({ editor: currentEditor }) => syncSelectedMedia(currentEditor),
-    onFocus: () => emit('focus'),
-    onBlur: () => emit('blur'),
+    onFocus: () => {
+      isFocused.value = true;
+      emit('focus');
+    },
+    onBlur: () => {
+      isFocused.value = false;
+      emit('blur');
+    },
   });
 
   const characterCount = computed(() => editor.value?.storage.characterCount.characters() ?? 0);
@@ -636,7 +643,7 @@
     :class="{
       'is-disabled': props.disabled,
       'is-readonly': props.readonly,
-      'is-focused': editor?.isFocused,
+      'is-focused': isFocused,
     }"
     :style="editorStyle"
   >
@@ -1183,10 +1190,6 @@
     border: 1px solid var(--color-border-2);
     border-radius: 4px;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
-
-    &:hover:not(.is-disabled, .is-readonly) {
-      border-color: rgb(var(--primary-6));
-    }
 
     &.is-focused:not(.is-disabled, .is-readonly) {
       border-color: rgb(var(--primary-6));
