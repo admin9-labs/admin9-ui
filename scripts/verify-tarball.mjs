@@ -95,6 +95,7 @@ try {
     'dist/style.css',
     'docs/components/media-library.md',
     'docs/components/media-picker.md',
+    'docs/components/tiptap-editor.md',
   ];
   requiredFiles.forEach((file) => assert(packedFiles.has(file), `Tarball is missing required file: ${file}`));
   const forbiddenPrefixes = ['src/', 'tests/', 'scripts/', 'node_modules/', 'dist/acceptance-host/'];
@@ -120,6 +121,9 @@ try {
   ['vue', '@arco-design/web-vue', 'vue-i18n'].forEach((peer) => {
     assert(installedPackage.peerDependencies?.[peer], `Published package does not declare required peer: ${peer}`);
   });
+  ['@tiptap/core', '@tiptap/pm', '@tiptap/starter-kit', '@tiptap/vue-3'].forEach((dependency) => {
+    assert(installedPackage.dependencies?.[dependency], `Published package does not declare runtime dependency: ${dependency}`);
+  });
   assert(installedPackage.exports?.['.']?.types, 'Root export is missing its types condition.');
   assert(installedPackage.exports?.['./locale']?.types, 'Locale export is missing its types condition.');
   assert(installedPackage.exports?.['./styles'], 'Styles export is missing.');
@@ -127,7 +131,7 @@ try {
   assert(!installedPackage.engines?.npm, 'Published package must not impose the library repository npm version on consumers.');
   assert(!installedPackage.packageManager, 'Published package must not expose a repository-only package-manager pin.');
 
-  run('pnpm', ['list', '@admin9-labs/admin9-ui', 'vue', '@arco-design/web-vue', 'vue-i18n']);
+  run('pnpm', ['list', '@admin9-labs/admin9-ui', 'vue', '@arco-design/web-vue', 'vue-i18n', '@tiptap/core', '@tiptap/pm']);
   run('pnpm', ['run', 'typecheck']);
   run('pnpm', ['run', 'build']);
 

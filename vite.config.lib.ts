@@ -14,7 +14,7 @@ export default defineConfig({
       entryRoot: 'src',
       tsconfigPath: './tsconfig.json',
       insertTypesEntry: true,
-      exclude: ['src/hooks/**', 'src/internal/**'],
+      exclude: ['src/hooks/**', 'src/internal/**', 'src/components/tiptap-editor/media-node-view.vue'],
     }),
   ],
   resolve: {
@@ -45,7 +45,7 @@ export default defineConfig({
     },
     cssCodeSplit: false,
     rollupOptions: {
-      external: ['vue', '@arco-design/web-vue', 'vue-i18n'],
+      external: ['vue', '@arco-design/web-vue', 'vue-i18n', /^@tiptap\//],
       output: {
         exports: 'named',
         assetFileNames: 'style.css',

@@ -8,9 +8,11 @@ import Admin9UI, {
   AMediaLibrary,
   AMediaPicker,
   AProTable,
+  ATiptapEditor,
   arcoIconNames,
   localePrefix as rootLocalePrefix,
   messages as rootMessages,
+  type ATiptapEditorProps,
   type CreateMediaGroupOptions,
   type Admin9UIOptions,
   type Admin9UIPluginOptions,
@@ -19,6 +21,11 @@ import Admin9UI, {
   type MoveMediaOptions,
   type RemoveMediaGroupOptions,
   type RenameMediaGroupOptions,
+  type TiptapAudioWidth,
+  type TiptapBlockWidth,
+  type TiptapImageDisplay,
+  type TiptapInlineImageSize,
+  type TiptapMediaAlign,
 } from '@admin9-labs/admin9-ui';
 import { enUS, localePrefix, messages, zhCN } from '@admin9-labs/admin9-ui/locale';
 import '@arco-design/web-vue/dist/arco.css';
@@ -72,6 +79,12 @@ const mediaService: MediaLibraryService = {
 const pluginOptions: Admin9UIPluginOptions = { mediaService };
 const legacyPluginOptions: Admin9UIOptions = pluginOptions;
 const compatiblePluginOptions: Admin9UIPluginOptions = legacyPluginOptions;
+const defaultImageDisplay: TiptapImageDisplay = 'inline';
+const audioWidth: TiptapAudioWidth = 'standard';
+const blockWidth: TiptapBlockWidth = '50%';
+const inlineSize: TiptapInlineImageSize = '1.25em';
+const mediaAlign: TiptapMediaAlign = 'center';
+const editorMaxHeight: ATiptapEditorProps['maxHeight'] = 480;
 
 if (
   localePrefix !== 'admin9Ui' ||
@@ -91,6 +104,19 @@ const app = createApp({
       h(AProTable, {
         columns: [{ title: 'Name', dataIndex: 'name' }],
         fetcher: async () => ({ list: [{ id: 1, name: 'Fixture row' }], total: 1 }),
+      }),
+      h(ATiptapEditor, {
+        modelValue:
+          `<p>Fixture <img src="/fixture-inline.png" alt="Inline" data-display="inline" data-size="${inlineSize}"> content</p>` +
+          `<img src="/fixture-block.png" alt="Block" data-display="block" data-width="${blockWidth}" data-align="${mediaAlign}">` +
+          '<video src="/fixture.mp4" autoplay data-width="75%" data-align="right"></video>' +
+          `<audio src="/fixture.mp3" autoplay data-width="${audioWidth}" data-align="center"></audio>`,
+        service: mediaService,
+        defaultImageDisplay,
+        maxHeight: editorMaxHeight,
+        canUploadImage: false,
+        canUploadVideo: false,
+        canUploadAudio: false,
       }),
       h(AMediaPicker, { service: mediaService, canUpload: false, showFileList: false }),
       h(AMediaLibrary, {

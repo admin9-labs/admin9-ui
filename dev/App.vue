@@ -1,7 +1,7 @@
 <script setup lang="ts">
   import { computed, ref, watch } from 'vue';
   import type { TableColumnData } from '@arco-design/web-vue';
-  import { AIconPicker, AMediaLibrary, AMediaPicker, AProTable, type MediaItem, type MediaType } from '../src';
+  import { AIconPicker, AMediaLibrary, AMediaPicker, AProTable, ATiptapEditor, type MediaItem, type MediaType } from '../src';
   import { createFakeMediaService, type AcceptanceState } from './fake-media-service';
   import createFakeMediaLibraryService from './fake-media-library-service';
 
@@ -52,6 +52,29 @@
   const tableError = ref(false);
   const selectedRowKeys = ref<(string | number)[]>([]);
   const iconValue = ref('icon-apps');
+  const editorMode = ref<'normal' | 'readonly' | 'disabled'>('normal');
+  const tiptapFocused = new URLSearchParams(window.location.search).get('component') === 'tiptap-editor';
+  const tiptapValue = ref(
+    [
+      '<h1>活动公告示例</h1>',
+      '<p>独占一行的图片用于正文视觉内容，跟随文字的图片 <img src="/media-layout.svg" alt="状态图标" data-display="inline" data-size="1.25em"> 可与文字保持基线。</p>',
+      '<img src="/media-board.svg" alt="素材面板" data-display="block" data-width="50%" data-align="left">',
+      '<p>长正文验收段落一：正文先自动增高，到达上限后只在编辑器内部滚动。</p>',
+      '<p>长正文验收段落二：主工具栏和字数统计始终位于正文滚动区之外，媒体操作使用不占布局的悬浮栏。</p>',
+      '<p>长正文验收段落三：下面的高图用于检查在顶部、中部和底部选择时，悬浮栏都锚定当前可见区域。</p>',
+      '<img src="/media-tall.svg" alt="长内容工作流示意" data-display="block" data-width="100%" data-align="left">',
+      '<p>高图之后的正文用于确认内部滚动能继续访问后续混排内容。</p>',
+      '<blockquote><p>引用内容的首尾间距应保持紧凑。</p><p>多段引用仍需清晰分隔。</p></blockquote>',
+      '<h2>检查清单</h2>',
+      '<ul><li><p>单行列表保持紧凑</p></li><li><p>多段列表第一段</p><p>多段列表第二段</p><ul><li><p>嵌套列表</p></li></ul></li></ul>',
+      '<h3>代码与分割线</h3>',
+      '<pre><code>const editor = "ATiptapEditor";</code></pre>',
+      '<hr>',
+      '<video src="/media-motion.mp4" title="演示视频" data-width="75%" data-align="left"></video>',
+      '<audio src="/media-tone.wav" title="演示音频" data-width="standard" data-align="center"></audio>',
+      '<p>媒体之后仍可通过 Gap Cursor 继续输入，连续媒体不会生成空段落。</p>',
+    ].join('')
+  );
   const mediaState = ref<AcceptanceState>('normal');
   const mediaType = ref<MediaType>('image');
   const mediaValue = ref<MediaItem[]>([]);
@@ -124,8 +147,8 @@
 </script>
 
 <template>
-  <div class="acceptance-shell">
-    <header class="topbar">
+  <div class="acceptance-shell" :class="{ 'is-component-focused': tiptapFocused }">
+    <header v-if="!tiptapFocused" class="topbar">
       <div>
         <div class="product-name">@admin9-labs/admin9-ui</div>
         <h1>独立验收宿主</h1>
@@ -133,15 +156,16 @@
       <div class="backend-badge"><span aria-hidden="true" />Fake service</div>
     </header>
 
-    <nav class="section-nav" aria-label="组件验收导航">
+    <nav v-if="!tiptapFocused" class="section-nav" aria-label="组件验收导航">
       <a href="#pro-table">AProTable</a>
       <a href="#icon-picker">AIconPicker</a>
+      <a href="#tiptap-editor">ATiptapEditor</a>
       <a href="#media-picker">AMediaPicker</a>
       <a href="#media-library">AMediaLibrary</a>
     </nav>
 
     <main>
-      <section id="pro-table" class="acceptance-section" data-testid="pro-table-section">
+      <section v-if="!tiptapFocused" id="pro-table" class="acceptance-section" data-testid="pro-table-section">
         <div class="section-heading">
           <div>
             <span class="section-index">01</span>
@@ -177,7 +201,7 @@
         </div>
       </section>
 
-      <section id="icon-picker" class="acceptance-section" data-testid="icon-picker-section">
+      <section v-if="!tiptapFocused" id="icon-picker" class="acceptance-section" data-testid="icon-picker-section">
         <div class="section-heading">
           <div>
             <span class="section-index">02</span>
@@ -199,10 +223,50 @@
         </div>
       </section>
 
-      <section id="media-picker" class="acceptance-section" data-testid="media-picker-section">
+      <section
+        id="tiptap-editor"
+        class="acceptance-section"
+        :class="{ 'is-focused-acceptance': tiptapFocused }"
+        data-testid="tiptap-editor-section"
+      >
         <div class="section-heading">
           <div>
             <span class="section-index">03</span>
+            <h2>ATiptapEditor</h2>
+          </div>
+          <a-radio-group v-model="editorMode" type="button" size="small" data-testid="editor-mode-control">
+            <a-radio value="normal">正常</a-radio>
+            <a-radio value="readonly">只读</a-radio>
+            <a-radio value="disabled">禁用</a-radio>
+          </a-radio-group>
+        </div>
+
+        <div class="tiptap-workspace component-frame">
+          <ATiptapEditor
+            v-model="tiptapValue"
+            :service="mediaService"
+            :readonly="editorMode === 'readonly'"
+            :disabled="editorMode === 'disabled'"
+            max-height="min(640px, 60dvh)"
+            :max-length="2000"
+            :can-upload-image="true"
+            :can-upload-video="true"
+            :can-upload-audio="true"
+            placeholder="请输入公告正文"
+            data-testid="tiptap-editor"
+          />
+          <a-button data-testid="tiptap-after-editor-focus-target">编辑器后的操作</a-button>
+          <div class="tiptap-readout" aria-live="polite">
+            <span>HTML 输出</span>
+            <code>{{ tiptapValue || '（空）' }}</code>
+          </div>
+        </div>
+      </section>
+
+      <section v-if="!tiptapFocused" id="media-picker" class="acceptance-section" data-testid="media-picker-section">
+        <div class="section-heading">
+          <div>
+            <span class="section-index">04</span>
             <h2>AMediaPicker</h2>
           </div>
           <div class="section-controls">
@@ -247,10 +311,10 @@
         </div>
       </section>
 
-      <section id="media-library" class="acceptance-section" data-testid="media-library-section">
+      <section v-if="!tiptapFocused" id="media-library" class="acceptance-section" data-testid="media-library-section">
         <div class="section-heading">
           <div>
-            <span class="section-index">04</span>
+            <span class="section-index">05</span>
             <h2>AMediaLibrary</h2>
           </div>
           <div class="section-controls">

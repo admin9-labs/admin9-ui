@@ -7,6 +7,7 @@ import AMediaPicker from './components/media-picker/index.vue';
 import AMediaLibrary from './components/media-library/index.vue';
 import AIconPicker from './components/icon-picker/index.vue';
 import AProTable from './components/pro-table/index.vue';
+import ATiptapEditor from './components/tiptap-editor/index.vue';
 
 // 服务接口契约（供 App 实现 adapter 时 import 类型）
 export type {
@@ -33,8 +34,17 @@ export { messages, localePrefix } from './locale';
 // 图标名清单（供 AIconPicker，App 也可直接用）
 export { arcoIconNames } from './components/icon-picker/icon-names';
 
+export type {
+  ATiptapEditorProps,
+  TiptapAudioWidth,
+  TiptapBlockWidth,
+  TiptapImageDisplay,
+  TiptapInlineImageSize,
+  TiptapMediaAlign,
+} from './components/tiptap-editor/types';
+
 // 组件命名导出（供按需 import）
-export { AMediaPicker, AMediaLibrary, AIconPicker, AProTable };
+export { AMediaPicker, AMediaLibrary, AIconPicker, AProTable, ATiptapEditor };
 
 /**
  * 安装插件。
@@ -48,7 +58,7 @@ export { AMediaPicker, AMediaLibrary, AIconPicker, AProTable };
 const Admin9UI = {
   install(app: App, options: Admin9UIPluginOptions = {}) {
     // 名称冲突检测：A 前缀下若与 Arco 原生组件重名，提示及早发现
-    const reserved = ['AMediaPicker', 'AMediaLibrary', 'AIconPicker', 'AProTable'];
+    const reserved = ['AMediaPicker', 'AMediaLibrary', 'AIconPicker', 'AProTable', 'ATiptapEditor'];
     reserved.forEach((name) => {
       if (app.component(name)) {
         // eslint-disable-next-line no-console
@@ -63,6 +73,7 @@ const Admin9UI = {
     app.component('AMediaLibrary', AMediaLibrary);
     app.component('AIconPicker', AIconPicker);
     app.component('AProTable', AProTable);
+    app.component('ATiptapEditor', ATiptapEditor);
 
     // 提供默认服务，供使用点不传 :service 时回退
     app.provide(admin9UIPluginOptionsKey, options);

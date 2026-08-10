@@ -44,7 +44,8 @@ admin9-ui/
     │   ├── icon-picker/
     │   ├── media-library/
     │   ├── media-picker/
-    │   └── pro-table/
+    │   ├── pro-table/
+    │   └── tiptap-editor/
     ├── internal/
     ├── hooks/
     ├── locale/
@@ -63,6 +64,7 @@ admin9-ui/
 | `AMediaLibrary`                                        | 页面级素材与单级分组管理        | `MediaLibraryService` 注入 |
 | `AIconPicker`                                          | Arco 图标搜索与选择             | 无                         |
 | `AProTable`                                            | fetcher 驱动的页面级表格        | fetcher prop 注入          |
+| `ATiptapEditor`                                        | Tiptap 驱动的 HTML 富文本编辑器 | 可选 `MediaService`        |
 | `Admin9UIPluginOptions`、`MediaService` 及相关公共类型 | 插件配置与素材 adapter 契约     | 消费方实现                 |
 | `messages`、`localePrefix`、`zhCN`、`enUS`             | 中英文 locale                   | 宿主 i18n 实例             |
 | `arcoIconNames`                                        | 图标名清单                      | Arco 图标全局注册          |
@@ -225,6 +227,23 @@ Props、Events、Slots、状态行为和示例见 [AMediaLibrary 使用文档](.
 - 它不包含查询表单、工具栏、导出或具体行操作等应用业务能力。
 - 应用共享的 Grid 家族保持在消费方，不属于本包迁移范围。
 
+### ATiptapEditor
+
+- 以 HTML 字符串作为 `v-model`，提供标题、基础行内格式、列表、引用、链接、对齐、撤销重做和字符限制。
+- 媒体 schema 由 `blockImage`、`inlineImage`、`video`、`audio` 四个 atom 节点组成；图片显示形态只由 `defaultImageDisplay` 或显式转换决定，不根据素材宽高推断。
+- 块级图片和视频使用正文容器百分比宽度与左中右对齐；桌面节点视图提供等比拖动且最大不超过正文宽度。块级图片默认按素材自身宽度显示，小图不放大、大图等比收进编辑区；用户调整后可通过独立操作重置为默认规则。行内图片继续使用受控 em 级别并按文字基线排列。音频独立使用 `compact`（约 320px）、`standard`（约 480px）、`full` 三档容器宽度和左中右对齐，默认 `standard + left`，移动端强制通栏，不提供高度或自由拖动调整。
+- 上述节点名、百分比、em 和像素值仅属于 schema 与样式实现。界面 locale 使用“独占一行 / 跟随文字”“小 / 中 / 大 / 铺满”“重置大小”“小播放器 / 标准播放器 / 铺满编辑区”等操作结果名称，并为图标按钮提供 Tooltip、`aria-label` 和可选择操作的 `aria-pressed` 状态。
+- 主工具栏与媒体上下文栏的普通操作使用 Arco 中性文字和填充变量；只有实际生效的格式、尺寸和对齐状态使用品牌主色，危险删除保留 danger 状态。颜色不是唯一状态信号，切换型按钮同时暴露 `aria-pressed`。
+- 媒体节点只持久化校验后的 `data-display`、`data-width`、`data-size`、`data-align` 等属性，不接受任意 `style`。URL 只允许 HTTP(S) 或相对地址；音视频固定输出 `controls` 与 `preload="metadata"`，不保留 `autoplay`。
+- 图片、视频和音频通过已有 `MediaService` 与对应类型的 `AMediaPicker` 插入或替换；picker 仅监听 `change`，没有外部选择状态。没有 service 时编辑器保持可用但不显示素材入口。
+- 块媒体插入后使用 Gap Cursor 继续输入，并关闭 StarterKit 的 trailing node，不把辅助空段落写入最终 HTML。
+- 可编辑节点选中后通过 Tiptap BubbleMenu 显示尺寸、对齐、图片替代文字、显示方式、替换和删除操作；图片替代文字按需在 Popover 中编辑。只读和禁用状态不显示编辑控件，但仍保留音视频播放能力。
+- 正文在 `minHeight` 与响应式 `maxHeight` 之间自动增高，达到上限后由正文容器内部滚动；主工具栏和字数统计保持在滚动区外。BubbleMenu portal 到页面浮层层级，不参与编辑器布局，也不主动修改页面或正文滚动位置。
+- BubbleMenu 以选中媒体和正文滚动视口的可见交集作为虚拟锚点，使用 Floating UI 自动翻转、边缘位移与尺寸约束；媒体完全离开正文视口时隐藏，重新进入后恢复。
+- 移动端媒体上下文栏使用受正文宽度约束的紧凑单行滚动分组，全部操作仍可访问，不压缩正文可视高度。
+- 支持禁用和只读状态，并暴露 `focus()`、`clear()` 与 `getHTML()` 实例方法。
+- 不内置业务模板、附件、表格、代码高亮、协同编辑或服务端 HTML 清洗；公开展示保存结果前仍由消费方执行可信 HTML 清洗。
+
 ## 6. 国际化
 
 组件库不创建独立 vue-i18n 实例，以避免 locale 状态分裂。
@@ -256,7 +275,7 @@ Props、Events、Slots、状态行为和示例见 [AMediaLibrary 使用文档](.
 | `./locale` require   | `dist/locale/index.cjs`  |
 | `./locale` types     | `dist/locale/index.d.ts` |
 
-Vue、Arco Design Vue 和 vue-i18n 是 peer dependencies，并在构建中 external，避免消费方获得重复运行时实例。
+Vue、Arco Design Vue 和 vue-i18n 是 peer dependencies，并在构建中 external。Tiptap 是 package 的运行时依赖，同样 external，由消费方依赖树统一解析，避免重复打包编辑器运行时。
 
 发布候选必须完成：
 

@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="1280" viewBox="0 0 640 1280" role="img" aria-labelledby="title description">
+  <title id="title">Long editorial workflow</title>
+  <desc id="description">A tall local acceptance asset with repeated content workflow sections.</desc>
+  <rect width="640" height="1280" fill="#f2f3f5"/>
+  <rect x="40" y="40" width="560" height="1200" rx="8" fill="#ffffff" stroke="#d8dce3"/>
+  <rect x="72" y="76" width="220" height="24" rx="4" fill="#1d2129"/>
+  <rect x="72" y="118" width="410" height="10" rx="3" fill="#c9cdd4"/>
+  <rect x="72" y="142" width="360" height="10" rx="3" fill="#e5e6eb"/>
+  <g transform="translate(72 198)">
+    <rect width="496" height="204" rx="6" fill="#f7f8fa" stroke="#e5e6eb"/>
+    <circle cx="34" cy="34" r="14" fill="#165dff"/>
+    <rect x="62" y="24" width="170" height="16" rx="3" fill="#4e5969"/>
+    <rect x="24" y="72" width="448" height="10" rx="3" fill="#c9cdd4"/>
+    <rect x="24" y="100" width="396" height="10" rx="3" fill="#e5e6eb"/>
+    <rect x="24" y="142" width="132" height="38" rx="4" fill="#e8f3ff"/>
+    <rect x="172" y="142" width="132" height="38" rx="4" fill="#e8ffea"/>
+  </g>
+  <g transform="translate(72 438)">
+    <rect width="496" height="250" rx="6" fill="#ffffff" stroke="#e5e6eb"/>
+    <rect x="24" y="24" width="180" height="18" rx="3" fill="#1d2129"/>
+    <rect x="24" y="70" width="210" height="140" rx="5" fill="#e8f3ff"/>
+    <rect x="258" y="70" width="214" height="16" rx="3" fill="#4e5969"/>
+    <rect x="258" y="104" width="188" height="10" rx="3" fill="#c9cdd4"/>
+    <rect x="258" y="130" width="214" height="10" rx="3" fill="#e5e6eb"/>
+    <rect x="258" y="172" width="104" height="38" rx="4" fill="#fff7e8"/>
+  </g>
+  <g transform="translate(72 724)">
+    <rect width="496" height="204" rx="6" fill="#f7f8fa" stroke="#e5e6eb"/>
+    <circle cx="34" cy="34" r="14" fill="#00b42a"/>
+    <rect x="62" y="24" width="196" height="16" rx="3" fill="#4e5969"/>
+    <rect x="24" y="72" width="448" height="10" rx="3" fill="#c9cdd4"/>
+    <rect x="24" y="100" width="420" height="10" rx="3" fill="#e5e6eb"/>
+    <rect x="24" y="142" width="448" height="38" rx="4" fill="#e8ffea"/>
+  </g>
+  <g transform="translate(72 964)">
+    <rect width="496" height="220" rx="6" fill="#ffffff" stroke="#e5e6eb"/>
+    <rect x="24" y="24" width="158" height="18" rx="3" fill="#1d2129"/>
+    <rect x="24" y="72" width="448" height="1" fill="#e5e6eb"/>
+    <rect x="24" y="100" width="92" height="12" rx="3" fill="#4e5969"/>
+    <rect x="172" y="100" width="86" height="12" rx="3" fill="#86909c"/>
+    <rect x="382" y="94" width="90" height="24" rx="4" fill="#e8f3ff"/>
+    <rect x="24" y="146" width="108" height="12" rx="3" fill="#4e5969"/>
+    <rect x="172" y="146" width="74" height="12" rx="3" fill="#86909c"/>
+    <rect x="382" y="140" width="90" height="24" rx="4" fill="#fff7e8"/>
+  </g>
+</svg>
