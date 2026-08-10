@@ -11,7 +11,7 @@ The Admin9 `Grid`, `GridToolbar`, and `GridTable` family belongs to the applicat
 
 ## Commands
 
-Repository development and CI use Node 20 with pnpm 10.5.2. This is a repository toolchain baseline, not a package-consumer runtime restriction. Do not add a repository-only `packageManager` pin to the published manifest.
+Repository development and CI use Node 24 with pnpm 10.5.2. This is a repository toolchain baseline, not a package-consumer runtime restriction. Do not add a repository-only `packageManager` pin to the published manifest.
 
 ```bash
 corepack enable

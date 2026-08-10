@@ -72,7 +72,7 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 
 ## 开发
 
-仓库开发与 CI 基线为 Node 20、pnpm 10.5.2。该基线用于可重复开发和发布验证，不等同于 npm 包消费者的运行时限制。
+仓库开发与 CI 基线为 Node 24、pnpm 10.5.2。该基线用于可重复开发和发布验证，不等同于 npm 包消费者的运行时限制。
 
 ```bash
 corepack enable

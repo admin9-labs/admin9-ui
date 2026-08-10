@@ -296,7 +296,7 @@ Props、Events、Slots 和键盘行为见 [AIconPicker 使用文档](./docs/comp
 
 ## 8. 构建与发布
 
-仓库开发与 CI 使用 Node 20、pnpm 10.5.2，并以 `pnpm-lock.yaml` 固定开发依赖。该工具链基线只约束仓库构建和候选产物验证，不通过 repository-only `packageManager` pin 限制 npm 包消费者。
+仓库开发与 CI 使用 Node 24、pnpm 10.5.2，并以 `pnpm-lock.yaml` 固定开发依赖。该工具链基线只约束仓库构建和候选产物验证，不通过 repository-only `packageManager` pin 限制 npm 包消费者。
 
 | 入口                 | 产物                     |
 | -------------------- | ------------------------ |
