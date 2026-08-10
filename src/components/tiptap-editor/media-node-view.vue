@@ -26,6 +26,17 @@
     };
   });
 
+  const selectAudio = () => {
+    if (!props.editor.isEditable || !isAudio.value) return;
+    try {
+      const position = props.getPos();
+      if (typeof position !== 'number' || props.editor.state.doc.nodeAt(position)?.type.name !== 'audio') return;
+      props.editor.commands.setNodeSelection(position);
+    } catch {
+      // The node may have been removed between pointer interaction and command dispatch.
+    }
+  };
+
   let stopResize: (() => void) | undefined;
   const startResize = (event: PointerEvent) => {
     if (!props.editor.isEditable || !isResizable.value || (event.pointerType && event.pointerType !== 'mouse')) return;
@@ -102,6 +113,7 @@
       preload="metadata"
       :autoplay="false"
       :tabindex="playbackTabIndex"
+      @click="selectAudio"
     />
     <button
       v-if="selected && editor.isEditable && isResizable"

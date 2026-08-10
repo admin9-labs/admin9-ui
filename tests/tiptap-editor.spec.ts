@@ -2,6 +2,7 @@
 import { createApp, defineComponent, h, nextTick, ref, type App, type ComponentPublicInstance } from 'vue';
 import { Message } from '@arco-design/web-vue';
 import type { Editor } from '@tiptap/core';
+import { GapCursor } from '@tiptap/pm/gapcursor';
 import { NodeSelection } from '@tiptap/pm/state';
 import { createI18n } from 'vue-i18n';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -524,11 +525,13 @@ describe('ATiptapEditor public contract', () => {
 
   it('updates readonly and disabled root states dynamically', async () => {
     const mode = ref<'normal' | 'readonly' | 'disabled'>('normal');
+    const editorRef = ref<TiptapEditorInstance>();
     const Root = defineComponent({
       setup() {
         return () =>
           h(ATiptapEditor, {
-            modelValue: '<p>Dynamic state</p>',
+            ref: editorRef,
+            modelValue: '<p>Dynamic state</p><audio src="/dynamic.mp3"></audio>',
             readonly: mode.value === 'readonly',
             disabled: mode.value === 'disabled',
           });
@@ -542,16 +545,93 @@ describe('ATiptapEditor public contract', () => {
     await flush();
 
     const root = document.querySelector<HTMLElement>('.a9-tiptap-editor');
+    const audioWrapper = document.querySelector<HTMLElement>('[data-media-node="audio"]');
+    const editorInstance = editorRef.value;
+    if (!editorInstance) throw new Error('ATiptapEditor did not mount');
+    const internalEditor = getInternalEditor(editorInstance);
+    document.querySelector<HTMLAudioElement>('audio')?.click();
+    await flush();
+    expect(internalEditor.state.selection).toBeInstanceOf(NodeSelection);
+    expect(audioWrapper?.classList.contains('is-selected')).toBe(true);
+    expect(audioWrapper?.classList.contains('ProseMirror-selectednode')).toBe(true);
+    expect(document.querySelector('.a9-tiptap-editor__media-toolbar')).not.toBeNull();
+
     mode.value = 'readonly';
     await flush();
     expect(root?.classList.contains('is-readonly')).toBe(true);
+    expect(internalEditor.state.selection).not.toBeInstanceOf(NodeSelection);
+    expect(audioWrapper?.classList.contains('is-selected')).toBe(false);
+    expect(audioWrapper?.classList.contains('ProseMirror-selectednode')).toBe(false);
     expect(document.querySelector('.a9-tiptap-editor__toolbar')).toBeNull();
+    expect(document.querySelector('.a9-tiptap-editor__media-toolbar')).toBeNull();
+    expect(document.querySelector('audio')?.hasAttribute('controls')).toBe(true);
+
+    mode.value = 'normal';
+    await flush();
+    document.querySelector<HTMLAudioElement>('audio')?.click();
+    await flush();
+    expect(internalEditor.state.selection).toBeInstanceOf(NodeSelection);
+    expect(audioWrapper?.classList.contains('is-selected')).toBe(true);
+    expect(audioWrapper?.classList.contains('ProseMirror-selectednode')).toBe(true);
+    expect(document.querySelector('.a9-tiptap-editor__media-toolbar')).not.toBeNull();
 
     mode.value = 'disabled';
     await flush();
     expect(root?.classList.contains('is-readonly')).toBe(false);
     expect(root?.classList.contains('is-disabled')).toBe(true);
+    expect(internalEditor.state.selection).not.toBeInstanceOf(NodeSelection);
+    expect(audioWrapper?.classList.contains('is-selected')).toBe(false);
+    expect(audioWrapper?.classList.contains('ProseMirror-selectednode')).toBe(false);
+    expect(document.querySelector('.a9-tiptap-editor__media-toolbar')).toBeNull();
+    expect(document.querySelector('audio')?.hasAttribute('controls')).toBe(true);
     expect(document.querySelector<HTMLButtonElement>('button[aria-label="Bold"]')?.disabled).toBe(true);
+  });
+
+  it('falls back to a non-node selection when readonly media has no textblock', async () => {
+    const readonly = ref(false);
+    const modelValue = ref('<audio src="/only-audio.mp3"></audio>');
+    const editorRef = ref<TiptapEditorInstance>();
+    const Root = defineComponent({
+      setup() {
+        return () =>
+          h(ATiptapEditor, {
+            ref: editorRef,
+            modelValue: modelValue.value,
+            readonly: readonly.value,
+          });
+      },
+    });
+    const app = createApp(Root);
+    app.use(createI18n({ legacy: false, locale: 'en-US', messages }));
+    installStubs(app);
+    mountedApps.push(app);
+    app.mount('#app');
+    await flush();
+
+    const editorInstance = editorRef.value;
+    if (!editorInstance) throw new Error('ATiptapEditor did not mount');
+    const internalEditor = getInternalEditor(editorInstance);
+    const audioWrapper = document.querySelector<HTMLElement>('[data-media-node="audio"]');
+    document.querySelector<HTMLAudioElement>('audio')?.click();
+    await flush();
+    expect(internalEditor.state.selection).toBeInstanceOf(NodeSelection);
+
+    readonly.value = true;
+    await flush();
+    expect(internalEditor.state.selection).toBeInstanceOf(GapCursor);
+    expect(audioWrapper?.classList.contains('is-selected')).toBe(false);
+    expect(audioWrapper?.classList.contains('ProseMirror-selectednode')).toBe(false);
+    expect(document.querySelector('.a9-tiptap-editor__media-toolbar')).toBeNull();
+    expect(document.querySelector('audio')?.hasAttribute('controls')).toBe(true);
+
+    modelValue.value = '<audio src="/updated-only-audio.mp3"></audio>';
+    await flush();
+    const updatedAudioWrapper = document.querySelector<HTMLElement>('[data-media-node="audio"]');
+    expect(internalEditor.state.selection).toBeInstanceOf(GapCursor);
+    expect(updatedAudioWrapper?.classList.contains('is-selected')).toBe(false);
+    expect(updatedAudioWrapper?.classList.contains('ProseMirror-selectednode')).toBe(false);
+    expect(document.querySelector('.a9-tiptap-editor__media-toolbar')).toBeNull();
+    expect(document.querySelector('audio')?.hasAttribute('controls')).toBe(true);
   });
 
   it('keeps playback controls out of the editable tab order and updates them with editor state', async () => {
@@ -1160,14 +1240,27 @@ describe('ATiptapEditor public contract', () => {
 
   it('updates, replaces, reloads, and deletes audio layout without enabling drag resize', async () => {
     const instance = mountEditor({
-      modelValue: '<audio src="/podcast.mp3" data-width="standard" data-align="left"></audio>',
+      modelValue: '<p>Before audio</p><audio src="/podcast.mp3" data-width="standard" data-align="left"></audio>',
       service: {},
     });
     await flush();
     const internalEditor = getInternalEditor(instance);
-    internalEditor.commands.setNodeSelection(findNodePosition(internalEditor, 'audio'));
+    internalEditor.commands.setTextSelection(1);
+    const audio = document.querySelector<HTMLAudioElement>('audio');
+    const audioNodeWrapper = document.querySelector<HTMLElement>('[data-media-node="audio"]');
+    const playbackClick = vi.fn();
+    const parentClick = vi.fn();
+    audio?.addEventListener('click', playbackClick);
+    audioNodeWrapper?.addEventListener('click', parentClick);
+    const playbackEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
+    expect(audio?.dispatchEvent(playbackEvent)).toBe(true);
     await flush();
 
+    expect(playbackClick).toHaveBeenCalledOnce();
+    expect(parentClick).toHaveBeenCalledOnce();
+    expect(playbackEvent.defaultPrevented).toBe(false);
+    expect(internalEditor.state.selection).toBeInstanceOf(NodeSelection);
+    expect(internalEditor.state.selection.from).toBe(findNodePosition(internalEditor, 'audio'));
     expect(document.querySelector('[data-selected-media="audio"]')).not.toBeNull();
     expect(document.querySelector('button[data-media-width="compact"]')?.getAttribute('aria-label')).toBe('Small player');
     expect(document.querySelector('button[data-media-width="standard"]')?.getAttribute('aria-pressed')).toBe('true');
@@ -1187,10 +1280,10 @@ describe('ATiptapEditor public contract', () => {
 
     document.querySelector('[data-media-replace]')?.querySelector<HTMLButtonElement>('.media-picker-confirm')?.click();
     await flush();
-    let audio = new DOMParser().parseFromString(instance.getHTML(), 'text/html').querySelector('audio');
-    expect(audio?.getAttribute('src')).toBe('https://cdn-replacement.example.com/admin9-theme.mp3');
-    expect(audio?.getAttribute('data-width')).toBe('compact');
-    expect(audio?.getAttribute('data-align')).toBe('right');
+    let serializedAudio = new DOMParser().parseFromString(instance.getHTML(), 'text/html').querySelector('audio');
+    expect(serializedAudio?.getAttribute('src')).toBe('https://cdn-replacement.example.com/admin9-theme.mp3');
+    expect(serializedAudio?.getAttribute('data-width')).toBe('compact');
+    expect(serializedAudio?.getAttribute('data-align')).toBe('right');
 
     const serialized = instance.getHTML();
     mountedApps.shift()?.unmount();
@@ -1202,22 +1295,22 @@ describe('ATiptapEditor public contract', () => {
     expect(audioWrapper?.getAttribute('data-width')).toBe('compact');
     expect(audioWrapper?.getAttribute('data-align')).toBe('right');
 
-    const reloadedEditor = getInternalEditor(reloadedInstance);
-    reloadedEditor.commands.setNodeSelection(findNodePosition(reloadedEditor, 'audio'));
+    document.querySelector<HTMLAudioElement>('audio')?.click();
     await flush();
+    expect(document.querySelector('[data-selected-media="audio"]')).not.toBeNull();
     document.querySelector<HTMLButtonElement>('button[data-media-width="full"]')?.click();
     document.querySelector<HTMLButtonElement>('button[data-media-align="center"]')?.click();
     await flush();
-    audio = new DOMParser().parseFromString(reloadedInstance.getHTML(), 'text/html').querySelector('audio');
-    expect(audio?.getAttribute('data-width')).toBe('full');
-    expect(audio?.getAttribute('data-align')).toBe('center');
+    serializedAudio = new DOMParser().parseFromString(reloadedInstance.getHTML(), 'text/html').querySelector('audio');
+    expect(serializedAudio?.getAttribute('data-width')).toBe('full');
+    expect(serializedAudio?.getAttribute('data-align')).toBe('center');
     expect(document.querySelector<HTMLElement>('[data-media-node="audio"]')?.style.getPropertyValue('--a9-media-width')).toBe(
       '100%'
     );
 
     document.querySelector<HTMLButtonElement>('button[aria-label="Delete audio"]')?.click();
     await flush();
-    expect(reloadedInstance.getHTML()).toBe('');
+    expect(reloadedInstance.getHTML()).toBe('<p>Before audio</p>');
   });
 
   it('parses safe image forms, strips arbitrary styles, and rejects unsafe image sources', async () => {
@@ -1285,6 +1378,7 @@ describe('ATiptapEditor public contract', () => {
     expect(document.querySelector('.a9-tiptap-editor__media-toolbar')).toBeNull();
     expect(document.querySelector('.a9-tiptap-editor__resize-handle')).toBeNull();
     expect(document.querySelector('video')?.hasAttribute('controls')).toBe(true);
+    expect(document.querySelector('audio')?.hasAttribute('controls')).toBe(true);
 
     mountedApps.splice(0).forEach((app) => app.unmount());
     document.body.innerHTML = '<div id="app"></div>';

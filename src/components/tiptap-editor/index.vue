@@ -8,7 +8,7 @@
   import StarterKit from '@tiptap/starter-kit';
   import { GapCursor } from '@tiptap/pm/gapcursor';
   import { Fragment } from '@tiptap/pm/model';
-  import { NodeSelection, Plugin, PluginKey, Selection, type Transaction } from '@tiptap/pm/state';
+  import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transaction } from '@tiptap/pm/state';
   import { EditorContent, useEditor } from '@tiptap/vue-3';
   import { useI18n } from 'vue-i18n';
   import admin9UIOptionsKey from '../../internal/options';
@@ -151,6 +151,29 @@
       type: selection.node.type.name as TiptapMediaNodeName,
       attrs: { ...selection.node.attrs },
     };
+  }
+
+  function clearNodeSelection(currentEditor: Editor) {
+    const { doc, selection } = currentEditor.state;
+    if (!(selection instanceof NodeSelection)) return;
+
+    let textPosition: number | undefined;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    doc.descendants((node, pos) => {
+      if (!node.isTextblock) return;
+      const candidate = pos + 1;
+      const distance = Math.abs(candidate - selection.from);
+      if (distance < nearestDistance) {
+        textPosition = candidate;
+        nearestDistance = distance;
+      }
+    });
+
+    const nextSelection =
+      textPosition === undefined
+        ? new GapCursor(doc.resolve(Math.min(selection.to, doc.content.size)))
+        : TextSelection.create(doc, textPosition);
+    currentEditor.view.dispatch(currentEditor.state.tr.setSelection(nextSelection));
   }
 
   const editor = useEditor({
@@ -622,10 +645,21 @@
     (value) => {
       if (!editor.value) return;
       const currentValue = editor.value.isEmpty ? '' : editor.value.getHTML();
-      if (value !== currentValue) editor.value.commands.setContent(value || '', { emitUpdate: false });
+      if (value !== currentValue) {
+        editor.value.commands.setContent(value || '', { emitUpdate: false });
+        if (!isEditable.value) {
+          clearNodeSelection(editor.value);
+          selectedMedia.value = undefined;
+        }
+      }
     }
   );
-  watch(isEditable, (value) => editor.value?.setEditable(value));
+  watch(isEditable, (value) => {
+    const currentEditor = editor.value;
+    currentEditor?.setEditable(value);
+    if (!value && currentEditor) clearNodeSelection(currentEditor);
+    if (!value) selectedMedia.value = undefined;
+  });
   watch([() => selectedMedia.value?.pos, () => selectedMedia.value?.type, () => selectedMedia.value?.attrs.alt], () => {
     altDraft.value = typeof selectedMedia.value?.attrs.alt === 'string' ? selectedMedia.value.attrs.alt : '';
   });
