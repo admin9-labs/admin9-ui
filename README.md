@@ -4,12 +4,12 @@
 
 本包不提供通用 hooks、工具函数、路由、状态管理或其他宿主应用基础设施。
 
-当前版本为 `0.3.0`。本项目遵循语义化版本；在 `0.x` 阶段，次版本可能包含不兼容调整。
+当前版本为 `0.3.1`。本项目遵循语义化版本；在 `0.x` 阶段，次版本可能包含不兼容调整。
 
 ## 安装
 
 ```bash
-pnpm add @admin9-labs/admin9-ui@0.3.0
+pnpm add @admin9-labs/admin9-ui@0.3.1
 ```
 
 消费应用可以使用自己的包管理器；这里使用 pnpm 只是示例，不要求消费者采用本仓库的开发工具版本。
@@ -121,7 +121,7 @@ GitHub Actions 是 PR、`main` push 和正式发布的最终质量权威。正�
 
 1. 确认下一版本号，在一个可审查的提交中更新 `package.json`，完成变更记录，并将该提交推送到 `main`。不要复用任何已经发布的版本号。
 2. 等待该提交的 `main` CI 通过。首次发版通常在这个计划好的发布提交上创建 annotated tag；ancestor 校验只用于允许 `main` 前进后的安全重跑。
-3. 创建规范 tag，例如 `git tag -a v0.3.0 <release-commit> -m "v0.3.0"`，再次确认 tag、package 版本和提交后，单独推送该 tag。一次只能推送一个发布 tag，必须等该 workflow 完成后再推送下一版本；GitHub concurrency 只保留一个 running 和一个 pending，新的 pending 可能替换旧的 pending。
+3. 创建规范 tag，例如 `git tag -a v0.3.1 <release-commit> -m "v0.3.1"`，再次确认 tag、package 版本和提交后，单独推送该 tag。一次只能推送一个发布 tag，必须等该 workflow 完成后再推送下一版本；GitHub concurrency 只保留一个 running 和一个 pending，新的 pending 可能替换旧的 pending。
 4. 观察 Release workflow 的三个 job 全部通过，再核对 npm package 页、`latest` dist-tag、provenance 和 GitHub Release 附件。
 
 失败时优先在 GitHub Actions 中重跑同一个 workflow。相同版本和相同 integrity 会安全跳过重复 npm 发布；一致的 GitHub Release 也会跳过。若 Registry integrity、`latest`、provenance 或 Release 附件不一致，工作流会失败，维护者不得通过移动 tag、复用版本或覆盖附件绕过校验。已发布的错误版本应执行 `npm deprecate @admin9-labs/admin9-ui@<bad-version> "<reason>"`，修复后发布新的 patch 版本；除 npm 安全事件和官方策略允许的紧急情况外，不使用 unpublish。
