@@ -195,7 +195,7 @@
             placeholder="选择一个 Arco 图标"
             data-testid="icon-picker"
           />
-          <span class="scenario-note">正常选择 · 搜索空结果</span>
+          <span class="scenario-note">官方分类 · 跨分类搜索 · 搜索清空恢复分类 · 空结果</span>
         </div>
       </section>
 

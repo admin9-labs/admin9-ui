@@ -74,7 +74,19 @@ export default {
   iconPicker: {
     placeholder: '选择图标',
     searchPlaceholder: '搜索图标',
+    categoryLabel: '图标分类',
+    searchResults: '搜索结果',
     empty: '无匹配图标',
+    categories: {
+      all: '全部',
+      direction: '方向指示',
+      suggestion: '提示建议',
+      interaction: '交互按钮',
+      edit: '编辑',
+      media: '影音',
+      brand: '商标',
+      general: '通用',
+    },
   },
   proTable: {
     action: '操作',

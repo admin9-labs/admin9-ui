@@ -2,6 +2,8 @@
 import { createApp, defineComponent, h, nextTick, type App } from 'vue';
 import { createI18n } from 'vue-i18n';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { arcoIconCategories } from '../src/components/icon-picker/icon-categories';
+import { arcoIconNames } from '../src/components/icon-picker/icon-names';
 import AIconPicker from '../src/components/icon-picker/index.vue';
 
 const mountedApps: App[] = [];
@@ -87,7 +89,17 @@ function mountPicker(props: Record<string, unknown> = {}) {
         'en-US': {
           'admin9Ui.iconPicker.placeholder': 'Select icon',
           'admin9Ui.iconPicker.searchPlaceholder': 'Search icons',
+          'admin9Ui.iconPicker.categoryLabel': 'Icon categories',
+          'admin9Ui.iconPicker.searchResults': 'Search results',
           'admin9Ui.iconPicker.empty': 'No matching icon',
+          'admin9Ui.iconPicker.categories.all': 'All',
+          'admin9Ui.iconPicker.categories.direction': 'Direction',
+          'admin9Ui.iconPicker.categories.suggestion': 'Suggestions',
+          'admin9Ui.iconPicker.categories.interaction': 'Interactions',
+          'admin9Ui.iconPicker.categories.edit': 'Editing',
+          'admin9Ui.iconPicker.categories.media': 'Media',
+          'admin9Ui.iconPicker.categories.brand': 'Brands',
+          'admin9Ui.iconPicker.categories.general': 'General',
         },
       },
     })
@@ -101,6 +113,34 @@ function mountPicker(props: Record<string, unknown> = {}) {
   mountedApps.push(app);
   app.mount('#app');
 }
+
+describe('AIconPicker official category metadata', () => {
+  it('covers every public icon exactly once with the official category counts', () => {
+    const counts = Object.fromEntries(arcoIconCategories.map((category) => [category.key, category.names.length]));
+    const categorizedNames = arcoIconCategories.flatMap((category) => [...category.names]);
+    const publicNames = arcoIconNames.map((item) => item.kebab);
+
+    expect(counts).toEqual({
+      direction: 34,
+      suggestion: 25,
+      interaction: 43,
+      edit: 42,
+      media: 23,
+      brand: 23,
+      general: 97,
+    });
+    expect(categorizedNames).toHaveLength(287);
+    expect(new Set(categorizedNames).size).toBe(287);
+    expect(new Set(categorizedNames)).toEqual(new Set(publicNames));
+  });
+
+  it('uses the repository-normalized Facebook icon name', () => {
+    const brand = arcoIconCategories.find((category) => category.key === 'brand');
+
+    expect(brand?.names).toContain('icon-face-book-circle-fill');
+    expect(brand?.names).not.toContain('icon-faceBook-circle-fill');
+  });
+});
 
 describe('AIconPicker public contract', () => {
   beforeEach(() => {
@@ -162,6 +202,43 @@ describe('AIconPicker public contract', () => {
     await flush();
     expect(document.querySelector<HTMLInputElement>('[data-testid="icon-search"]')?.value).toBe('');
     expect(document.querySelectorAll('.a9-icon-picker__cell').length).toBeGreaterThan(1);
+  });
+
+  it('filters by official category and keeps search global before restoring the category', async () => {
+    mountPicker();
+    document.querySelector<HTMLButtonElement>('[data-testid="open-icons"]')?.click();
+    await flush();
+
+    expect(document.querySelector('.a9-icon-picker__categories')?.getAttribute('role')).toBe('group');
+    expect(document.querySelector('[data-category="all"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('[data-category="brand"]')?.getAttribute('aria-pressed')).toBe('false');
+    expect(document.querySelectorAll('.a9-icon-picker__cell')).toHaveLength(287);
+    document.querySelector<HTMLButtonElement>('[data-category="brand"]')?.click();
+    await flush();
+    expect(document.querySelector('[data-category="all"]')?.getAttribute('aria-pressed')).toBe('false');
+    expect(document.querySelector('[data-category="brand"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelectorAll('.a9-icon-picker__cell')).toHaveLength(23);
+    expect(document.querySelector('[data-icon-name="icon-face-book-circle-fill"]')).not.toBeNull();
+    expect(document.querySelector('.a9-icon-picker__result-heading')?.textContent).toContain('Brands');
+
+    const search = document.querySelector<HTMLInputElement>('[data-testid="icon-search"]');
+    if (!search) throw new Error('Icon search was not rendered');
+    search.value = 'dashboard';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    await flush();
+    expect(document.querySelectorAll('.a9-icon-picker__cell')).toHaveLength(1);
+    expect(document.querySelector('[data-icon-name="icon-dashboard"]')).not.toBeNull();
+    expect(document.querySelector('.a9-icon-picker__result-heading')?.textContent).toContain('Search results');
+    expect(document.querySelector('[data-category="all"]')?.getAttribute('aria-pressed')).toBe('false');
+    expect(document.querySelector('[data-category="brand"]')?.getAttribute('aria-pressed')).toBe('false');
+
+    search.value = '';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    await flush();
+    expect(document.querySelectorAll('.a9-icon-picker__cell')).toHaveLength(23);
+    expect(document.querySelector('.a9-icon-picker__result-heading')?.textContent).toContain('Brands');
+    expect(document.querySelector('[data-category="all"]')?.getAttribute('aria-pressed')).toBe('false');
+    expect(document.querySelector('[data-category="brand"]')?.getAttribute('aria-pressed')).toBe('true');
   });
 
   it('shows the localized empty state when no icon matches', async () => {

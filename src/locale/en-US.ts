@@ -74,7 +74,19 @@ export default {
   iconPicker: {
     placeholder: 'Select icon',
     searchPlaceholder: 'Search icon',
+    categoryLabel: 'Icon categories',
+    searchResults: 'Search results',
     empty: 'No matching icon',
+    categories: {
+      all: 'All',
+      direction: 'Direction',
+      suggestion: 'Suggestions',
+      interaction: 'Interactions',
+      edit: 'Editing',
+      media: 'Media',
+      brand: 'Brands',
+      general: 'General',
+    },
   },
   proTable: {
     action: 'Action',
