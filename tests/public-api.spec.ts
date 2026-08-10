@@ -9,6 +9,9 @@ import type {
   TiptapImageDisplay,
   TiptapInlineImageSize,
   TiptapMediaAlign,
+  TiptapMediaError,
+  TiptapMediaErrorReason,
+  TiptapMediaOperation,
 } from '../src';
 import * as localeApi from '../src/locale';
 
@@ -31,14 +34,32 @@ describe('package public API', () => {
     const width: TiptapBlockWidth = '75%';
     const size: TiptapInlineImageSize = '1.5em';
     const align: TiptapMediaAlign = 'right';
+    const operation: TiptapMediaOperation = 'insert';
+    const reason: TiptapMediaErrorReason = 'invalid-selection';
+    const mediaError: TiptapMediaError = {
+      operation,
+      mediaType: 'image',
+      reason,
+      attemptedItems: [],
+      rejectedItems: [],
+    };
     const props: ATiptapEditorProps = { defaultImageDisplay: display, maxHeight: '60dvh' };
 
-    expect({ display, audioWidth, width, size, align, props }).toEqual({
+    expect({ display, audioWidth, width, size, align, operation, reason, mediaError, props }).toEqual({
       display: 'inline',
       audioWidth: 'compact',
       width: '75%',
       size: '1.5em',
       align: 'right',
+      operation: 'insert',
+      reason: 'invalid-selection',
+      mediaError: {
+        operation: 'insert',
+        mediaType: 'image',
+        reason: 'invalid-selection',
+        attemptedItems: [],
+        rejectedItems: [],
+      },
       props: { defaultImageDisplay: 'inline', maxHeight: '60dvh' },
     });
   });

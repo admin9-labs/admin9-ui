@@ -268,7 +268,7 @@ Props、Events、Slots 和键盘行为见 [AIconPicker 使用文档](./docs/comp
 - 上述节点名、百分比、em 和像素值仅属于 schema 与样式实现。界面 locale 使用“独占一行 / 跟随文字”“小 / 中 / 大 / 铺满”“重置大小”“小播放器 / 标准播放器 / 铺满编辑区”等操作结果名称，并为图标按钮提供 Tooltip、`aria-label` 和可选择操作的 `aria-pressed` 状态。
 - 主工具栏与媒体上下文栏的普通操作使用 Arco 中性文字和填充变量；只有实际生效的格式、尺寸和对齐状态使用品牌主色，危险删除保留 danger 状态。颜色不是唯一状态信号，切换型按钮同时暴露 `aria-pressed`。
 - 媒体节点只持久化校验后的 `data-display`、`data-width`、`data-size`、`data-align` 等属性，不接受任意 `style`。URL 只允许 HTTP(S) 或相对地址；音视频固定输出 `controls` 与 `preload="metadata"`，不保留 `autoplay`。
-- 图片、视频和音频通过已有 `MediaService` 与对应类型的 `AMediaPicker` 插入或替换；picker 仅监听 `change`，没有外部选择状态。没有 service 时编辑器保持可用但不显示素材入口。
+- 图片、视频和音频通过已有 `MediaPickerService` 与对应类型的 `AMediaPicker` 插入或替换；编辑器显式使用 `valueType="item"`、`trigger` 插槽并仅监听确认后的 `change`，没有外部选择状态。插入前逐项复核类型和安全 URL，有效项保持部分成功，被拒项通过 locale 消息与结构化 `media-error` 报告；替换保持单项全有或全无。Tiptap 命令返回 `false` 或抛错同样报告失败。没有 service 时编辑器保持可用但不显示素材入口。
 - 块媒体插入后使用 Gap Cursor 继续输入，并关闭 StarterKit 的 trailing node，不把辅助空段落写入最终 HTML。
 - 可编辑节点选中后通过 Tiptap BubbleMenu 显示尺寸、对齐、图片替代文字、显示方式、替换和删除操作；图片替代文字按需在 Popover 中编辑。只读和禁用状态不显示编辑控件，但仍保留音视频播放能力。
 - 正文在 `minHeight` 与响应式 `maxHeight` 之间自动增高，达到上限后由正文容器内部滚动；主工具栏和字数统计保持在滚动区外。BubbleMenu portal 到页面浮层层级，不参与编辑器布局，也不主动修改页面或正文滚动位置。

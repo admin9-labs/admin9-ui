@@ -27,21 +27,21 @@
 
 ## Props
 
-| 属性                  | 类型                  | 默认值              | 说明                                           |
-| --------------------- | --------------------- | ------------------- | ---------------------------------------------- |
-| `modelValue`          | `string`              | `''`                | HTML 内容                                      |
-| `placeholder`         | `string`              | locale 文案         | 空内容占位符                                   |
-| `disabled`            | `boolean`             | `false`             | 禁用编辑和工具栏                               |
-| `readonly`            | `boolean`             | `false`             | 只读展示并隐藏工具栏                           |
-| `minHeight`           | `number \| string`    | `240`               | 正文滚动区最小高度；数字按 px 处理             |
-| `maxHeight`           | `number \| string`    | `min(640px, 60dvh)` | 正文滚动区最大高度；数字按 px 处理             |
-| `maxLength`           | `number`              | `0`                 | 最大字符数，`0` 表示不限                       |
-| `showWordCount`       | `boolean`             | `true`              | 是否显示字符统计                               |
-| `service`             | `MediaService`        | 插件注入值          | 图片、视频和音频素材服务                       |
-| `canUploadImage`      | `boolean`             | `true`              | 图片素材弹窗是否允许上传                       |
-| `canUploadVideo`      | `boolean`             | `true`              | 视频素材弹窗是否允许上传                       |
-| `canUploadAudio`      | `boolean`             | `true`              | 音频素材弹窗是否允许上传                       |
-| `defaultImageDisplay` | `'block' \| 'inline'` | `'block'`           | 新图片默认独占一行或跟随文字，不按素材尺寸推断 |
+| 属性                  | 类型                  | 默认值              | 说明                                               |
+| --------------------- | --------------------- | ------------------- | -------------------------------------------------- |
+| `modelValue`          | `string`              | `''`                | HTML 内容                                          |
+| `placeholder`         | `string`              | locale 文案         | 空内容占位符                                       |
+| `disabled`            | `boolean`             | `false`             | 禁用编辑和工具栏                                   |
+| `readonly`            | `boolean`             | `false`             | 只读展示并隐藏工具栏                               |
+| `minHeight`           | `number \| string`    | `240`               | 正文滚动区最小高度；数字按 px 处理                 |
+| `maxHeight`           | `number \| string`    | `min(640px, 60dvh)` | 正文滚动区最大高度；数字按 px 处理                 |
+| `maxLength`           | `number`              | `0`                 | 最大字符数，`0` 表示不限                           |
+| `showWordCount`       | `boolean`             | `true`              | 是否显示字符统计                                   |
+| `service`             | `MediaPickerService`  | 插件注入值          | 图片、视频和音频素材浏览服务；启用上传时需上传能力 |
+| `canUploadImage`      | `boolean`             | `true`              | 图片素材弹窗是否允许上传                           |
+| `canUploadVideo`      | `boolean`             | `true`              | 视频素材弹窗是否允许上传                           |
+| `canUploadAudio`      | `boolean`             | `true`              | 音频素材弹窗是否允许上传                           |
+| `defaultImageDisplay` | `'block' \| 'inline'` | `'block'`           | 新图片默认独占一行或跟随文字，不按素材尺寸推断     |
 
 `maxLength` 可动态调整。降低限制时不会截断已有内容，但会阻止内容继续增长；提高限制或改为 `0` 后，新的限制会从下一次编辑立即生效。
 
@@ -56,18 +56,21 @@
 - 视频：提供小、中、大、铺满快捷项，桌面仍可等比拖动微调；调整后可重置为默认铺满，并支持左中右对齐、替换和删除。
 - 音频：提供小播放器、标准播放器、铺满编辑区三档宽度，以及左中右对齐、替换和删除；默认标准播放器并左对齐。音频不提供高度或自由缩放，移动端会自动铺满编辑区，避免播放控件被压缩。
 
-媒体始终插入当前选区。独占一行的媒体之后使用 Gap Cursor 保持可继续输入，连续插入不会覆盖上一个节点，也不会为此向 HTML 写入尾随空段落。超高媒体以媒体 DOM 与正文滚动视口的可见交集作为 BubbleMenu 锚点，完全滚出时隐藏、重新进入时恢复。图片替代文字通过 Popover 按需编辑。移动端隐藏拖动柄，以尺寸预设作为主要调整方式；悬浮操作栏使用受正文宽度约束的单行分组，可横向访问全部操作。
+媒体始终插入当前选区。编辑器显式要求 Picker 返回完整 `MediaItem`，并在写入 Tiptap 前逐项复核类型与 URL：混合选择中的有效项仍会插入，被拒项通过界面反馈和 `media-error` 事件报告；全部无效时不执行插入命令。替换只接受一个完全有效且与当前节点同类型的素材。独占一行的媒体之后使用 Gap Cursor 保持可继续输入，连续插入不会覆盖上一个节点，也不会为此向 HTML 写入尾随空段落。超高媒体以媒体 DOM 与正文滚动视口的可见交集作为 BubbleMenu 锚点，完全滚出时隐藏、重新进入时恢复。图片替代文字通过 Popover 按需编辑。移动端隐藏拖动柄，以尺寸预设作为主要调整方式；悬浮操作栏使用受正文宽度约束的单行分组，可横向访问全部操作。
 
 界面只显示上述操作结果名称，不向普通用户展示 CSS 尺寸或节点术语。图片和视频始终保持比例且不超过编辑区宽度；拖动和外部 HTML 中的超限尺寸都会收敛到 100% 以内。内部序列化契约保持稳定：独占一行的图片使用 `data-display="block"`、`data-width`、`data-align`；跟随文字的图片使用 `data-display="inline"`、`data-size`；视频使用百分比 `data-width` 和 `data-align`；音频使用 `compact | standard | full` 的 `data-width` 与 `data-align`。重新解析 HTML 会恢复布局，输入中的任意 `style`、无效枚举值和不安全 URL 不会进入规范化输出。
 
 ## Events
 
-| 事件                | 参数            | 说明                         |
-| ------------------- | --------------- | ---------------------------- |
-| `update:modelValue` | `value: string` | 内容变化；空文档输出空字符串 |
-| `change`            | `value: string` | 内容变化                     |
-| `focus`             | 无              | 编辑区获得焦点               |
-| `blur`              | 无              | 编辑区失去焦点               |
+| 事件                | 参数               | 说明                         |
+| ------------------- | ------------------ | ---------------------------- |
+| `update:modelValue` | `value: string`    | 内容变化；空文档输出空字符串 |
+| `change`            | `value: string`    | 内容变化                     |
+| `focus`             | 无                 | 编辑区获得焦点               |
+| `blur`              | 无                 | 编辑区失去焦点               |
+| `media-error`       | `TiptapMediaError` | 素材校验拒绝或编辑器命令失败 |
+
+`TiptapMediaError` 包含 `operation`、`mediaType`、`reason`、`attemptedItems` 和 `rejectedItems`；底层命令抛错时还包含 `cause`。`invalid-selection` 可能伴随部分成功，消费方应以 `rejectedItems` 判断被跳过的素材；`command-failed` 表示本次有效素材未能写入或替换。
 
 ## 实例方法
 

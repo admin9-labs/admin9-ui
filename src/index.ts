@@ -48,6 +48,9 @@ export type {
   TiptapImageDisplay,
   TiptapInlineImageSize,
   TiptapMediaAlign,
+  TiptapMediaError,
+  TiptapMediaErrorReason,
+  TiptapMediaOperation,
 } from './components/tiptap-editor/types';
 
 // 组件命名导出（供按需 import）

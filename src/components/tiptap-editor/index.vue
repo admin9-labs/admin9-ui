@@ -1,5 +1,6 @@
 <script setup lang="ts">
   import { computed, inject, onMounted, ref, watch } from 'vue';
+  import { Message } from '@arco-design/web-vue';
   import { Extension, type Editor } from '@tiptap/core';
   import CharacterCount from '@tiptap/extension-character-count';
   import Placeholder from '@tiptap/extension-placeholder';
@@ -11,7 +12,7 @@
   import { EditorContent, useEditor } from '@tiptap/vue-3';
   import { useI18n } from 'vue-i18n';
   import admin9UIOptionsKey from '../../internal/options';
-  import type { MediaItem } from '../../services/types';
+  import type { MediaItem, MediaType } from '../../services/types';
   import AMediaPicker from '../media-picker/index.vue';
   import MediaBubbleMenu from './media-bubble-menu.vue';
   import { Audio, BlockImage, InlineImage, isSafeMediaUrl, type TiptapMediaNodeName, Video } from './media-node';
@@ -21,6 +22,8 @@
     TiptapBlockWidth,
     TiptapInlineImageSize,
     TiptapMediaAlign,
+    TiptapMediaError,
+    TiptapMediaOperation,
   } from './types';
 
   defineOptions({ name: 'ATiptapEditor' });
@@ -46,6 +49,7 @@
     (e: 'change', value: string): void;
     (e: 'focus'): void;
     (e: 'blur'): void;
+    (e: 'mediaError', error: TiptapMediaError): void;
   }>();
 
   const { t } = useI18n();
@@ -358,43 +362,95 @@
       return true;
     };
 
-  const insertMediaContent = (content: { type: TiptapMediaNodeName; attrs: Record<string, unknown> }[], block: boolean) => {
-    if (!editor.value || !isEditable.value || !content.length) return;
-    const chain = editor.value.chain().focus().insertContent(content);
-    if (block) chain.command(placeGapCursorAfterInsertedBlock());
-    chain.run();
+  const reportMediaError = (
+    operation: TiptapMediaOperation,
+    mediaType: MediaType,
+    reason: TiptapMediaError['reason'],
+    attemptedItems: MediaItem[],
+    rejectedItems: MediaItem[],
+    cause?: unknown
+  ) => {
+    const error: TiptapMediaError = {
+      operation,
+      mediaType,
+      reason,
+      attemptedItems: [...attemptedItems],
+      rejectedItems: [...rejectedItems],
+      ...(cause === undefined ? {} : { cause }),
+    };
+    let localeKey = 'mediaInsertFailed';
+    if (reason === 'invalid-selection') localeKey = 'mediaInvalid';
+    else if (operation === 'replace') localeKey = 'mediaReplaceFailed';
+    Message.error(t(`admin9Ui.tiptapEditor.${localeKey}`));
+    // eslint-disable-next-line vue/custom-event-name-casing
+    emit('mediaError', error);
+  };
+
+  const partitionMediaSelection = (items: MediaItem[], mediaType: MediaType) => {
+    const valid: (MediaItem & { url: string })[] = [];
+    const rejected: MediaItem[] = [];
+    items.forEach((item) => {
+      if (item.type === mediaType && isSafeMediaUrl(item.url)) valid.push(item as MediaItem & { url: string });
+      else rejected.push(item);
+    });
+    return { valid, rejected };
+  };
+
+  const insertMediaContent = (
+    content: { type: TiptapMediaNodeName; attrs: Record<string, unknown> }[],
+    block: boolean,
+    mediaType: MediaType,
+    items: MediaItem[]
+  ) => {
+    if (!editor.value || !isEditable.value || !content.length) {
+      reportMediaError('insert', mediaType, 'command-failed', items, []);
+      return false;
+    }
+    try {
+      const chain = editor.value.chain().focus().insertContent(content);
+      if (block) chain.command(placeGapCursorAfterInsertedBlock());
+      const inserted = chain.run();
+      if (!inserted) reportMediaError('insert', mediaType, 'command-failed', items, []);
+      return inserted;
+    } catch (cause) {
+      reportMediaError('insert', mediaType, 'command-failed', items, [], cause);
+      return false;
+    }
   };
 
   const insertImages = (items: MediaItem[]) => {
+    if (!items.length) return;
+    const { valid, rejected } = partitionMediaSelection(items, 'image');
+    if (rejected.length) reportMediaError('insert', 'image', 'invalid-selection', items, rejected);
+    if (!valid.length) return;
     const type: TiptapMediaNodeName = props.defaultImageDisplay === 'inline' ? 'inlineImage' : 'blockImage';
-    const content = items
-      .filter((item): item is MediaItem & { url: string } => item.type === 'image' && isSafeMediaUrl(item.url))
-      .map((item) => ({
-        type,
-        attrs: {
-          src: item.url,
-          alt: item.name,
-          title: item.name,
-          ...(type === 'inlineImage' ? { size: '1em' } : { width: 'natural', align: 'left' }),
-        },
-      }));
-    insertMediaContent(content, type === 'blockImage');
+    const content = valid.map((item) => ({
+      type,
+      attrs: {
+        src: item.url,
+        alt: item.name,
+        title: item.name,
+        ...(type === 'inlineImage' ? { size: '1em' } : { width: 'natural', align: 'left' }),
+      },
+    }));
+    insertMediaContent(content, type === 'blockImage', 'image', valid);
   };
 
   const insertMedia = (items: MediaItem[], mediaType: 'video' | 'audio') => {
-    if (!editor.value || !isEditable.value) return;
-    const content = items
-      .filter((item): item is MediaItem & { url: string } => item.type === mediaType && isSafeMediaUrl(item.url))
-      .map((item) => ({
-        type: mediaType,
-        attrs: {
-          src: item.url,
-          title: item.name,
-          width: mediaType === 'video' ? '100%' : 'standard',
-          align: 'left',
-        },
-      }));
-    insertMediaContent(content, true);
+    if (!items.length) return;
+    const { valid, rejected } = partitionMediaSelection(items, mediaType);
+    if (rejected.length) reportMediaError('insert', mediaType, 'invalid-selection', items, rejected);
+    if (!valid.length) return;
+    const content = valid.map((item) => ({
+      type: mediaType,
+      attrs: {
+        src: item.url,
+        title: item.name,
+        width: mediaType === 'video' ? '100%' : 'standard',
+        align: 'left',
+      },
+    }));
+    insertMediaContent(content, true, mediaType, valid);
   };
 
   const insertVideos = (items: MediaItem[]) => insertMedia(items, 'video');
@@ -409,13 +465,18 @@
 
   const updateSelectedMedia = (attributes: Record<string, unknown>) => {
     const current = getSelectedNode();
-    if (!editor.value || !current || !isEditable.value) return;
-    const transaction = editor.value.state.tr.setNodeMarkup(current.pos, undefined, {
-      ...current.node.attrs,
-      ...attributes,
-    });
-    transaction.setSelection(NodeSelection.create(transaction.doc, current.pos));
-    editor.value.view.dispatch(transaction);
+    if (!editor.value || !current || !isEditable.value) return false;
+    try {
+      const transaction = editor.value.state.tr.setNodeMarkup(current.pos, undefined, {
+        ...current.node.attrs,
+        ...attributes,
+      });
+      transaction.setSelection(NodeSelection.create(transaction.doc, current.pos));
+      editor.value.view.dispatch(transaction);
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const selectedMediaDefaultWidth = computed<TiptapBlockWidth | undefined>(() => {
@@ -431,13 +492,22 @@
   };
 
   const replaceSelectedMedia = (items: MediaItem[]) => {
+    if (!items.length) return;
     const current = getSelectedNode();
-    if (!current) return;
-    const expectedType =
-      current.node.type.name === 'blockImage' || current.node.type.name === 'inlineImage' ? 'image' : current.node.type.name;
-    const replacement = items.find((item) => item.type === expectedType && isSafeMediaUrl(item.url));
-    if (!replacement?.url) return;
-    updateSelectedMedia({ src: replacement.url, title: replacement.name });
+    const expectedType = selectedMediaKind.value;
+    if (!current || !expectedType) {
+      reportMediaError('replace', expectedType ?? items[0].type, 'command-failed', items, []);
+      return;
+    }
+    const { valid, rejected } = partitionMediaSelection(items, expectedType);
+    if (items.length !== 1 || rejected.length || valid.length !== 1) {
+      reportMediaError('replace', expectedType, 'invalid-selection', items, rejected.length ? rejected : items);
+      return;
+    }
+    const replacement = valid[0];
+    if (!updateSelectedMedia({ src: replacement.url, title: replacement.name })) {
+      reportMediaError('replace', expectedType, 'command-failed', items, []);
+    }
   };
 
   const applyAltText = () => {
@@ -674,12 +744,13 @@
           class="a9-tiptap-editor__media-picker"
           data-media-type="image"
           media-type="image"
+          value-type="item"
           :service="resolvedMediaService"
           :can-upload="canUploadImage"
           :show-file-list="false"
           @change="insertImages"
         >
-          <template #upload-button>
+          <template #trigger>
             <a-button size="small" type="text" :disabled="disabled" :aria-label="t('admin9Ui.tiptapEditor.image')">
               <template #icon><icon-image /></template>
             </a-button>
@@ -692,12 +763,13 @@
           class="a9-tiptap-editor__media-picker"
           data-media-type="video"
           media-type="video"
+          value-type="item"
           :service="resolvedMediaService"
           :can-upload="canUploadVideo"
           :show-file-list="false"
           @change="insertVideos"
         >
-          <template #upload-button>
+          <template #trigger>
             <a-button size="small" type="text" :disabled="disabled" :aria-label="t('admin9Ui.tiptapEditor.video')">
               <template #icon><icon-video-camera /></template>
             </a-button>
@@ -710,12 +782,13 @@
           class="a9-tiptap-editor__media-picker"
           data-media-type="audio"
           media-type="audio"
+          value-type="item"
           :service="resolvedMediaService"
           :can-upload="canUploadAudio"
           :show-file-list="false"
           @change="insertAudios"
         >
-          <template #upload-button>
+          <template #trigger>
             <a-button size="small" type="text" :disabled="disabled" :aria-label="t('admin9Ui.tiptapEditor.audio')">
               <template #icon><icon-sound /></template>
             </a-button>
@@ -980,6 +1053,7 @@
           v-if="resolvedMediaService"
           class="a9-tiptap-editor__media-picker a9-tiptap-editor__replacement-picker"
           data-media-replace
+          value-type="item"
           :media-type="
             selectedMedia.type === 'blockImage' || selectedMedia.type === 'inlineImage' ? 'image' : selectedMedia.type
           "
@@ -994,7 +1068,7 @@
           :show-file-list="false"
           @change="replaceSelectedMedia"
         >
-          <template #upload-button>
+          <template #trigger>
             <a-tooltip :content="replaceMediaLabel">
               <a-button size="mini" type="text" :aria-label="replaceMediaLabel">
                 <template #icon><icon-refresh /></template>

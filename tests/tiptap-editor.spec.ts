@@ -1,5 +1,6 @@
 /* eslint-disable vue/one-component-per-file */
 import { createApp, defineComponent, h, nextTick, ref, type App, type ComponentPublicInstance } from 'vue';
+import { Message } from '@arco-design/web-vue';
 import type { Editor } from '@tiptap/core';
 import { NodeSelection } from '@tiptap/pm/state';
 import { createI18n } from 'vue-i18n';
@@ -40,6 +41,7 @@ vi.mock('../src/components/media-picker/index.vue', async () => {
       props: {
         modelValue: Object,
         mediaType: { type: String, default: 'image' },
+        valueType: { type: String, default: 'item' },
       },
       emits: ['change', 'update:modelValue'],
       setup(props, { attrs, emit, slots }) {
@@ -63,31 +65,59 @@ vi.mock('../src/components/media-picker/index.vue', async () => {
             url: selectedItem.url.replace('.', '-replacement.'),
           };
 
-          return vue.h('div', { ...attrs, 'data-model-id': (props.modelValue as { id?: string } | undefined)?.id ?? '' }, [
-            slots['upload-button']?.(),
-            vue.h(
-              'button',
-              {
-                class: 'media-picker-confirm',
-                onClick: () => {
-                  emit('change', [...invalidItems, attrs['data-media-replace'] !== undefined ? replacementItem : selectedItem]);
-                  emit('update:modelValue', selectedItem);
+          return vue.h(
+            'div',
+            {
+              ...attrs,
+              'data-model-id': (props.modelValue as { id?: string } | undefined)?.id ?? '',
+              'data-value-type': props.valueType,
+            },
+            [
+              slots.trigger?.(),
+              vue.h(
+                'button',
+                {
+                  class: 'media-picker-confirm',
+                  onClick: () => {
+                    emit('change', [attrs['data-media-replace'] !== undefined ? replacementItem : selectedItem]);
+                    emit('update:modelValue', selectedItem);
+                  },
                 },
-              },
-              'Confirm image'
-            ),
-            vue.h(
-              'button',
-              {
-                class: 'media-picker-clear',
-                onClick: () => {
-                  emit('change', []);
-                  emit('update:modelValue', undefined);
+                'Confirm image'
+              ),
+              vue.h(
+                'button',
+                {
+                  class: 'media-picker-mixed',
+                  onClick: () =>
+                    emit('change', [
+                      ...invalidItems,
+                      attrs['data-media-replace'] !== undefined ? replacementItem : selectedItem,
+                    ]),
                 },
-              },
-              'Clear selection'
-            ),
-          ]);
+                'Confirm mixed media'
+              ),
+              vue.h(
+                'button',
+                {
+                  class: 'media-picker-invalid',
+                  onClick: () => emit('change', invalidItems),
+                },
+                'Confirm invalid media'
+              ),
+              vue.h(
+                'button',
+                {
+                  class: 'media-picker-clear',
+                  onClick: () => {
+                    emit('change', []);
+                    emit('update:modelValue', undefined);
+                  },
+                },
+                'Clear selection'
+              ),
+            ]
+          );
         };
       },
     }),
@@ -239,6 +269,7 @@ describe('ATiptapEditor public contract', () => {
 
   afterEach(() => {
     mountedApps.splice(0).forEach((app) => app.unmount());
+    vi.restoreAllMocks();
   });
 
   it('renders HTML, reports characters, and normalizes a cleared document to an empty string', async () => {
@@ -618,12 +649,14 @@ describe('ATiptapEditor public contract', () => {
     expect(link?.getAttribute('target')).toBe('_blank');
   });
 
-  it('inserts only valid picker images without retaining model state or duplicating an empty change', async () => {
-    const instance = mountEditor({ service: {} });
+  it('inserts valid picker images, reports rejected items, and keeps picker integration explicit', async () => {
+    const onMediaError = vi.fn();
+    const messageError = vi.spyOn(Message, 'error').mockImplementation(() => ({ close: vi.fn() }));
+    const instance = mountEditor({ service: {}, onMediaError });
     await flush();
 
     const picker = document.querySelector('[data-media-type="image"]');
-    picker?.querySelector<HTMLButtonElement>('.media-picker-confirm')?.click();
+    picker?.querySelector<HTMLButtonElement>('.media-picker-mixed')?.click();
     await flush();
 
     let parsedDocument = new DOMParser().parseFromString(instance.getHTML(), 'text/html');
@@ -640,6 +673,23 @@ describe('ATiptapEditor public contract', () => {
     expect(defaultImageWrapper?.style.maxWidth).toBe('100%');
     expect(instance.getHTML()).not.toContain(['java', 'script:'].join(''));
     expect(picker?.getAttribute('data-model-id')).toBe('');
+    expect(picker?.getAttribute('data-value-type')).toBe('item');
+    expect(picker?.querySelector('button[aria-label="Insert image"]')).not.toBeNull();
+    expect(messageError).toHaveBeenCalledWith('Some selected media were skipped because their type or URL is invalid.');
+    expect(onMediaError).toHaveBeenCalledTimes(1);
+    expect(onMediaError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'insert',
+        mediaType: 'image',
+        reason: 'invalid-selection',
+        attemptedItems: expect.arrayContaining([expect.objectContaining({ id: 'image-1' })]),
+        rejectedItems: expect.arrayContaining([
+          expect.objectContaining({ id: 'image-wrong-type' }),
+          expect.objectContaining({ id: 'image-missing-url' }),
+          expect.objectContaining({ id: 'image-unsafe-url' }),
+        ]),
+      })
+    );
 
     const internalEditor = getInternalEditor(instance);
     internalEditor.commands.setNodeSelection(findNodePosition(internalEditor, 'blockImage'));
@@ -652,6 +702,98 @@ describe('ATiptapEditor public contract', () => {
     parsedDocument = new DOMParser().parseFromString(instance.getHTML(), 'text/html');
     expect(parsedDocument.querySelectorAll('img')).toHaveLength(1);
     expect(picker?.getAttribute('data-model-id')).toBe('');
+  });
+
+  it('does not run an insert command when every selected item is invalid', async () => {
+    const onMediaError = vi.fn();
+    vi.spyOn(Message, 'error').mockImplementation(() => ({ close: vi.fn() }));
+    const instance = mountEditor({ service: {}, onMediaError });
+    await flush();
+    const internalEditor = getInternalEditor(instance);
+    const chainSpy = vi.spyOn(internalEditor, 'chain');
+
+    document.querySelector('[data-media-type="image"]')?.querySelector<HTMLButtonElement>('.media-picker-invalid')?.click();
+    await flush();
+
+    expect(chainSpy).not.toHaveBeenCalled();
+    expect(instance.getHTML()).toBe('');
+    expect(onMediaError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'insert',
+        reason: 'invalid-selection',
+        attemptedItems: expect.any(Array),
+        rejectedItems: expect.any(Array),
+      })
+    );
+  });
+
+  it('reports a failed Tiptap insert command without claiming success', async () => {
+    const onMediaError = vi.fn();
+    const messageError = vi.spyOn(Message, 'error').mockImplementation(() => ({ close: vi.fn() }));
+    const instance = mountEditor({ service: {}, onMediaError });
+    await flush();
+    const internalEditor = getInternalEditor(instance);
+    const commandChain = {
+      focus: vi.fn(),
+      insertContent: vi.fn(),
+      command: vi.fn(),
+      run: vi.fn(() => false),
+    };
+    commandChain.focus.mockReturnValue(commandChain);
+    commandChain.insertContent.mockReturnValue(commandChain);
+    commandChain.command.mockReturnValue(commandChain);
+    vi.spyOn(internalEditor, 'chain').mockReturnValue(commandChain as unknown as ReturnType<Editor['chain']>);
+
+    document.querySelector('[data-media-type="image"]')?.querySelector<HTMLButtonElement>('.media-picker-confirm')?.click();
+    await flush();
+
+    expect(commandChain.run).toHaveBeenCalledOnce();
+    expect(instance.getHTML()).toBe('');
+    expect(messageError).toHaveBeenCalledWith('The selected media could not be inserted.');
+    expect(onMediaError).toHaveBeenCalledWith({
+      operation: 'insert',
+      mediaType: 'image',
+      reason: 'command-failed',
+      attemptedItems: [expect.objectContaining({ id: 'image-1' })],
+      rejectedItems: [],
+    });
+  });
+
+  it('reports an exception thrown by the Tiptap insert command', async () => {
+    const onMediaError = vi.fn();
+    const messageError = vi.spyOn(Message, 'error').mockImplementation(() => ({ close: vi.fn() }));
+    const instance = mountEditor({ service: {}, onMediaError });
+    await flush();
+    const internalEditor = getInternalEditor(instance);
+    const cause = new Error('insert failed');
+    const commandChain = {
+      focus: vi.fn(),
+      insertContent: vi.fn(),
+      command: vi.fn(),
+      run: vi.fn(() => {
+        throw cause;
+      }),
+    };
+    commandChain.focus.mockReturnValue(commandChain);
+    commandChain.insertContent.mockReturnValue(commandChain);
+    commandChain.command.mockReturnValue(commandChain);
+    vi.spyOn(internalEditor, 'chain').mockReturnValue(commandChain as unknown as ReturnType<Editor['chain']>);
+
+    document.querySelector('[data-media-type="image"]')?.querySelector<HTMLButtonElement>('.media-picker-confirm')?.click();
+    await flush();
+
+    expect(instance.getHTML()).toBe('');
+    expect(messageError).toHaveBeenCalledWith('The selected media could not be inserted.');
+    expect(onMediaError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'insert',
+        mediaType: 'image',
+        reason: 'command-failed',
+        attemptedItems: [expect.objectContaining({ id: 'image-1' })],
+        rejectedItems: [],
+        cause,
+      })
+    );
   });
 
   it('inserts block and inline images at the current text cursor without inferring display from dimensions', async () => {
@@ -823,6 +965,8 @@ describe('ATiptapEditor public contract', () => {
     await flush();
     const videoPicker = document.querySelector('[data-media-type="video"]');
     const audioPicker = document.querySelector('[data-media-type="audio"]');
+    expect(videoPicker?.getAttribute('data-value-type')).toBe('item');
+    expect(audioPicker?.getAttribute('data-value-type')).toBe('item');
 
     videoPicker?.querySelector<HTMLButtonElement>('.media-picker-confirm')?.click();
     audioPicker?.querySelector<HTMLButtonElement>('.media-picker-confirm')?.click();
@@ -866,6 +1010,70 @@ describe('ATiptapEditor public contract', () => {
     expect(audioPicker?.getAttribute('data-model-id')).toBe('');
     expect(instance.getHTML()).not.toContain('<p></p>');
     expect(instance.getHTML()).not.toContain('<p><br></p>');
+  });
+
+  it('rejects an invalid replacement atomically and keeps the selected media unchanged', async () => {
+    const onMediaError = vi.fn();
+    const messageError = vi.spyOn(Message, 'error').mockImplementation(() => ({ close: vi.fn() }));
+    const instance = mountEditor({
+      modelValue: '<img src="/cover.png" alt="Cover" title="Cover" data-display="block">',
+      service: {},
+      onMediaError,
+    });
+    await flush();
+    const internalEditor = getInternalEditor(instance);
+    internalEditor.commands.setNodeSelection(findNodePosition(internalEditor, 'blockImage'));
+    await flush();
+    const replacementPicker = document.querySelector('[data-media-replace]');
+
+    expect(replacementPicker?.getAttribute('data-value-type')).toBe('item');
+    replacementPicker?.querySelector<HTMLButtonElement>('.media-picker-mixed')?.click();
+    await flush();
+
+    expect(new DOMParser().parseFromString(instance.getHTML(), 'text/html').querySelector('img')?.getAttribute('src')).toBe(
+      '/cover.png'
+    );
+    expect(messageError).toHaveBeenCalledWith('Some selected media were skipped because their type or URL is invalid.');
+    expect(onMediaError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'replace',
+        mediaType: 'image',
+        reason: 'invalid-selection',
+        attemptedItems: expect.any(Array),
+        rejectedItems: expect.any(Array),
+      })
+    );
+  });
+
+  it('reports a failed replacement when the originally selected media node is no longer available', async () => {
+    const onMediaError = vi.fn();
+    const messageError = vi.spyOn(Message, 'error').mockImplementation(() => ({ close: vi.fn() }));
+    const instance = mountEditor({
+      modelValue: '<img src="/cover.png" alt="Cover" title="Cover" data-display="block">',
+      service: {},
+      onMediaError,
+    });
+    await flush();
+    const internalEditor = getInternalEditor(instance);
+    internalEditor.commands.setNodeSelection(findNodePosition(internalEditor, 'blockImage'));
+    await flush();
+    const replacementPicker = document.querySelector('[data-media-replace]');
+    vi.spyOn(internalEditor.state.doc, 'nodeAt').mockReturnValue(null);
+
+    replacementPicker?.querySelector<HTMLButtonElement>('.media-picker-confirm')?.click();
+    await flush();
+
+    expect(new DOMParser().parseFromString(instance.getHTML(), 'text/html').querySelector('img')?.getAttribute('src')).toBe(
+      '/cover.png'
+    );
+    expect(messageError).toHaveBeenCalledWith('The selected media could not be replaced.');
+    expect(onMediaError).toHaveBeenCalledWith({
+      operation: 'replace',
+      mediaType: 'image',
+      reason: 'command-failed',
+      attemptedItems: [expect.objectContaining({ id: 'image-replacement' })],
+      rejectedItems: [],
+    });
   });
 
   it('parses only safe video and audio nodes and normalizes playback attributes', async () => {
