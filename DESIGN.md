@@ -217,7 +217,12 @@ Props、Events、Slots、状态行为和示例见 [AMediaLibrary 使用文档](.
 - 图标清单以字符串形式分发，不把全部图标实现打入包。
 - 分类属于组件内部元数据，不改变公开 `arcoIconNames` 的数组结构，也不新增分类相关 prop。
 - 图标预览依赖消费方注册的 Arco 图标组件。
+- `disabled` 与 `readonly` 都阻止打开、选择和清除；`readonly` 保持表单字段可聚焦，`disabled` 使用原生禁用语义。
+- 表单属性转发到真实输入；触发器和图标网格支持完整键盘操作，清除是独立的具名按钮。
+- 默认渲染继续依赖宿主注册 Arco 图标；`icon` 插槽允许消费方提供按需图标渲染，不把图标注册职责移入组件。
 - 输出合法图标名字符串，支持清空。
+
+Props、Events、Slots 和键盘行为见 [AIconPicker 使用文档](./docs/components/icon-picker.md)。
 
 ### AProTable
 

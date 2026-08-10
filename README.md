@@ -52,7 +52,7 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 - 默认导出的 `Admin9UI` 插件：全局注册五个组件，并可注入默认 `MediaService`
 - [`AMediaPicker`](./docs/components/media-picker.md)：支持图片、视频和音频的表单级轻量素材选择器
 - [`AMediaLibrary`](./docs/components/media-library.md)：支持分组、上传、移动和删除的页面级素材管理组件
-- `AIconPicker`：Arco 图标选择器
+- [`AIconPicker`](./docs/components/icon-picker.md)：支持分类、搜索、键盘导航和表单状态的 Arco 图标选择器
 - `AProTable`：通过 fetcher 注入数据源的页面级表格
 - [`ATiptapEditor`](./docs/components/tiptap-editor.md)：基于 Tiptap，支持内部滚动工作区、悬浮媒体工具栏、独占一行/跟随文字图片、可调尺寸视频与三档播放器宽度的表单级 HTML 富文本编辑器
 - `Admin9UIPluginOptions`、`MediaService`、`MediaLibraryService`、`ATiptapEditorProps` 及相关数据类型

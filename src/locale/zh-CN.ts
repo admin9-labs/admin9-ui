@@ -77,6 +77,7 @@ export default {
     categoryLabel: '图标分类',
     searchResults: '搜索结果',
     empty: '无匹配图标',
+    clear: '清除图标',
     categories: {
       all: '全部',
       direction: '方向指示',

@@ -77,6 +77,7 @@ export default {
     categoryLabel: 'Icon categories',
     searchResults: 'Search results',
     empty: 'No matching icon',
+    clear: 'Clear icon',
     categories: {
       all: 'All',
       direction: 'Direction',

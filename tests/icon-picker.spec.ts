@@ -9,12 +9,20 @@ import AIconPicker from '../src/components/icon-picker/index.vue';
 const mountedApps: App[] = [];
 
 const PopoverStub = defineComponent({
-  props: { popupVisible: Boolean },
+  props: { popupVisible: Boolean, disabled: Boolean },
   emits: ['update:popupVisible'],
   setup(props, { emit, slots }) {
     return () =>
       h('div', [
-        h('button', { 'data-testid': 'open-icons', 'onClick': () => emit('update:popupVisible', true) }, 'Open'),
+        h(
+          'button',
+          {
+            'data-testid': 'open-icons',
+            'disabled': props.disabled,
+            'onClick': () => !props.disabled && emit('update:popupVisible', true),
+          },
+          'Open'
+        ),
         slots.default?.(),
         props.popupVisible ? h('div', { 'data-testid': 'icon-panel' }, slots.content?.()) : undefined,
       ]);
@@ -22,8 +30,10 @@ const PopoverStub = defineComponent({
 });
 
 const InputStub = defineComponent({
-  props: { modelValue: String, placeholder: String, size: String, readonly: Boolean },
-  setup(props, { slots }) {
+  props: { modelValue: String, placeholder: String, size: String, readonly: Boolean, disabled: Boolean, inputAttrs: Object },
+  setup(props, { slots, expose }) {
+    const input = document.createElement('input');
+    expose({ focus: () => input.focus() });
     return () =>
       h(
         'div',
@@ -33,18 +43,31 @@ const InputStub = defineComponent({
           'data-placeholder': props.placeholder,
           'data-size': props.size,
           'data-readonly': String(props.readonly),
+          'data-disabled': String(props.disabled),
         },
-        [slots.prefix?.(), slots.suffix?.()]
+        [
+          h('input', {
+            ...(props.inputAttrs as Record<string, unknown>),
+            'data-testid': 'native-icon-input',
+            'value': props.modelValue,
+            'placeholder': props.placeholder,
+            'readonly': props.readonly,
+            'disabled': props.disabled,
+          }),
+          slots.prefix?.(),
+          slots.suffix?.(),
+        ]
       );
   },
 });
 
 const InputSearchStub = defineComponent({
-  props: { modelValue: String, placeholder: String },
+  props: { modelValue: String, placeholder: String, inputAttrs: Object },
   emits: ['update:modelValue'],
   setup(props, { emit }) {
     return () =>
       h('input', {
+        ...(props.inputAttrs as Record<string, unknown>),
         'data-testid': 'icon-search',
         'placeholder': props.placeholder,
         'value': props.modelValue,
@@ -62,7 +85,7 @@ const TooltipStub = defineComponent({
 
 const CloseIconStub = defineComponent({
   setup(_, { attrs }) {
-    return () => h('button', { ...attrs, 'data-testid': 'clear-icon' }, 'Clear');
+    return () => h('span', { ...attrs, 'data-testid': 'clear-icon' }, 'Clear');
   },
 });
 
@@ -92,6 +115,7 @@ function mountPicker(props: Record<string, unknown> = {}) {
           'admin9Ui.iconPicker.categoryLabel': 'Icon categories',
           'admin9Ui.iconPicker.searchResults': 'Search results',
           'admin9Ui.iconPicker.empty': 'No matching icon',
+          'admin9Ui.iconPicker.clear': 'Clear icon',
           'admin9Ui.iconPicker.categories.all': 'All',
           'admin9Ui.iconPicker.categories.direction': 'Direction',
           'admin9Ui.iconPicker.categories.suggestion': 'Suggestions',
@@ -153,12 +177,16 @@ describe('AIconPicker public contract', () => {
 
   it('renders controlled input props, accepts PascalCase selection, and emits clear', async () => {
     const onUpdate = vi.fn();
+    const onChange = vi.fn();
+    const onClear = vi.fn();
     mountPicker({
       'modelValue': 'IconDashboard',
       'allowClear': true,
       'placeholder': 'Choose one',
       'size': 'large',
       'onUpdate:modelValue': onUpdate,
+      'onChange': onChange,
+      'onClear': onClear,
     });
     await flush();
 
@@ -175,6 +203,81 @@ describe('AIconPicker public contract', () => {
 
     document.querySelector<HTMLButtonElement>('[data-testid="clear-icon"]')?.click();
     expect(onUpdate).toHaveBeenCalledWith(undefined);
+    expect(onChange).toHaveBeenCalledWith(undefined);
+    expect(onClear).toHaveBeenCalledOnce();
+    expect(document.querySelector('.a9-icon-picker__clear')?.getAttribute('aria-label')).toBe('Clear icon');
+  });
+
+  it('forwards form attributes to the native input and blocks readonly or disabled interaction', async () => {
+    mountPicker({
+      'modelValue': 'icon-dashboard',
+      'allowClear': true,
+      'id': 'menu-icon',
+      'name': 'menu_icon',
+      'aria-label': 'Menu icon',
+      'readonly': true,
+    });
+    await flush();
+
+    const input = document.querySelector<HTMLInputElement>('[data-testid="native-icon-input"]');
+    expect(input?.id).toBe('menu-icon');
+    expect(input?.name).toBe('menu_icon');
+    expect(input?.getAttribute('aria-label')).toBe('Menu icon');
+    expect(input?.getAttribute('role')).toBe('combobox');
+    expect(input?.getAttribute('aria-readonly')).toBe('true');
+    expect(document.querySelector('.a9-icon-picker__clear')).toBeNull();
+    input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flush();
+    expect(document.querySelector('[data-testid="icon-panel"]')).toBeNull();
+
+    mountedApps.splice(0).forEach((app) => app.unmount());
+    document.body.innerHTML = '<div id="app"></div>';
+    mountPicker({ disabled: true });
+    await flush();
+    expect(document.querySelector<HTMLInputElement>('[data-testid="native-icon-input"]')?.disabled).toBe(true);
+    expect(document.querySelector<HTMLButtonElement>('[data-testid="open-icons"]')?.disabled).toBe(true);
+  });
+
+  it('opens from the keyboard and provides roving keyboard selection for icon options', async () => {
+    const onUpdate = vi.fn();
+    mountPicker({ 'id': 'keyboard-icon', 'onUpdate:modelValue': onUpdate });
+    await flush();
+
+    const input = document.querySelector<HTMLInputElement>('#keyboard-icon');
+    input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flush();
+    expect(document.querySelector('[data-testid="icon-panel"]')).not.toBeNull();
+    expect(document.activeElement).toBe(document.querySelector('[data-testid="icon-search"]'));
+
+    const search = document.querySelector<HTMLInputElement>('[data-testid="icon-search"]');
+    search?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    await flush();
+    expect(document.activeElement?.getAttribute('role')).toBe('option');
+    expect(document.activeElement?.getAttribute('data-icon-index')).toBe('0');
+
+    document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    await flush();
+    expect(document.activeElement?.getAttribute('data-icon-index')).toBe('1');
+    const selectedName = document.activeElement?.getAttribute('aria-label');
+    document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flush();
+    expect(onUpdate).toHaveBeenCalledWith(selectedName);
+    expect(document.querySelector('[data-testid="icon-panel"]')).toBeNull();
+  });
+
+  it('clears from the keyboard without opening the popover', async () => {
+    const onUpdate = vi.fn();
+    mountPicker({ 'modelValue': 'icon-dashboard', 'allowClear': true, 'onUpdate:modelValue': onUpdate });
+    await flush();
+
+    const clear = document.querySelector<HTMLButtonElement>('.a9-icon-picker__clear');
+    clear?.focus();
+    clear?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    clear?.click();
+    await flush();
+
+    expect(onUpdate).toHaveBeenCalledWith(undefined);
+    expect(document.querySelector('[data-testid="icon-panel"]')).toBeNull();
   });
 
   it('filters icon names, emits kebab-case selection, and resets search after closing', async () => {

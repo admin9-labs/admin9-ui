@@ -95,6 +95,7 @@ try {
     'dist/style.css',
     'docs/components/media-library.md',
     'docs/components/media-picker.md',
+    'docs/components/icon-picker.md',
     'docs/components/tiptap-editor.md',
   ];
   requiredFiles.forEach((file) => assert(packedFiles.has(file), `Tarball is missing required file: ${file}`));

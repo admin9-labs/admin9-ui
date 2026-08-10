@@ -52,6 +52,7 @@
   const tableError = ref(false);
   const selectedRowKeys = ref<(string | number)[]>([]);
   const iconValue = ref('icon-apps');
+  const iconMode = ref<'normal' | 'readonly' | 'disabled'>('normal');
   const editorMode = ref<'normal' | 'readonly' | 'disabled'>('normal');
   const tiptapFocused = new URLSearchParams(window.location.search).get('component') === 'tiptap-editor';
   const tiptapValue = ref(
@@ -207,7 +208,14 @@
             <span class="section-index">02</span>
             <h2>AIconPicker</h2>
           </div>
-          <a-tag color="arcoblue">{{ iconValue || '未选择' }}</a-tag>
+          <div class="section-controls">
+            <a-radio-group v-model="iconMode" type="button" size="small" data-testid="icon-mode-control">
+              <a-radio value="normal">正常</a-radio>
+              <a-radio value="readonly">只读</a-radio>
+              <a-radio value="disabled">禁用</a-radio>
+            </a-radio-group>
+            <a-tag color="arcoblue">{{ iconValue || '未选择' }}</a-tag>
+          </div>
         </div>
 
         <div class="icon-workspace component-frame">
@@ -216,6 +224,8 @@
             id="icon-picker-field"
             v-model="iconValue"
             allow-clear
+            :readonly="iconMode === 'readonly'"
+            :disabled="iconMode === 'disabled'"
             placeholder="选择一个 Arco 图标"
             data-testid="icon-picker"
           />
