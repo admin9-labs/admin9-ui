@@ -1528,7 +1528,7 @@
       }
 
       .ProseMirror-gapcursor::after {
-        border-top-color: rgb(var(--primary-6));
+        border-top-color: var(--color-text-1);
       }
 
       p.is-editor-empty:first-child::before {
