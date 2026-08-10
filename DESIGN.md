@@ -226,9 +226,11 @@ Props、Events、Slots、状态行为和示例见 [AMediaPicker 使用文档](./
 
 ### AMediaLibrary
 
-`AMediaLibrary` 与 `AMediaPicker` 并存。Picker 服务于表单轻量选择；Library 是后端无关的完整素材管理页面组件，不包含路由、store、鉴权或具体 API。
+`AMediaLibrary` 与 `AMediaPicker` 并存。Picker 服务于表单轻量选择；Library 是后端无关的页面级素材浏览与管理组件，不包含路由、store、鉴权或具体 API。
 
-- 页面级管理表面；在 `MediaService` 之上仅增加单级分组 CRUD 和素材移动所需的 `MediaLibraryService` 窄扩展。
+- 基础只读模式只要求 `MediaBrowseService.list`；`listGroups` 缺失时隐藏分组导航。
+- 上传、删除、移动和分组管理分别由能力开关启用，并只要求对应 capability；分组管理要求完整 `MediaGroupCapability`。
+- 仅启用移动但没有 `listGroups` 时，目标列表只提供“未分组”；单项移动选择目标后还需显式确认。
 - 后端负责分页、筛选、权限和部分成功结果；组件维护跨页选择，并只清理 service 确认成功的 ID。
 - 分组只有一级，`removeGroup` 不得隐式删除素材；更复杂的 DAM 策略留在消费应用。
 - 组件可复用包内私有媒体展示实现，但不把 helper、状态或管理逻辑导出为通用 API。

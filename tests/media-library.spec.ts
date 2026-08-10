@@ -15,7 +15,7 @@ import {
 import { createI18n } from 'vue-i18n';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AMediaLibrary from '../src/components/media-library/index.vue';
-import type { MediaGroup, MediaItem, MediaLibraryService, MediaType } from '../src/services/types';
+import type { MediaGroup, MediaItem, MediaLibraryAdapter, MediaLibraryService, MediaType } from '../src/services/types';
 
 const mountedApps: App[] = [];
 const baseMedia: MediaItem = {
@@ -42,7 +42,9 @@ const mediaLibraryMessages = {
   groupUngrouped: 'Ungrouped',
   createGroup: 'Create group',
   renameGroup: 'Rename group',
+  renameGroupItem: 'Rename group {name}',
   deleteGroup: 'Delete group',
+  deleteGroupItem: 'Delete group {name}',
   groupNamePlaceholder: 'Enter a group name',
   groupDeleteConfirm: 'Delete group?',
   groupLoadFailed: 'Failed to load groups',
@@ -50,12 +52,17 @@ const mediaLibraryMessages = {
   groupDeleteFailed: 'Failed to delete group',
   selectedCount: '{count} selected',
   select: 'Select',
+  selectItem: 'Select {name}',
   clearSelection: 'Clear selection',
   move: 'Move',
+  moveItem: 'Move {name}',
   moveTarget: 'Move to group',
+  moveTargetItem: 'Choose a move destination for {name}',
+  moveOneConfirm: 'Move {name} to the selected group?',
   moveFailed: 'Move failed',
   movePartial: 'Some media could not be moved',
   delete: 'Delete',
+  deleteItem: 'Delete {name}',
   deleteConfirm: 'Delete {count} selected items?',
   deleteOneConfirm: 'Delete this item?',
   deleteFailed: 'Delete failed',
@@ -259,13 +266,14 @@ const CheckboxGroupStub = defineComponent({
 });
 const CheckboxStub = defineComponent({
   props: { value: { type: [String, Number, Boolean], required: true }, disabled: Boolean },
-  setup(props, { slots }) {
+  setup(props, { attrs, slots }) {
     const group = inject(selectionKey);
     return () => {
       const id = String(props.value);
       return h(
         'button',
         {
+          ...attrs,
           'data-testid': `select-${id}`,
           'data-selected': String(group?.selected(id) ?? false),
           'disabled': props.disabled,
@@ -328,7 +336,7 @@ function installStubs(app: App) {
 }
 
 function mountLibrary(
-  service: MediaLibraryService,
+  service: MediaLibraryAdapter,
   props: Record<string, unknown> = {},
   slots: Partial<Slots> | undefined = undefined
 ) {
@@ -345,7 +353,7 @@ function mountLibrary(
   mountedApps.push(app);
 }
 
-function mountDynamicLibrary(service: MediaLibraryService, props: Record<string, unknown> = {}) {
+function mountDynamicLibrary(service: MediaLibraryAdapter, props: Record<string, unknown> = {}) {
   const mediaType = ref<MediaType>('image');
   const Host = defineComponent({
     setup() {
@@ -363,7 +371,7 @@ function mountDynamicLibrary(service: MediaLibraryService, props: Record<string,
   };
 }
 
-function mountDynamicService(initialService: MediaLibraryService) {
+function mountDynamicService(initialService: MediaLibraryAdapter) {
   const service = shallowRef(initialService);
   const Host = defineComponent({
     setup() {
@@ -375,7 +383,7 @@ function mountDynamicService(initialService: MediaLibraryService) {
   app.mount('#app');
   mountedApps.push(app);
   return {
-    setService(value: MediaLibraryService) {
+    setService(value: MediaLibraryAdapter) {
       service.value = value;
     },
   };
@@ -409,12 +417,79 @@ describe('AMediaLibrary', () => {
     mountedApps.splice(0).forEach((app) => app.unmount());
   });
 
-  it.each(['list', 'upload', 'remove'] as const)('rejects a service missing the base %s method', (method) => {
-    const service = { ...makeService(), [method]: undefined } as unknown as MediaLibraryService;
+  it('runs in read-only mode with only list and hides group navigation', async () => {
+    const service: MediaLibraryAdapter = {
+      list: vi.fn().mockResolvedValue({
+        list: [baseMedia],
+        pagination: { page: 1, pageSize: 24, total: 1, hasMore: false },
+      }),
+    };
+
+    mountLibrary(service, { canUpload: false, canDelete: false, canMove: false, canManageGroups: false });
+    await flush();
+
+    expect(service.list).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('[data-media-id="media-1"]')).not.toBeNull();
+    expect(document.querySelector('.a9-media-library__groups')).toBeNull();
+    expect(document.querySelector('.a9-media-library__layout')?.classList.contains('without-groups')).toBe(true);
+    expect(document.querySelector('[data-testid="library-upload"]')).toBeNull();
+    expect(document.querySelector('[data-testid="move-media-media-1"]')).toBeNull();
+    expect(document.querySelector('[data-testid="delete-media-media-1"]')).toBeNull();
+  });
+
+  it('always requires the browse list method', () => {
+    const service = { list: undefined } as unknown as MediaLibraryAdapter;
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
-    expect(() => mountLibrary(service)).toThrow('[admin9-ui] AMediaLibrary requires a MediaLibraryService');
+    expect(() => mountLibrary(service, { canUpload: false, canDelete: false, canMove: false, canManageGroups: false })).toThrow(
+      '[admin9-ui] AMediaLibrary requires MediaBrowseService'
+    );
     warn.mockRestore();
+  });
+
+  it.each([
+    ['upload', 'canUpload', 'MediaUploadCapability'],
+    ['remove', 'canDelete', 'MediaRemoveCapability'],
+    ['move', 'canMove', 'MediaMoveCapability'],
+  ] as const)('requires %s only when %s is enabled', (method, flag, capability) => {
+    const service = { ...makeService(), [method]: undefined } as unknown as MediaLibraryAdapter;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    expect(() => mountLibrary(service, { [flag]: true })).toThrow(capability);
+    warn.mockRestore();
+  });
+
+  it.each(['listGroups', 'createGroup', 'renameGroup', 'removeGroup'] as const)(
+    'requires the complete group capability when management is enabled and %s is missing',
+    (method) => {
+      const service = { ...makeService(), [method]: undefined } as unknown as MediaLibraryAdapter;
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      expect(() => mountLibrary(service, { canManageGroups: true })).toThrow('MediaGroupCapability');
+      warn.mockRestore();
+    }
+  );
+
+  it('allows move-to-ungrouped without group browsing', async () => {
+    const service: MediaLibraryAdapter = {
+      list: vi.fn().mockResolvedValue({
+        list: [baseMedia],
+        pagination: { page: 1, pageSize: 24, total: 1, hasMore: false },
+      }),
+      move: vi.fn().mockResolvedValue(['media-1']),
+    };
+    mountLibrary(service, { canUpload: false, canDelete: false, canMove: true, canManageGroups: false });
+    await flush();
+
+    expect(document.querySelector('.a9-media-library__groups')).toBeNull();
+    const moveSelect = document.querySelector<HTMLSelectElement>('[data-testid="move-media-media-1"]');
+    expect(Array.from(moveSelect?.options ?? []).map((option) => option.value)).toEqual(['', MOVE_UNGROUPED]);
+    changeSelect('[data-testid="move-media-media-1"]', MOVE_UNGROUPED);
+    await flush();
+    expect(service.move).not.toHaveBeenCalled();
+    confirmFor('[data-testid="confirm-move-media-media-1"]');
+    await flush();
+    expect(service.move).toHaveBeenCalledWith({ mediaType: 'image', ids: ['media-1'], groupId: null });
   });
 
   it('reloads from a replacement service and ignores responses from the previous service', async () => {
@@ -557,6 +632,12 @@ describe('AMediaLibrary', () => {
     expect(compactControl?.querySelector('[data-testid="compact-delete-group"]')).toBeNull();
     expect(compactControl?.textContent).toContain('Campaign');
     expect(desktopControl?.tagName).toBe('ASIDE');
+    expect(document.querySelector('[data-testid="rename-group-campaign"]')?.getAttribute('aria-label')).toBe(
+      'Rename group Campaign'
+    );
+    expect(document.querySelector('[data-testid="delete-group-campaign"]')?.getAttribute('aria-label')).toBe(
+      'Delete group Campaign'
+    );
 
     changeSelect('[data-testid="compact-groups"]', groupValue('campaign'));
     await flush();
@@ -722,6 +803,9 @@ describe('AMediaLibrary', () => {
 
     changeSelect('[data-testid="move-media-media-1"]', moveGroupValue('campaign'));
     await flush();
+    expect(onMoveSuccess).not.toHaveBeenCalled();
+    confirmFor('[data-testid="confirm-move-media-media-1"]');
+    await flush();
     expect(onMoveSuccess).toHaveBeenCalledWith(['media-1'], 'campaign');
 
     confirmFor('[data-testid="delete-media-media-1"]');
@@ -760,6 +844,7 @@ describe('AMediaLibrary', () => {
 
     click('[data-testid="library-upload"]');
     changeSelect('[data-testid="move-media-media-1"]', moveGroupValue('campaign'));
+    confirmFor('[data-testid="confirm-move-media-media-1"]');
     confirmFor('[data-testid="delete-media-media-2"]');
     await flush();
     expect(service.upload).toHaveBeenCalledTimes(1);
@@ -919,6 +1004,26 @@ describe('AMediaLibrary', () => {
     expect(document.querySelector('[data-media-id="media-1"]')).not.toBeNull();
   });
 
+  it('keeps group failures visible and retries group loading', async () => {
+    const service = makeService({
+      listGroups: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('offline'))
+        .mockResolvedValueOnce([{ id: 'campaign', name: 'Campaign', count: 1 }]),
+    });
+    mountLibrary(service);
+    await flush();
+
+    expect(document.querySelector('.a9-media-library__group-error')?.textContent).toContain('Failed to load groups');
+    expect(document.body.textContent).not.toContain('Campaign');
+    click('[data-testid="retry-groups"]');
+    await flush();
+
+    expect(service.listGroups).toHaveBeenCalledTimes(2);
+    expect(document.querySelector('.a9-media-library__group-error')).toBeNull();
+    expect(document.body.textContent).toContain('Campaign');
+  });
+
   it('preserves selections across pages and groups and exposes an explicit clear action', async () => {
     const pageOne = baseMedia;
     const pageTwo = { ...baseMedia, id: 'media-2', name: 'page-two.png' };
@@ -988,6 +1093,9 @@ describe('AMediaLibrary', () => {
 
     changeSelect('[data-testid="move-media-media-2"]', MOVE_UNGROUPED);
     await flush();
+    expect(service.move).toHaveBeenCalledTimes(1);
+    confirmFor('[data-testid="confirm-move-media-media-2"]');
+    await flush();
     expect(service.move).toHaveBeenNthCalledWith(2, { mediaType: 'image', ids: ['media-2'], groupId: null });
     confirmFor('[data-testid="delete-media-media-2"]');
     await flush();
@@ -1038,6 +1146,9 @@ describe('AMediaLibrary', () => {
 
     changeSelect('[data-testid="move-media-media-1"]', moveGroupValue(collidingGroupId));
     await flush();
+    expect(service.move).not.toHaveBeenCalled();
+    confirmFor('[data-testid="confirm-move-media-media-1"]');
+    await flush();
     expect(service.move).toHaveBeenNthCalledWith(1, {
       mediaType: 'image',
       ids: ['media-1'],
@@ -1045,6 +1156,9 @@ describe('AMediaLibrary', () => {
     });
 
     changeSelect('[data-testid="move-media-media-1"]', MOVE_UNGROUPED);
+    await flush();
+    expect(service.move).toHaveBeenCalledTimes(1);
+    confirmFor('[data-testid="confirm-move-media-media-1"]');
     await flush();
     expect(service.move).toHaveBeenNthCalledWith(2, {
       mediaType: 'image',
@@ -1118,6 +1232,9 @@ describe('AMediaLibrary', () => {
     await flush();
     changeSelect('[data-testid="move-media-media-2"]', MOVE_UNGROUPED);
     await flush();
+    expect(service.move).not.toHaveBeenCalled();
+    confirmFor('[data-testid="confirm-move-media-media-2"]');
+    await flush();
 
     expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, groupId: 'campaign' }));
     expect(document.querySelector('[data-media-id="media-1"]')).not.toBeNull();
@@ -1184,6 +1301,18 @@ describe('AMediaLibrary', () => {
       await flush();
 
       expect(document.querySelectorAll('[data-available="false"]')).toHaveLength(4);
+      expect(document.querySelector('[data-testid="select-media-1"]')?.getAttribute('aria-label')).toBe(
+        `Select valid.${extension}`
+      );
+      expect(document.querySelector('[data-testid="move-media-media-1"]')?.getAttribute('aria-label')).toBe(
+        `Choose a move destination for valid.${extension}`
+      );
+      expect(document.querySelector('[data-testid="confirm-move-media-media-1"]')?.getAttribute('aria-label')).toBe(
+        `Move valid.${extension}`
+      );
+      expect(document.querySelector('[data-testid="delete-media-media-1"]')?.getAttribute('aria-label')).toBe(
+        `Delete valid.${extension}`
+      );
       expect(document.querySelector('[data-testid="select-pending"]')?.hasAttribute('disabled')).toBe(true);
       expect(document.querySelector('[data-testid="move-media-pending"]')).toBeNull();
       expect(document.querySelector('[data-testid="delete-media-pending"]')).not.toBeNull();

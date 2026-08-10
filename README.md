@@ -65,7 +65,7 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 消费方通过使用点的 `service` prop，或 `app.use(Admin9UI, { mediaService })` 注入 adapter。
 
 - `AMediaPicker` 面向表单中的轻量选择和按分组浏览，可显式启用上传，不提供删除、分组管理或其他素材管理操作。
-- `AMediaLibrary` 面向完整页面管理：单级分组 CRUD、后端分页查询、上传、单项/批量移动和删除，以及跨页/跨组选择。
+- `AMediaLibrary` 面向页面级浏览与管理：基础只读模式仅要求分页查询，分组、上传、移动和删除按 adapter 能力与界面开关启用。
 - 多级目录、排序、标签、版权、审核、版本、转码、审计和业务权限不属于本包。能力开关只控制界面，后端仍需执行授权。
 
 完整的接口定义与边界见 [DESIGN.md](./DESIGN.md#4-service-契约)，使用方式见对应组件文档。

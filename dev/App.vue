@@ -1,7 +1,16 @@
 <script setup lang="ts">
   import { computed, ref, watch } from 'vue';
   import type { TableColumnData } from '@arco-design/web-vue';
-  import { AIconPicker, AMediaLibrary, AMediaPicker, AProTable, ATiptapEditor, type MediaItem, type MediaType } from '../src';
+  import {
+    AIconPicker,
+    AMediaLibrary,
+    AMediaPicker,
+    AProTable,
+    ATiptapEditor,
+    type MediaItem,
+    type MediaLibraryAdapter,
+    type MediaType,
+  } from '../src';
   import { createFakeMediaService, type AcceptanceState } from './fake-media-service';
   import createFakeMediaLibraryService from './fake-media-library-service';
 
@@ -30,6 +39,10 @@
     { label: '视频', value: 'video' },
     { label: '音频', value: 'audio' },
   ];
+  const libraryModeOptions = [
+    { label: '管理', value: 'manage' },
+    { label: '只读', value: 'readOnly' },
+  ] as const;
 
   const rows: TableRow[] = [
     { id: 101, name: '组件契约', owner: 'UI Core', status: 'ready', updatedAt: '2026-08-09 09:40' },
@@ -82,6 +95,7 @@
   const lastMediaEvent = ref('尚未选择');
   const libraryState = ref<AcceptanceState>('normal');
   const libraryType = ref<MediaType>('image');
+  const libraryMode = ref<(typeof libraryModeOptions)[number]['value']>('manage');
   const lastLibraryEvent = ref('等待管理操作');
 
   const tableFetcher = computed(() => {
@@ -114,7 +128,11 @@
   });
 
   const mediaService = computed(() => createFakeMediaService(mediaState.value));
-  const mediaLibraryService = computed(() => createFakeMediaLibraryService(libraryState.value));
+  const mediaLibraryService = computed<MediaLibraryAdapter>(() => {
+    const service = createFakeMediaLibraryService(libraryState.value);
+    return libraryMode.value === 'readOnly' ? { list: (params) => service.list(params) } : service;
+  });
+  const libraryReadOnly = computed(() => libraryMode.value === 'readOnly');
   const statusColor = (status: TableRow['status']) => {
     if (status === 'ready') return 'green';
     if (status === 'blocked') return 'red';
@@ -328,6 +346,11 @@
             <h2>AMediaLibrary</h2>
           </div>
           <div class="section-controls">
+            <a-radio-group v-model="libraryMode" type="button" size="small" data-testid="library-mode-control">
+              <a-radio v-for="option in libraryModeOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </a-radio>
+            </a-radio-group>
             <a-radio-group v-model="libraryType" type="button" size="small" data-testid="library-type-control">
               <a-radio v-for="option in mediaTypeOptions" :key="option.value" :value="option.value">
                 {{ option.label }}
@@ -343,10 +366,14 @@
 
         <div class="library-workspace">
           <AMediaLibrary
-            :key="`${libraryType}-${libraryState}`"
+            :key="`${libraryMode}-${libraryType}-${libraryState}`"
             :service="mediaLibraryService"
             :media-type="libraryType"
             :page-size="2"
+            :can-upload="!libraryReadOnly"
+            :can-delete="!libraryReadOnly"
+            :can-move="!libraryReadOnly"
+            :can-manage-groups="!libraryReadOnly"
             data-testid="media-library"
             @upload-success="recordLibraryUpload"
             @delete-success="recordLibraryDelete"

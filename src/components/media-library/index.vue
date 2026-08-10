@@ -6,7 +6,7 @@
   import { useLoading } from '../../hooks';
   import MediaItemView from '../../internal/media-item.vue';
   import admin9UIOptionsKey from '../../internal/options';
-  import type { MediaGroup, MediaItem, MediaLibraryAdapter, MediaLibraryService, MediaType } from '../../services/types';
+  import type { MediaGroup, MediaItem, MediaLibraryAdapter, MediaType } from '../../services/types';
 
   type GroupId = string | null | undefined;
 
@@ -19,7 +19,7 @@
       canDelete?: boolean;
       canMove?: boolean;
       canManageGroups?: boolean;
-      service?: MediaLibraryService;
+      service?: MediaLibraryAdapter;
     }>(),
     {
       mediaType: 'image',
@@ -45,28 +45,33 @@
     (e: 'moveSuccess', ids: string[], groupId: string | null): void;
   }>();
 
-  const isLibraryService = (value: MediaLibraryAdapter | undefined): value is MediaLibraryService =>
-    Boolean(
-      value &&
-        typeof value.list === 'function' &&
-        typeof value.listGroups === 'function' &&
-        typeof value.upload === 'function' &&
-        typeof value.remove === 'function' &&
-        typeof (value as Partial<MediaLibraryService>).createGroup === 'function' &&
-        typeof (value as Partial<MediaLibraryService>).renameGroup === 'function' &&
-        typeof (value as Partial<MediaLibraryService>).removeGroup === 'function' &&
-        typeof (value as Partial<MediaLibraryService>).move === 'function'
-    );
-
   const { t } = useI18n();
   const { loading, setLoading } = useLoading();
   const globalOptions = inject(admin9UIOptionsKey, undefined);
   const resolveLibraryService = () => {
     const resolved = props.service ?? globalOptions?.mediaService;
-    if (!isLibraryService(resolved)) {
+    if (!resolved || typeof resolved.list !== 'function') {
       throw new Error(
-        '[admin9-ui] AMediaLibrary requires a MediaLibraryService. Pass the service prop or install Admin9UI with a compatible mediaService.'
+        '[admin9-ui] AMediaLibrary requires MediaBrowseService. Pass the service prop or install Admin9UI with a compatible mediaService.'
       );
+    }
+    if (props.canUpload && typeof resolved.upload !== 'function') {
+      throw new Error('[admin9-ui] AMediaLibrary requires MediaUploadCapability when canUpload is true.');
+    }
+    if (props.canDelete && typeof resolved.remove !== 'function') {
+      throw new Error('[admin9-ui] AMediaLibrary requires MediaRemoveCapability when canDelete is true.');
+    }
+    if (props.canMove && typeof resolved.move !== 'function') {
+      throw new Error('[admin9-ui] AMediaLibrary requires MediaMoveCapability when canMove is true.');
+    }
+    if (
+      props.canManageGroups &&
+      (typeof resolved.listGroups !== 'function' ||
+        typeof resolved.createGroup !== 'function' ||
+        typeof resolved.renameGroup !== 'function' ||
+        typeof resolved.removeGroup !== 'function')
+    ) {
+      throw new Error('[admin9-ui] AMediaLibrary requires MediaGroupCapability when canManageGroups is true.');
     }
     return resolved;
   };
@@ -80,6 +85,7 @@
   };
   const resolvedAccept = computed(() => props.accept || acceptByType[props.mediaType]);
   const uploadLabel = computed(() => t(`admin9Ui.mediaLibrary.upload.${props.mediaType}`));
+  const hasGroupNavigation = computed(() => typeof libraryService.value.listGroups === 'function');
 
   /* ------------------------------ 查询与分组 ------------------------------ */
   const list = ref<MediaItem[]>([]);
@@ -90,6 +96,7 @@
   const keyword = ref('');
   const activeGroupId = ref<GroupId>(undefined);
   const groupLoading = ref(false);
+  const groupError = ref(false);
   const listError = ref(false);
   const selectedMap = ref(new Map<string, MediaItem>());
   let latestListRequest = 0;
@@ -165,13 +172,21 @@
     const service = libraryService.value;
     const { mediaType } = props;
     latestGroupRequest = request;
+    if (!service.listGroups) {
+      groups.value = [];
+      groupError.value = false;
+      groupLoading.value = false;
+      return;
+    }
     groupLoading.value = true;
+    groupError.value = false;
     try {
       const nextGroups = await service.listGroups(mediaType);
       if (request === latestGroupRequest && generation === viewGeneration.value) groups.value = nextGroups;
     } catch {
       if (request !== latestGroupRequest || generation !== viewGeneration.value) return;
       groups.value = [];
+      groupError.value = true;
       Message.error(t('admin9Ui.mediaLibrary.groupLoadFailed'));
     } finally {
       if (request === latestGroupRequest && generation === viewGeneration.value) groupLoading.value = false;
@@ -254,6 +269,12 @@
       option.onError(error);
       return { abort: () => controller.abort() };
     }
+    if (!service.upload) {
+      const error = new Error('[admin9-ui] AMediaLibrary requires MediaUploadCapability when canUpload is true.');
+      option.onError(error);
+      emit('uploadError', error);
+      return { abort: () => controller.abort() };
+    }
     changeUploadCount(generation, 1);
     service
       .upload({
@@ -284,6 +305,7 @@
   /* ------------------------------ 移动与删除 ------------------------------ */
   const busyIds = ref(new Set<string>());
   const batchMoveTarget = ref<string>();
+  const singleMoveTargets = ref(new Map<string, string>());
   const mutationLoading = computed(() => busyIds.value.size > 0);
   const markBusy = (ids: string[], busy: boolean) => {
     const next = new Set(busyIds.value);
@@ -319,25 +341,28 @@
     }
   };
 
-  const moveItems = async (inputIds: string[], groupId: string | null) => {
+  const moveItems = async (inputIds: string[], groupId: string | null): Promise<string[]> => {
     const ids = Array.from(new Set(inputIds));
-    if (ids.length === 0 || ids.some((id) => busyIds.value.has(id))) return;
+    if (ids.length === 0 || ids.some((id) => busyIds.value.has(id))) return [];
     const generation = viewGeneration.value;
     const service = libraryService.value;
     const { mediaType } = props;
+    if (!service.move) throw new Error('[admin9-ui] AMediaLibrary requires MediaMoveCapability when canMove is true.');
     markBusy(ids, true);
     try {
       const returnedIds = await service.move({ mediaType, ids, groupId });
-      if (generation !== viewGeneration.value) return;
+      if (generation !== viewGeneration.value) return [];
       const movedIds = successfulRequestedIds(returnedIds, ids);
       removeSelectedIds(movedIds);
       if (movedIds.length !== ids.length) Message.warning(t('admin9Ui.mediaLibrary.movePartial'));
       emit('moveSuccess', movedIds, groupId);
       await refreshAfterMutation(generation);
+      return movedIds;
     } catch {
-      if (generation !== viewGeneration.value) return;
+      if (generation !== viewGeneration.value) return [];
       Message.error(t('admin9Ui.mediaLibrary.moveFailed'));
       await fetchList();
+      return [];
     } finally {
       if (generation === viewGeneration.value) markBusy(ids, false);
     }
@@ -349,16 +374,24 @@
     batchMoveTarget.value = undefined;
     moveItems(selectedKeys.value, target);
   };
-  const moveSingle = (item: MediaItem, value: string) => {
-    if (!isAvailable(item)) return;
-    const target = decodeMoveTarget(value);
-    if (target !== undefined) moveItems([item.id], target);
-  };
   const onSingleMoveChange = (
     item: MediaItem,
     value: string | number | boolean | Record<string, unknown> | (string | number | boolean | Record<string, unknown>)[]
   ) => {
-    if (typeof value === 'string') moveSingle(item, value);
+    if (!isAvailable(item) || typeof value !== 'string' || decodeMoveTarget(value) === undefined) return;
+    singleMoveTargets.value = new Map(singleMoveTargets.value).set(item.id, value);
+  };
+  const moveSingle = async (item: MediaItem) => {
+    if (!isAvailable(item)) return;
+    const value = singleMoveTargets.value.get(item.id);
+    if (!value) return;
+    const target = decodeMoveTarget(value);
+    if (target === undefined) return;
+    const movedIds = await moveItems([item.id], target);
+    if (!movedIds.includes(item.id)) return;
+    const next = new Map(singleMoveTargets.value);
+    next.delete(item.id);
+    singleMoveTargets.value = next;
   };
 
   const removeItems = async (inputIds: string[]) => {
@@ -367,6 +400,7 @@
     const generation = viewGeneration.value;
     const service = libraryService.value;
     const { mediaType } = props;
+    if (!service.remove) throw new Error('[admin9-ui] AMediaLibrary requires MediaRemoveCapability when canDelete is true.');
     markBusy(ids, true);
     try {
       const returnedIds = await service.remove(ids);
@@ -414,6 +448,9 @@
     const { mediaType } = props;
     const mode = groupModalMode.value;
     const groupId = editingGroup.value?.id;
+    if (!service.createGroup || !service.renameGroup) {
+      throw new Error('[admin9-ui] AMediaLibrary requires MediaGroupCapability when canManageGroups is true.');
+    }
     groupMutationLoading.value = true;
     try {
       if (mode === 'create') {
@@ -446,6 +483,9 @@
     const service = libraryService.value;
     const { mediaType } = props;
     const groupId = group.id;
+    if (!service.removeGroup) {
+      throw new Error('[admin9-ui] AMediaLibrary requires MediaGroupCapability when canManageGroups is true.');
+    }
     groupMutationLoading.value = true;
     try {
       await service.removeGroup({ mediaType, groupId });
@@ -472,12 +512,17 @@
     activeGroupId.value = undefined;
     current.value = 1;
     groups.value = [];
+    groupError.value = false;
     busyIds.value = new Set();
     batchMoveTarget.value = undefined;
+    singleMoveTargets.value = new Map();
     groupModalVisible.value = false;
     groupMutationLoading.value = false;
     clearSelection();
     refresh();
+  });
+  watch([() => props.canUpload, () => props.canDelete, () => props.canMove, () => props.canManageGroups], () => {
+    resolveLibraryService();
   });
   watch(
     () => props.pageSize,
@@ -518,8 +563,8 @@
       </a-upload>
     </header>
 
-    <div class="a9-media-library__layout">
-      <aside class="a9-media-library__groups">
+    <div class="a9-media-library__layout" :class="{ 'without-groups': !hasGroupNavigation }">
+      <aside v-if="hasGroupNavigation" class="a9-media-library__groups">
         <div class="a9-media-library__groups-heading">
           <strong>{{ t('admin9Ui.mediaLibrary.groups') }}</strong>
           <a-button
@@ -536,6 +581,12 @@
         </div>
 
         <a-spin class="a9-media-library__group-spin" :loading="groupLoading">
+          <a-alert v-if="groupError" type="error" class="a9-media-library__group-error">
+            {{ t('admin9Ui.mediaLibrary.groupLoadFailed') }}
+            <a-button size="mini" type="text" data-testid="retry-groups" @click="fetchGroups">
+              {{ t('admin9Ui.mediaLibrary.retry') }}
+            </a-button>
+          </a-alert>
           <nav class="a9-media-library__group-list" :aria-label="t('admin9Ui.mediaLibrary.groups')">
             <button
               type="button"
@@ -570,8 +621,8 @@
                 <a-button
                   size="mini"
                   type="text"
-                  :title="t('admin9Ui.mediaLibrary.renameGroup')"
-                  :aria-label="t('admin9Ui.mediaLibrary.renameGroup')"
+                  :title="t('admin9Ui.mediaLibrary.renameGroupItem', { name: group.name })"
+                  :aria-label="t('admin9Ui.mediaLibrary.renameGroupItem', { name: group.name })"
                   :data-testid="`rename-group-${group.id}`"
                   @click="openRenameGroup(group)"
                 >
@@ -586,8 +637,8 @@
                     size="mini"
                     type="text"
                     status="danger"
-                    :title="t('admin9Ui.mediaLibrary.deleteGroup')"
-                    :aria-label="t('admin9Ui.mediaLibrary.deleteGroup')"
+                    :title="t('admin9Ui.mediaLibrary.deleteGroupItem', { name: group.name })"
+                    :aria-label="t('admin9Ui.mediaLibrary.deleteGroupItem', { name: group.name })"
                     :data-testid="`delete-group-${group.id}`"
                   >
                     <template #icon><icon-delete /></template>
@@ -621,8 +672,8 @@
               <a-button
                 size="mini"
                 type="text"
-                :title="t('admin9Ui.mediaLibrary.renameGroup')"
-                :aria-label="t('admin9Ui.mediaLibrary.renameGroup')"
+                :title="t('admin9Ui.mediaLibrary.renameGroupItem', { name: activeGroup.name })"
+                :aria-label="t('admin9Ui.mediaLibrary.renameGroupItem', { name: activeGroup.name })"
                 data-testid="compact-rename-group"
                 @click="openRenameGroup(activeGroup)"
               >
@@ -637,8 +688,8 @@
                   size="mini"
                   type="text"
                   status="danger"
-                  :title="t('admin9Ui.mediaLibrary.deleteGroup')"
-                  :aria-label="t('admin9Ui.mediaLibrary.deleteGroup')"
+                  :title="t('admin9Ui.mediaLibrary.deleteGroupItem', { name: activeGroup.name })"
+                  :aria-label="t('admin9Ui.mediaLibrary.deleteGroupItem', { name: activeGroup.name })"
                   data-testid="compact-delete-group"
                 >
                   <template #icon><icon-delete /></template>
@@ -715,16 +766,21 @@
                   />
                 </slot>
                 <footer class="a9-media-library__item-actions">
-                  <a-checkbox :value="item.id" :disabled="!isAvailable(item)">
+                  <a-checkbox
+                    :value="item.id"
+                    :disabled="!isAvailable(item)"
+                    :aria-label="t('admin9Ui.mediaLibrary.selectItem', { name: item.name })"
+                  >
                     {{ t('admin9Ui.mediaLibrary.select') }}
                   </a-checkbox>
                   <span class="a9-media-library__item-tools">
                     <a-select
                       v-if="canMove && isAvailable(item)"
-                      :model-value="undefined"
+                      :model-value="singleMoveTargets.get(item.id)"
                       size="mini"
                       class="a9-media-library__single-move"
                       :placeholder="t('admin9Ui.mediaLibrary.move')"
+                      :aria-label="t('admin9Ui.mediaLibrary.moveTargetItem', { name: item.name })"
                       :data-testid="`move-media-${item.id}`"
                       @change="onSingleMoveChange(item, $event)"
                     >
@@ -733,6 +789,23 @@
                         {{ group.name }}
                       </a-option>
                     </a-select>
+                    <a-popconfirm
+                      v-if="canMove && isAvailable(item)"
+                      :content="t('admin9Ui.mediaLibrary.moveOneConfirm', { name: item.name })"
+                      :ok-loading="busyIds.has(item.id)"
+                      @ok="moveSingle(item)"
+                    >
+                      <a-button
+                        size="mini"
+                        type="text"
+                        :disabled="!singleMoveTargets.has(item.id) || busyIds.has(item.id)"
+                        :title="t('admin9Ui.mediaLibrary.moveItem', { name: item.name })"
+                        :aria-label="t('admin9Ui.mediaLibrary.moveItem', { name: item.name })"
+                        :data-testid="`confirm-move-media-${item.id}`"
+                      >
+                        {{ t('admin9Ui.mediaLibrary.move') }}
+                      </a-button>
+                    </a-popconfirm>
                     <a-popconfirm
                       v-if="canDelete && item.type === mediaType"
                       :content="t('admin9Ui.mediaLibrary.deleteOneConfirm')"
@@ -744,8 +817,8 @@
                         type="text"
                         status="danger"
                         :disabled="busyIds.has(item.id)"
-                        :title="t('admin9Ui.mediaLibrary.delete')"
-                        :aria-label="t('admin9Ui.mediaLibrary.delete')"
+                        :title="t('admin9Ui.mediaLibrary.deleteItem', { name: item.name })"
+                        :aria-label="t('admin9Ui.mediaLibrary.deleteItem', { name: item.name })"
                         :data-testid="`delete-media-${item.id}`"
                       >
                         <template #icon><icon-delete /></template>
@@ -818,6 +891,10 @@
       display: grid;
       grid-template-columns: minmax(160px, 208px) minmax(0, 1fr);
       min-height: 460px;
+
+      &.without-groups {
+        grid-template-columns: minmax(0, 1fr);
+      }
     }
 
     &__groups {
@@ -1018,6 +1095,22 @@
 
       &__main {
         padding: 12px 0;
+      }
+
+      &__item-actions {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      &__item-tools {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        width: 100%;
+      }
+
+      &__single-move {
+        flex: 1 1 100%;
+        width: 100%;
       }
 
       &__batch {

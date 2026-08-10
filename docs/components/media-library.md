@@ -1,6 +1,6 @@
 # AMediaLibrary
 
-`AMediaLibrary` 是页面级素材管理组件，提供单级分组、后端分页查询、上传、单项或批量移动与删除，以及跨页、跨分组选择。
+`AMediaLibrary` 是页面级素材浏览与管理组件。只读模式仅依赖分页查询；按需启用后，可提供单级分组、上传、单项或批量移动与删除，以及跨页、跨分组选择。
 
 ## 适用边界
 
@@ -13,9 +13,9 @@
 ```vue
 <script setup lang="ts">
   import { AMediaLibrary } from '@admin9-labs/admin9-ui';
-  import type { MediaLibraryService } from '@admin9-labs/admin9-ui';
+  import type { MediaLibraryAdapter } from '@admin9-labs/admin9-ui';
 
-  const mediaLibraryService: MediaLibraryService = createMediaLibraryServiceAdapter();
+  const mediaLibraryService: MediaLibraryAdapter = createMediaLibraryServiceAdapter();
 </script>
 
 <template>
@@ -48,7 +48,7 @@
 | `canDelete`       | `boolean`                       | `true`              | 是否显示单项和批量删除入口                   |
 | `canMove`         | `boolean`                       | `true`              | 是否显示单项和批量移动入口                   |
 | `canManageGroups` | `boolean`                       | `true`              | 是否显示分组新建、重命名和删除入口           |
-| `service`         | `MediaLibraryService`           | 插件注入值          | 管理 adapter；缺少完整方法时组件抛出明确错误 |
+| `service`         | `MediaLibraryAdapter`           | 插件注入值          | 按界面开关提供相应能力的 adapter              |
 
 以上能力开关只控制界面，不替代后端授权。
 
@@ -80,17 +80,18 @@ Vue 模板使用上表的 kebab-case 监听名；TypeScript 声明中的事件�
 
 ## Service 契约
 
-Library 要求完整 `MediaLibraryService`。它继承 Picker 使用的 `MediaService`，并增加：
+Library 始终只要求 `MediaBrowseService.list`。其余方法按界面能力开关和分组导航需要提供：
 
-| 方法                                        | Library 用途                     |
-| ------------------------------------------- | -------------------------------- |
-| `listGroups(mediaType)`                     | 获取该类型的后端真实单级分组     |
-| `createGroup({ mediaType, name })`          | 创建分组并返回创建结果           |
-| `renameGroup({ mediaType, groupId, name })` | 重命名分组                       |
-| `removeGroup({ mediaType, groupId })`       | 只删除分组，不得隐式删除组内素材 |
-| `move({ mediaType, ids, groupId })`         | 移动素材，返回成功移动的 ID      |
+| 条件                   | 必需方法                                                         |
+| ---------------------- | ---------------------------------------------------------------- |
+| 基础浏览               | `list(params)`                                                   |
+| 提供分组导航           | `listGroups(mediaType)`；未提供时隐藏分组导航                    |
+| `canUpload=true`       | `upload(options)`                                                |
+| `canDelete=true`       | `remove(ids)`                                                    |
+| `canMove=true`         | `move({ mediaType, ids, groupId })`                              |
+| `canManageGroups=true` | 完整 `MediaGroupCapability`：`listGroups/createGroup/renameGroup/removeGroup` |
 
-继承的 `list`、`upload` 和 `remove` 仍分别负责分页查询、上传和删除。完整字段与签名见 [DESIGN 的 Service 契约](../../DESIGN.md#4-service-契约)。
+完整 `MediaLibraryService` 仍作为兼容类型保留，已有完整 adapter 无需修改。只读页面可传 `{ list }`，同时关闭 `canUpload`、`canDelete`、`canMove` 和 `canManageGroups`。启用 `canMove` 但不提供 `listGroups` 时，组件只提供移动到“未分组”。完整字段与签名见 [DESIGN 的 Service 契约](../../DESIGN.md#4-service-契约)。
 
 adapter 必须明确处理非空分组的拒绝或迁移策略。`groupId: undefined` 仅表示查询“全部”，`groupId: null` 表示“未分组”或移动、上传到未分组；字符串才是后端真实分组 ID。
 
@@ -99,9 +100,11 @@ adapter 必须明确处理非空分组的拒绝或迁移策略。`groupId: undef
 - 分组、关键词、`mediaType` 或 `pageSize` 变化会回到第 1 页；类型变化还会清空分组缓存、忙碌状态和批量选择。
 - `720px` 以下使用紧凑分组选择器，但仍保留新建分组；选中后端真实分组时仍可重命名或删除，“全部”和“未分组”不显示这两项操作。
 - 选择按稳定 `MediaItem.id` 跨页、跨分组保留。移动或删除后只移除 service 确认成功的 ID，部分失败项继续保持选中并显示警告。
+- 单项移动先选择目标，再通过独立确认操作提交；选择下拉项本身不产生移动副作用。
+- 移动端卡片将目标选择与执行按钮分行，避免压缩目标名称或造成操作区横向溢出。
 - 操作结束后刷新列表和分组统计；删除当前页最后一项导致页码越界时，会回退到最后一个有效页。
 - `pending`、`failed`、URL 为空或类型不匹配的记录保持可见，但不能预览、选择或移动；同类型记录仍可删除以便清理。
-- 列表失败会显示可重试错误态；分组、上传、移动、删除和分组变更失败会显示 locale 消息。分组保存失败时弹窗保持打开。
+- 列表和分组加载失败会显示持久、可重试错误态；上传、移动、删除和分组变更失败会显示 locale 消息。分组保存失败时弹窗保持打开。
 - 请求序号和视图代次会阻止旧响应覆盖新的类型、service 或筛选结果，同一素材执行变更时禁止重复提交。
 
 ## 权限与安全
