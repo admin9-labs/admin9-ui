@@ -8,7 +8,7 @@
  * 这样库可被任意后端复用：换后端，App 只需重写 adapter，库代码不动。
  */
 
-/* ----------------------------- MediaService ----------------------------- */
+/* --------------------------- Media capabilities -------------------------- */
 
 /** 素材类型；浏览与管理表面按单一类型查询。 */
 export type MediaType = 'image' | 'video' | 'audio';
@@ -80,16 +80,20 @@ export interface MediaUploadOptions {
   signal?: AbortSignal;
 }
 
-/**
- * 媒体服务契约。由 App 注入实现（adapter），库不直接调任何后端。
- *
- * upload() 必须返回符合 MediaItem 契约且带稳定 id 的记录。
- */
-export interface MediaService {
+/** 所有素材表面共享的最小只读浏览能力。 */
+export interface MediaBrowseService {
   list(params: MediaListParams): Promise<MediaListResult>;
   /** 可选分组能力；不需要分组浏览的消费表面可不实现。 */
   listGroups?(mediaType: MediaType): Promise<MediaGroup[]>;
+}
+
+/** 上传能力；upload() 必须返回符合 MediaItem 契约且带稳定 id 的记录。 */
+export interface MediaUploadCapability {
   upload(options: MediaUploadOptions): Promise<MediaItem>;
+}
+
+/** 删除能力；返回值只包含实际删除成功且属于本次请求的 id。 */
+export interface MediaRemoveCapability {
   remove(ids: string[]): Promise<string[]>;
 }
 
@@ -114,16 +118,38 @@ export interface MoveMediaOptions {
   groupId: string | null;
 }
 
-/** 页面级素材管理所需的窄扩展；Picker 只依赖基础 MediaService。 */
-export interface MediaLibraryService extends MediaService {
+/** 单级分组浏览与管理能力。 */
+export interface MediaGroupCapability {
   listGroups(mediaType: MediaType): Promise<MediaGroup[]>;
   createGroup(options: CreateMediaGroupOptions): Promise<MediaGroup>;
   renameGroup(options: RenameMediaGroupOptions): Promise<MediaGroup>;
   /** 仅删除分组；不得隐式删除分组内素材，非空处理策略由 adapter 明确实现。 */
   removeGroup(options: RemoveMediaGroupOptions): Promise<void>;
+}
+
+/** 素材移动能力。 */
+export interface MediaMoveCapability {
   /** 返回成功移动的素材 id；允许 adapter 表达部分成功。 */
   move(options: MoveMediaOptions): Promise<string[]>;
 }
+
+/** Picker 的能力组合；默认只要求浏览，启用上传时再要求上传能力。 */
+export type MediaPickerService = MediaBrowseService & Partial<MediaUploadCapability>;
+
+/** Library 的能力组合；具体开关决定运行时必需的方法。 */
+export type MediaLibraryAdapter = MediaBrowseService &
+  Partial<MediaUploadCapability> &
+  Partial<MediaRemoveCapability> &
+  Partial<MediaGroupCapability> &
+  Partial<MediaMoveCapability>;
+
+/**
+ * 完整素材服务兼容接口。现有 adapter 可继续使用；新组件应按实际功能依赖能力接口。
+ */
+export interface MediaService extends MediaBrowseService, MediaUploadCapability, MediaRemoveCapability {}
+
+/** 完整页面级素材管理兼容类型。 */
+export type MediaLibraryService = MediaService & MediaGroupCapability & MediaMoveCapability;
 
 /** Plugin installation options for app.use(Admin9UI, options). */
 export interface Admin9UIPluginOptions {

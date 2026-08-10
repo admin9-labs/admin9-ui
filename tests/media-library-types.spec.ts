@@ -3,7 +3,10 @@ import type {
   Admin9UIPluginOptions,
   Admin9UIOptions,
   CreateMediaGroupOptions,
+  MediaGroupCapability,
+  MediaLibraryAdapter,
   MediaLibraryService,
+  MediaMoveCapability,
   MoveMediaOptions,
   RemoveMediaGroupOptions,
   RenameMediaGroupOptions,
@@ -52,5 +55,21 @@ describe('media library service contract', () => {
     const legacyPluginOptions: Admin9UIOptions = pluginOptions;
     expect(pluginOptions.mediaService).toBe(service);
     expect(legacyPluginOptions).toBe(pluginOptions);
+  });
+
+  it('composes optional library capabilities around the browse contract', () => {
+    const readOnlyLibrary: MediaLibraryAdapter = { list: vi.fn() };
+    const groups: MediaGroupCapability = {
+      listGroups: vi.fn(),
+      createGroup: vi.fn(),
+      renameGroup: vi.fn(),
+      removeGroup: vi.fn(),
+    };
+    const movement: MediaMoveCapability = { move: vi.fn() };
+
+    expect(readOnlyLibrary.list).toBeTypeOf('function');
+    expect(readOnlyLibrary.remove).toBeUndefined();
+    expect(groups.createGroup).toBeTypeOf('function');
+    expect(movement.move).toBeTypeOf('function');
   });
 });

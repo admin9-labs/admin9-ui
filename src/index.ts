@@ -11,6 +11,13 @@ import ATiptapEditor from './components/tiptap-editor/index.vue';
 
 // 服务接口契约（供 App 实现 adapter 时 import 类型）
 export type {
+  MediaBrowseService,
+  MediaUploadCapability,
+  MediaRemoveCapability,
+  MediaGroupCapability,
+  MediaMoveCapability,
+  MediaPickerService,
+  MediaLibraryAdapter,
   MediaService,
   MediaLibraryService,
   MediaType,

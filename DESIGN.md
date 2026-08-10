@@ -79,7 +79,7 @@ admin9-ui/
 
 组件库只调用注入的接口，不感知数据来自何处，也不处理应用级认证和响应转换。
 
-### MediaService
+### Media capability contracts
 
 ```ts
 export type MediaType = 'image' | 'video' | 'audio';
@@ -126,9 +126,12 @@ export interface MediaListResult {
   };
 }
 
-export interface MediaService {
+export interface MediaBrowseService {
   list(params: MediaListParams): Promise<MediaListResult>;
   listGroups?(mediaType: MediaType): Promise<MediaGroup[]>;
+}
+
+export interface MediaUploadCapability {
   upload(options: {
     file: File;
     mediaType: MediaType;
@@ -136,6 +139,9 @@ export interface MediaService {
     onProgress?: (percent: number) => void;
     signal?: AbortSignal;
   }): Promise<MediaItem>;
+}
+
+export interface MediaRemoveCapability {
   remove(ids: string[]): Promise<string[]>;
 }
 
@@ -159,18 +165,36 @@ export interface MoveMediaOptions {
   groupId: string | null;
 }
 
-export interface MediaLibraryService extends MediaService {
+export interface MediaGroupCapability {
   listGroups(mediaType: MediaType): Promise<MediaGroup[]>;
   createGroup(options: CreateMediaGroupOptions): Promise<MediaGroup>;
   renameGroup(options: RenameMediaGroupOptions): Promise<MediaGroup>;
   removeGroup(options: RemoveMediaGroupOptions): Promise<void>;
+}
+
+export interface MediaMoveCapability {
   move(options: MoveMediaOptions): Promise<string[]>;
 }
+
+export type MediaPickerService = MediaBrowseService & Partial<MediaUploadCapability>;
+export type MediaLibraryAdapter = MediaBrowseService &
+  Partial<MediaUploadCapability> &
+  Partial<MediaRemoveCapability> &
+  Partial<MediaGroupCapability> &
+  Partial<MediaMoveCapability>;
+
+export interface MediaService extends MediaBrowseService, MediaUploadCapability, MediaRemoveCapability {}
+export type MediaLibraryService = MediaService & MediaGroupCapability & MediaMoveCapability;
 ```
 
-`MediaLibraryService` 是页面级管理的窄扩展，不改变 Picker 所依赖的 `MediaService`：
+能力接口按副作用拆分，组件只在相应功能开启时要求对应方法：
 
-- `listGroups(mediaType)` 在 Library 中为必选能力，返回该类型的后端真实单级分组；
+- `MediaBrowseService` 是只读选择与管理表面的最小依赖；`listGroups` 未实现时可隐藏分组导航；
+- `MediaUploadCapability`、`MediaRemoveCapability` 和 `MediaMoveCapability` 分别承载上传、删除和移动副作用；
+- `MediaGroupCapability` 负责分组浏览与增删改，不把业务权限或非空分组策略放进组件；
+- `MediaPickerService` 与 `MediaLibraryAdapter` 是按需能力组合；
+- `MediaService`、`MediaLibraryService` 继续保留为完整能力兼容接口，已有 adapter 仍可直接赋值；
+- `listGroups(mediaType)` 返回该类型的后端真实单级分组；
 - `createGroup`、`renameGroup` 和 `removeGroup` 都使用对象参数并显式携带 `mediaType`；
 - `removeGroup` 仅删除分组，不得隐式删除组内素材；非空分组的处理或拒绝由 adapter 明确实现；
 - `move` 使用 `groupId: null` 表示移动到未分组，返回成功移动的 ID，以支持部分成功反馈；

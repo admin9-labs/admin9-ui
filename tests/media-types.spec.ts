@@ -1,5 +1,16 @@
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
-import type { MediaGroup, MediaItem, MediaListParams, MediaService, MediaType, MediaUploadOptions } from '../src';
+import type {
+  MediaBrowseService,
+  MediaGroup,
+  MediaItem,
+  MediaListParams,
+  MediaPickerService,
+  MediaRemoveCapability,
+  MediaService,
+  MediaType,
+  MediaUploadCapability,
+  MediaUploadOptions,
+} from '../src';
 
 describe('public media contracts', () => {
   it('exports the reusable media type and group contracts', () => {
@@ -41,5 +52,17 @@ describe('public media contracts', () => {
     expect(params.groupId).toBeNull();
     expect(upload.groupId).toBe('voice');
     expect(service.listGroups).toBeTypeOf('function');
+  });
+
+  it('allows a read-only picker adapter without destructive capabilities', () => {
+    const browse: MediaBrowseService = { list: vi.fn() };
+    const picker: MediaPickerService = browse;
+    const upload: MediaUploadCapability = { upload: vi.fn() };
+    const remove: MediaRemoveCapability = { remove: vi.fn() };
+
+    expect(picker.list).toBeTypeOf('function');
+    expect(picker.upload).toBeUndefined();
+    expect(upload.upload).toBeTypeOf('function');
+    expect(remove.remove).toBeTypeOf('function');
   });
 });
