@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-12
+
 ### Added
 
 - 新增页面级 `AFileManager`，支持六类文件的准确分页浏览、类型内单级分组、上传、移动和删除，并按 adapter 能力启用管理操作。
@@ -13,6 +15,8 @@
 ### Upgrade notes
 
 - 文件组件不包含具体 API、认证或权限逻辑；消费方必须提供满足准确服务端筛选、分页及文件安全校验要求的 adapter。
+
+**Full Changelog**: https://github.com/admin9-labs/admin9-ui/compare/v0.3.1...v0.4.0
 
 ## [0.3.1] - 2026-08-11
 

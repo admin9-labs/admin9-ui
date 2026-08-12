@@ -74,7 +74,7 @@ describe('changelog release notes', () => {
       encoding: 'utf8',
     });
     expect(check.status).toBe(0);
-    expect(check.stdout).toMatch(/Validated 4 changelog releases through 0\.3\.1/);
+    expect(check.stdout).toMatch(/Validated 5 changelog releases through 0\.4\.0/);
 
     const release = spawnSync(process.execPath, ['scripts/check-changelog.mjs', '--release', 'v0.3.0'], {
       cwd: packageRoot,
