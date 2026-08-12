@@ -6,6 +6,7 @@ import * as ArcoVueIcon from '@arco-design/web-vue/es/icon';
 import Admin9UI, {
   AIconPicker,
   AFileManager,
+  AFilePicker,
   AMediaLibrary,
   AMediaPicker,
   AProTable,
@@ -20,6 +21,7 @@ import Admin9UI, {
   type MediaItem,
   type FileItem,
   type FileManagerAdapter,
+  type FilePickerAdapter,
   type FileListParams,
   type MediaLibraryService,
   type MoveMediaOptions,
@@ -62,6 +64,7 @@ const fileService: FileManagerAdapter = {
     };
   },
 };
+const filePickerService: FilePickerAdapter = { list: fileService.list };
 
 const mediaService: MediaLibraryService = {
   async list(params) {
@@ -150,7 +153,8 @@ const app = createApp({
         canManageGroups: false,
       }),
       h(AFileManager),
-      h(FixtureSfc, { service: mediaService, fileService }),
+      h(AFilePicker, { service: filePickerService, modelValue: [fileItem], fileTypes: ['document'], multiple: true }),
+      h(FixtureSfc, { service: mediaService, fileService, filePickerService }),
     ]),
 });
 

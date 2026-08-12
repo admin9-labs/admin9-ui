@@ -231,6 +231,9 @@ export interface FileUploadCapability {
   upload(options: FileUploadOptions): Promise<FileItem>;
 }
 
+/** AFilePicker only requires browsing; upload remains an optional capability. */
+export type FilePickerAdapter = FileBrowseCapability & Partial<FileUploadCapability>;
+
 export interface FileRemoveCapability {
   /** 返回实际删除成功且属于本次请求的 id，允许表达部分成功。 */
   remove(ids: string[]): Promise<string[]>;

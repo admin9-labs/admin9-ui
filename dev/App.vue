@@ -3,6 +3,7 @@
   import type { TableColumnData } from '@arco-design/web-vue';
   import {
     AFileManager,
+    AFilePicker,
     AIconPicker,
     AMediaLibrary,
     AMediaPicker,
@@ -13,10 +14,13 @@
     type MediaType,
     type FileItem,
     type FileManagerAdapter,
+    type FilePickerAdapter,
+    type FileType,
   } from '../src';
   import { createFakeMediaService, type AcceptanceState } from './fake-media-service';
   import createFakeMediaLibraryService from './fake-media-library-service';
   import createFakeFileManagerService from './fake-file-manager-service';
+  import createFakeFilePickerService from './fake-file-picker-service';
 
   interface TableRow {
     id: number;
@@ -104,6 +108,16 @@
   const fileManagerState = ref<AcceptanceState>('normal');
   const fileManagerMode = ref<(typeof libraryModeOptions)[number]['value']>('manage');
   const lastFileManagerEvent = ref('等待文件操作');
+  const filePickerState = ref<AcceptanceState>('normal');
+  const filePickerConstraint = ref<'all' | 'subset' | 'empty'>('subset');
+  const filePickerMultiple = ref(true);
+  const filePickerValue = ref<FileItem | FileItem[] | undefined>([]);
+  const lastFilePickerEvent = ref('尚未选择');
+  const filePickerConstraintOptions = [
+    { label: '全部类型', value: 'all' },
+    { label: '图片 + 文档', value: 'subset' },
+    { label: '不允许类型', value: 'empty' },
+  ] as const;
 
   const tableFetcher = computed(() => {
     const scenario = tableState.value;
@@ -147,6 +161,12 @@
       : service;
   });
   const fileManagerReadOnly = computed(() => fileManagerMode.value === 'readOnly');
+  const filePickerService = computed<FilePickerAdapter>(() => createFakeFilePickerService(filePickerState.value));
+  const filePickerTypes = computed<readonly FileType[]>(() => {
+    if (filePickerConstraint.value === 'empty') return [];
+    if (filePickerConstraint.value === 'subset') return ['image', 'document'];
+    return ['image', 'video', 'audio', 'document', 'archive', 'other'];
+  });
   const statusColor = (status: TableRow['status']) => {
     if (status === 'ready') return 'green';
     if (status === 'blocked') return 'red';
@@ -178,6 +198,9 @@
   const recordFileMove = (ids: string[], groupId: string | null) => {
     lastFileManagerEvent.value = `已移动 ${ids.length} 项到 ${groupId || '未分组'}`;
   };
+  const recordFilePickerEvent = (items: FileItem[]) => {
+    lastFilePickerEvent.value = items.length ? items.map((item) => item.name).join('、') : '已清空';
+  };
 
   watch(mediaType, () => {
     mediaValue.value = [];
@@ -188,6 +211,13 @@
   });
   watch([fileManagerMode, fileManagerState], () => {
     lastFileManagerEvent.value = '等待文件操作';
+  });
+  watch([filePickerState, filePickerConstraint], () => {
+    lastFilePickerEvent.value = '等待选择';
+  });
+  watch(filePickerMultiple, (multiple) => {
+    filePickerValue.value = multiple ? [] : undefined;
+    lastFilePickerEvent.value = '等待选择';
   });
 </script>
 
@@ -208,6 +238,7 @@
       <a href="#media-picker">AMediaPicker</a>
       <a href="#media-library">AMediaLibrary</a>
       <a href="#file-manager">AFileManager</a>
+      <a href="#file-picker">AFilePicker</a>
     </nav>
 
     <main>
@@ -417,10 +448,69 @@
         </div>
       </section>
 
-      <section v-if="!tiptapFocused" id="file-manager" class="acceptance-section" data-testid="file-manager-section">
+      <section v-if="!tiptapFocused" id="file-picker" class="acceptance-section" data-testid="file-picker-section">
         <div class="section-heading">
           <div>
             <span class="section-index">06</span>
+            <h2>AFilePicker</h2>
+          </div>
+          <div class="section-controls">
+            <a-radio-group v-model="filePickerMultiple" type="button" size="small" data-testid="file-picker-mode-control">
+              <a-radio :value="true">多选</a-radio>
+              <a-radio :value="false">单选</a-radio>
+            </a-radio-group>
+            <a-radio-group
+              v-model="filePickerConstraint"
+              type="button"
+              size="small"
+              data-testid="file-picker-constraint-control"
+            >
+              <a-radio v-for="option in filePickerConstraintOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </a-radio>
+            </a-radio-group>
+            <a-radio-group v-model="filePickerState" type="button" size="small" data-testid="file-picker-state-control">
+              <a-radio v-for="option in stateOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </a-radio>
+            </a-radio-group>
+          </div>
+        </div>
+
+        <div class="file-picker-workspace component-frame">
+          <div>
+            <div class="field-label">附件字段</div>
+            <AFilePicker
+              v-model="filePickerValue"
+              :service="filePickerService"
+              :file-types="filePickerTypes"
+              :page-size="6"
+              :limit="4"
+              :multiple="filePickerMultiple"
+              accept="image/*,.pdf,.doc,.docx"
+              can-upload
+              data-testid="file-picker"
+              @change="recordFilePickerEvent"
+              @selection-change="recordFilePickerEvent"
+            />
+          </div>
+          <dl class="event-readout" aria-live="polite">
+            <dt>选择模式</dt>
+            <dd>{{ filePickerMultiple ? '多选' : '单选' }}</dd>
+            <dt>类型约束</dt>
+            <dd>{{ filePickerConstraintOptions.find((option) => option.value === filePickerConstraint)?.label }}</dd>
+            <dt>当前场景</dt>
+            <dd>{{ stateOptions.find((option) => option.value === filePickerState)?.label }}</dd>
+            <dt>最近事件</dt>
+            <dd>{{ lastFilePickerEvent }}</dd>
+          </dl>
+        </div>
+      </section>
+
+      <section v-if="!tiptapFocused" id="file-manager" class="acceptance-section" data-testid="file-manager-section">
+        <div class="section-heading">
+          <div>
+            <span class="section-index">07</span>
             <h2>AFileManager</h2>
           </div>
           <div class="section-controls">

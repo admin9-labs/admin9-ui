@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import * as publicApi from '../src';
 import type {
   Admin9UIPluginOptions,
+  FilePickerAdapter,
   ATiptapEditorProps,
   TiptapAudioWidth,
   TiptapBlockWidth,
@@ -27,6 +28,18 @@ describe('package public API', () => {
     const options: Admin9UIPluginOptions = { fileService };
 
     expect(options.fileService).toBe(fileService);
+  });
+
+  it('exports the minimal file picker adapter without management requirements', () => {
+    const picker: FilePickerAdapter = {
+      list: async ({ page, pageSize }) => ({
+        list: [],
+        pagination: { page, pageSize, total: 0, hasMore: false },
+      }),
+    };
+
+    expect(picker.list).toBeTypeOf('function');
+    expect(picker.upload).toBeUndefined();
   });
 
   it('exports the ATiptapEditor media contract types', () => {
@@ -70,6 +83,7 @@ describe('package public API', () => {
       [
         'AIconPicker',
         'AFileManager',
+        'AFilePicker',
         'AMediaLibrary',
         'AMediaPicker',
         'AProTable',
@@ -87,6 +101,7 @@ describe('package public API', () => {
     expect(localeApi.enUS.mediaLibrary.groupAll).toBe('All');
     expect(localeApi.zhCN.mediaLibrary.groupUngrouped).toBe('未分组');
     expect(localeApi.enUS.fileManager.types.archive).toBe('Archives');
+    expect(localeApi.enUS.filePicker.typeAllowed).toBe('All allowed types');
   });
 
   it('keeps English and Chinese locale keys structurally aligned', () => {
@@ -99,6 +114,7 @@ describe('package public API', () => {
 
     expect(app.component('AMediaLibrary')).toBe(publicApi.AMediaLibrary);
     expect(app.component('AFileManager')).toBe(publicApi.AFileManager);
+    expect(app.component('AFilePicker')).toBe(publicApi.AFilePicker);
     expect(app.component('ATiptapEditor')).toBe(publicApi.ATiptapEditor);
   });
 });

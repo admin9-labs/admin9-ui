@@ -6,6 +6,7 @@ import type { Admin9UIPluginOptions } from './services/types';
 import AMediaPicker from './components/media-picker/index.vue';
 import AMediaLibrary from './components/media-library/index.vue';
 import AFileManager from './components/file-manager/index.vue';
+import AFilePicker from './components/file-picker/index.vue';
 import AIconPicker from './components/icon-picker/index.vue';
 import AProTable from './components/pro-table/index.vue';
 import ATiptapEditor from './components/tiptap-editor/index.vue';
@@ -43,6 +44,7 @@ export type {
   FileUploadOptions,
   FileBrowseCapability,
   FileUploadCapability,
+  FilePickerAdapter,
   FileRemoveCapability,
   FileGroupCapability,
   FileMoveCapability,
@@ -73,7 +75,7 @@ export type {
 } from './components/tiptap-editor/types';
 
 // 组件命名导出（供按需 import）
-export { AMediaPicker, AMediaLibrary, AFileManager, AIconPicker, AProTable, ATiptapEditor };
+export { AMediaPicker, AMediaLibrary, AFileManager, AFilePicker, AIconPicker, AProTable, ATiptapEditor };
 
 /**
  * 安装插件。
@@ -87,7 +89,15 @@ export { AMediaPicker, AMediaLibrary, AFileManager, AIconPicker, AProTable, ATip
 const Admin9UI = {
   install(app: App, options: Admin9UIPluginOptions = {}) {
     // 名称冲突检测：A 前缀下若与 Arco 原生组件重名，提示及早发现
-    const reserved = ['AMediaPicker', 'AMediaLibrary', 'AFileManager', 'AIconPicker', 'AProTable', 'ATiptapEditor'];
+    const reserved = [
+      'AMediaPicker',
+      'AMediaLibrary',
+      'AFileManager',
+      'AFilePicker',
+      'AIconPicker',
+      'AProTable',
+      'ATiptapEditor',
+    ];
     reserved.forEach((name) => {
       if (app.component(name)) {
         // eslint-disable-next-line no-console
@@ -101,6 +111,7 @@ const Admin9UI = {
     app.component('AMediaPicker', AMediaPicker);
     app.component('AMediaLibrary', AMediaLibrary);
     app.component('AFileManager', AFileManager);
+    app.component('AFilePicker', AFilePicker);
     app.component('AIconPicker', AIconPicker);
     app.component('AProTable', AProTable);
     app.component('ATiptapEditor', ATiptapEditor);

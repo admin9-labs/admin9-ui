@@ -43,6 +43,7 @@ admin9-ui/
     ├── components/
     │   ├── icon-picker/
     │   ├── file-manager/
+    │   ├── file-picker/
     │   ├── media-library/
     │   ├── media-picker/
     │   ├── pro-table/
@@ -63,7 +64,8 @@ admin9-ui/
 | default `Admin9UI`                                     | 全局组件注册与默认 service 注入 | 可选媒体与文件 adapter     |
 | `AMediaPicker`                                         | 表单级素材浏览、选择与可选上传  | `MediaPickerService` 注入  |
 | `AMediaLibrary`                                        | 页面级素材与单级分组管理        | `MediaLibraryAdapter` 注入 |
-| `AFileManager`                                         | 页面级六类文件管理              | `FileManagerAdapter` 注入  |
+| `AFileManager`                                         | 页面级文件浏览与管理            | `FileManagerAdapter` 注入  |
+| `AFilePicker`                                          | 表单级文件浏览与选择            | `FilePickerAdapter` 注入   |
 | `AIconPicker`                                          | Arco 图标搜索与选择             | 无                         |
 | `AProTable`                                            | fetcher 驱动的页面级表格        | fetcher prop 注入          |
 | `ATiptapEditor`                                        | Tiptap 驱动的 HTML 富文本编辑器 | 可选 `MediaService`        |
@@ -250,6 +252,8 @@ export interface FileUploadCapability {
   upload(options: FileUploadOptions & { fileType: FileType }): Promise<FileItem>;
 }
 
+export type FilePickerAdapter = FileBrowseCapability & Partial<FileUploadCapability>;
+
 export type FileManagerAdapter = FileBrowseCapability &
   Partial<FileUploadCapability> &
   Partial<FileRemoveCapability> &
@@ -260,7 +264,8 @@ export type FileManagerAdapter = FileBrowseCapability &
 - 聚合查询省略 `fileTypes` 表示六类全部；提供 `fileTypes` 表示后端准确筛选该真实类型集合，空数组表示无匹配结果，不能退化为全部；
 - adapter 必须先在完整数据集上按 `fileTypes` 筛选，再执行分页并返回准确 `pagination.total/typeCounts`，不得对当前页做客户端过滤；
 - 只有具体 `fileType` 查询可以携带 `groupId`；上传、`listGroups`、分组变更与移动始终要求真实 `FileType`；
-- 插件注入字段统一为 `fileService`，供文件浏览/上传/管理表面复用；使用点的 `service` prop 仍优先；
+- 插件注入字段统一为 `fileService`，供文件浏览/上传/管理表面复用；Picker 和 Manager 使用点的 `service` prop 均优先；
+- `FilePickerAdapter` 只组合浏览与可选上传，不要求删除、移动或分组管理；
 - `FileManagerAdapter` 默认只要求 `list`，其余 capability 只在对应界面功能显式开启时要求。
 
 ## 5. 组件设计
@@ -304,6 +309,19 @@ Props、Events、Slots、状态行为和示例见 [AMediaLibrary 使用文档](.
 - 图片显示缩略图，音视频体现时长或处理状态，文档/压缩包/其他显示清晰类型图标与元数据；不承诺在线 Office 预览。
 
 完整 Props、Events、Slots、service 行为和安全边界见 [AFileManager 使用文档](./docs/components/file-manager.md)。
+
+### AFilePicker
+
+`AFilePicker` 是表单、弹窗与附件字段中的轻量选择器，保留 `AFileManager` 的页面级管理职责。
+
+- `modelValue` 只使用共享 `FileItem`：单选为 `FileItem | undefined`，多选为 `FileItem[]`；
+- `fileTypes` 归一化为六种真实类型并去重：单类型直接具体查询，2-5 类的聚合页传准确子集，六类聚合省略集合，空数组零请求；
+- 选择草稿可跨页保留，取消不写回；普通列表刷新只调和草稿，只有确认、外部清空或 props 约束安全校正才改变已提交值；
+- Picker value 必须同时具备唯一非空 ID、允许类型、`ready` 或未提供状态、非空 URL。Manager 为删除清理选择异常记录的能力不适用于 Picker；
+- 上传只在真实类型视图启用，`accept` 仅传给原生选择提示，不参与类型推断或安全校验；
+- 复用包内私有 FileItem 展示，但不公开通用 hook/helper，也不提供移动、删除或分组管理。
+
+完整契约见 [AFilePicker 使用文档](./docs/components/file-picker.md)。
 
 ### AIconPicker
 

@@ -41,6 +41,7 @@ assert.equal(packageExports.localePrefix, 'admin9Ui');
 assert.equal(localeExports.localePrefix, 'admin9Ui');
 assert.ok(packageExports.AIconPicker);
 assert.ok(packageExports.AFileManager);
+assert.ok(packageExports.AFilePicker);
 assert.ok(packageExports.AMediaLibrary);
 assert.ok(packageExports.AMediaPicker);
 assert.ok(packageExports.AProTable);
@@ -51,6 +52,7 @@ const commonJsPackage = require('@admin9-labs/admin9-ui');
 const commonJsLocale = require('@admin9-labs/admin9-ui/locale');
 assert.ok(commonJsPackage.AIconPicker);
 assert.ok(commonJsPackage.AFileManager);
+assert.ok(commonJsPackage.AFilePicker);
 assert.ok(commonJsPackage.AMediaLibrary);
 assert.ok(commonJsPackage.ATiptapEditor);
 assert.equal(commonJsLocale.localePrefix, 'admin9Ui');
@@ -139,6 +141,7 @@ const app = createApp({
         canManageGroups: false,
       }),
       h(packageExports.AFileManager),
+      h(packageExports.AFilePicker, { multiple: true, fileTypes: ['image', 'document'] }),
     ]),
 });
 
@@ -181,6 +184,7 @@ assert.equal(mountedAudioWrapper?.style.getPropertyValue('--a9-media-width'), '4
 assert.ok(host.querySelector('.a9-media-picker'), 'AMediaPicker did not mount.');
 assert.ok(host.querySelector('.a9-media-library'), 'AMediaLibrary did not mount.');
 assert.ok(host.querySelector('.a9-file-manager'), 'AFileManager did not mount from list-only fileService.');
+assert.ok(host.querySelector('.a9-file-picker'), 'AFilePicker did not mount from shared list-only fileService.');
 assert.ok(host.querySelector('.arco-input-wrapper'), 'Arco input integration did not mount.');
 assert.ok(host.querySelector('.arco-table'), 'Arco table integration did not mount.');
 assert.ok(host.querySelector('.arco-upload'), 'Arco upload integration did not mount.');

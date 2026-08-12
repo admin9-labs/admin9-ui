@@ -1,21 +1,27 @@
 <script setup lang="ts">
+  import { ref } from 'vue';
   import {
     AIconPicker,
     AFileManager,
+    AFilePicker,
     AMediaLibrary,
     AMediaPicker,
     AProTable,
     ATiptapEditor,
     type MediaLibraryService,
     type FileManagerAdapter,
+    type FilePickerAdapter,
+    type FileItem,
   } from '@admin9-labs/admin9-ui';
 
   defineProps<{
     service: MediaLibraryService;
     fileService: FileManagerAdapter;
+    filePickerService: FilePickerAdapter;
   }>();
 
   const fetchRows = async () => ({ list: [], total: 0 });
+  const attachments = ref<FileItem[]>([]);
 </script>
 
 <template>
@@ -34,5 +40,12 @@
     <AMediaPicker :service="service" :can-upload="false" :show-file-list="false" />
     <AMediaLibrary :service="service" :can-upload="false" :can-delete="false" :can-move="false" :can-manage-groups="false" />
     <AFileManager :service="fileService" />
+    <AFilePicker
+      v-model="attachments"
+      :service="filePickerService"
+      :file-types="['image', 'document']"
+      :limit="3"
+      multiple
+    />
   </section>
 </template>

@@ -43,7 +43,15 @@ app.use(Admin9UI, {
 也可以按需导入：
 
 ```ts
-import { AFileManager, AMediaLibrary, AMediaPicker, AIconPicker, AProTable, ATiptapEditor } from '@admin9-labs/admin9-ui';
+import {
+  AFileManager,
+  AFilePicker,
+  AMediaLibrary,
+  AMediaPicker,
+  AIconPicker,
+  AProTable,
+  ATiptapEditor,
+} from '@admin9-labs/admin9-ui';
 import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 ```
 
@@ -51,16 +59,17 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 
 ## 公开能力
 
-- 默认导出的 `Admin9UI` 插件：全局注册六个组件，并可注入默认 `MediaLibraryAdapter` 与 `FileManagerAdapter`
+- 默认导出的 `Admin9UI` 插件：全局注册七个组件，并可注入默认媒体与文件 adapter
 - [`AMediaPicker`](./docs/components/media-picker.md)：支持图片、视频和音频的表单级轻量素材选择器
 - [`AMediaLibrary`](./docs/components/media-library.md)：支持分组、上传、移动和删除的页面级素材管理组件
 - [`AFileManager`](./docs/components/file-manager.md)：以文件类型优先、类型内单级分组为信息层级的页面级文件管理组件
+- [`AFilePicker`](./docs/components/file-picker.md)：支持六类文件、后端准确分页与可选上传的表单级轻量选择器
 - [`AIconPicker`](./docs/components/icon-picker.md)：支持分类、搜索、键盘导航和表单状态的 Arco 图标选择器
 - `AProTable`：通过 fetcher 注入数据源的页面级表格
 - [`ATiptapEditor`](./docs/components/tiptap-editor.md)：基于 Tiptap，支持内部滚动工作区、悬浮媒体工具栏、独占一行/跟随文字图片、可调尺寸视频与三档播放器宽度的表单级 HTML 富文本编辑器
 - `Admin9UIPluginOptions`、媒体与文件 browse/upload/management 能力、兼容的完整 service 类型及相关数据类型
 - `messages`、`localePrefix`、`zhCN`、`enUS` 和 `arcoIconNames`
-- `@admin9-labs/admin9-ui/styles`：六个组件的统一样式入口
+- `@admin9-labs/admin9-ui/styles`：七个组件的统一样式入口
 
 ## 素材组件边界
 
@@ -75,11 +84,11 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 
 ## 文件组件边界
 
-`AFileManager` 与素材组件独立演进。它支持 `image`、`video`、`audio`、`document`、`archive`、`other` 六种真实 `FileType`；“全部”只是省略 `fileType` 的聚合查询，不会写入 `FileItem` 或传给上传、分组、移动能力。
+`AFileManager` 与 `AFilePicker` 共享文件契约，但职责独立：Manager 是页面级管理表面，Picker 用于表单、弹窗和附件字段中的轻量选择，不提供移动、删除或分组管理。两者支持 `image`、`video`、`audio`、`document`、`archive`、`other` 六种真实 `FileType`；“全部”只是聚合查询筛选，不会写入 `FileItem` 或传给上传、分组、移动能力。
 
-消费方通过使用点的 `service` prop，或 `app.use(Admin9UI, { fileService })` 注入 `FileManagerAdapter`。默认四个管理开关均为 `false`，因此 `{ list }` 可直接挂载为只读文件管理表面；上传、删除、移动和分组管理只在显式开启时要求对应能力，且界面开关不替代后端授权。
+消费方通过使用点的 `service` prop，或 `app.use(Admin9UI, { fileService })` 注入共享文件 service；使用点 prop 优先。Manager 使用 `FileManagerAdapter`，Picker 使用最小的 `FilePickerAdapter`。能力开关只控制界面，不替代后端授权。
 
-`FileListParams` 的聚合查询省略 `fileTypes` 表示六类全部；提供 `fileTypes` 时表示准确的真实类型集合，空数组表示无匹配。adapter 必须在后端对完整集合进行筛选、分页并返回准确 `pagination.total/typeCounts`，禁止仅过滤当前页。具体类型查询才能携带 `groupId`。完整行为见 [`AFileManager` 文档](./docs/components/file-manager.md)。
+`FileListParams` 的聚合查询省略 `fileTypes` 表示六类全部；提供 `fileTypes` 时表示准确的真实类型集合，空数组表示无匹配。adapter 必须在后端对完整集合进行筛选、分页并返回准确 `pagination.total/typeCounts`，禁止仅过滤当前页。具体类型查询才能携带 `groupId`。完整行为见 [`AFileManager` 文档](./docs/components/file-manager.md)与 [`AFilePicker` 文档](./docs/components/file-picker.md)。
 
 ## 开发
 
