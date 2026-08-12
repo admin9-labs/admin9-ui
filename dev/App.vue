@@ -6,13 +6,8 @@
     AFileManager,
     AFilePicker,
     AIconPicker,
-    AMediaLibrary,
-    AMediaPicker,
     AProTable,
     ATiptapEditor,
-    type MediaItem,
-    type MediaLibraryAdapter,
-    type MediaType,
     type FileItem,
     type FileManagerAdapter,
     type FilePickerAdapter,
@@ -20,8 +15,7 @@
     type CoordinateSelection,
     type CoordinateValue,
   } from '../src';
-  import { createFakeMediaService, type AcceptanceState } from './fake-media-service';
-  import createFakeMediaLibraryService from './fake-media-library-service';
+  import { type AcceptanceState } from './fake-acceptance-utils';
   import createFakeFileManagerService from './fake-file-manager-service';
   import createFakeFilePickerService from './fake-file-picker-service';
 
@@ -44,11 +38,6 @@
     { label: '加载', value: 'loading' },
     { label: '空数据', value: 'empty' },
     { label: '失败', value: 'error' },
-  ];
-  const mediaTypeOptions: { label: string; value: MediaType }[] = [
-    { label: '图片', value: 'image' },
-    { label: '视频', value: 'video' },
-    { label: '音频', value: 'audio' },
   ];
   const libraryModeOptions = [
     { label: '管理', value: 'manage' },
@@ -104,14 +93,6 @@
       '<p>媒体之后仍可通过 Gap Cursor 继续输入，连续媒体不会生成空段落。</p>',
     ].join('')
   );
-  const mediaState = ref<AcceptanceState>('normal');
-  const mediaType = ref<MediaType>('image');
-  const mediaValue = ref<MediaItem[]>([]);
-  const lastMediaEvent = ref('尚未选择');
-  const libraryState = ref<AcceptanceState>('normal');
-  const libraryType = ref<MediaType>('image');
-  const libraryMode = ref<(typeof libraryModeOptions)[number]['value']>('manage');
-  const lastLibraryEvent = ref('等待管理操作');
   const fileManagerState = ref<AcceptanceState>('normal');
   const fileManagerMode = ref<(typeof libraryModeOptions)[number]['value']>('manage');
   const lastFileManagerEvent = ref('等待文件操作');
@@ -155,12 +136,6 @@
     };
   });
 
-  const mediaService = computed(() => createFakeMediaService(mediaState.value));
-  const mediaLibraryService = computed<MediaLibraryAdapter>(() => {
-    const service = createFakeMediaLibraryService(libraryState.value);
-    return libraryMode.value === 'readOnly' ? { list: (params) => service.list(params) } : service;
-  });
-  const libraryReadOnly = computed(() => libraryMode.value === 'readOnly');
   const fileManagerService = computed<FileManagerAdapter>(() => {
     const service = createFakeFileManagerService(fileManagerState.value);
     return fileManagerMode.value === 'readOnly'
@@ -184,22 +159,10 @@
     if (status === 'blocked') return '阻塞';
     return '草稿';
   };
-  const recordMediaEvent = (items: MediaItem[]) => {
-    lastMediaEvent.value = items.length ? items.map((item) => item.name).join('、') : '已清空';
-  };
   const recordCoordinateEvent = (selection: CoordinateSelection) => {
     lastCoordinateEvent.value = selection.title
       ? `${selection.title} · ${selection.latitude}, ${selection.longitude}`
       : `${selection.latitude}, ${selection.longitude}`;
-  };
-  const recordLibraryUpload = (item: MediaItem) => {
-    lastLibraryEvent.value = `已上传 ${item.name}`;
-  };
-  const recordLibraryDelete = (ids: string[]) => {
-    lastLibraryEvent.value = `已删除 ${ids.length} 项`;
-  };
-  const recordLibraryMove = (ids: string[], groupId: string | null) => {
-    lastLibraryEvent.value = `已移动 ${ids.length} 项到 ${groupId || '未分组'}`;
   };
   const recordFileUpload = (item: FileItem) => {
     lastFileManagerEvent.value = `已上传 ${item.name}`;
@@ -214,13 +177,6 @@
     lastFilePickerEvent.value = items.length ? items.map((item) => item.name).join('、') : '已清空';
   };
 
-  watch(mediaType, () => {
-    mediaValue.value = [];
-    lastMediaEvent.value = '尚未选择';
-  });
-  watch(libraryType, () => {
-    lastLibraryEvent.value = '等待管理操作';
-  });
   watch([fileManagerMode, fileManagerState], () => {
     lastFileManagerEvent.value = '等待文件操作';
   });
@@ -248,8 +204,6 @@
       <a href="#icon-picker">AIconPicker</a>
       <a href="#coordinate-picker">ACoordinatePicker</a>
       <a href="#tiptap-editor">ATiptapEditor</a>
-      <a href="#media-picker">AMediaPicker</a>
-      <a href="#media-library">AMediaLibrary</a>
       <a href="#file-manager">AFileManager</a>
       <a href="#file-picker">AFilePicker</a>
     </nav>
@@ -381,7 +335,7 @@
         <div class="tiptap-workspace component-frame">
           <ATiptapEditor
             v-model="tiptapValue"
-            :service="mediaService"
+            :service="filePickerService"
             :readonly="editorMode === 'readonly'"
             :disabled="editorMode === 'disabled'"
             max-height="min(640px, 60dvh)"
@@ -397,105 +351,6 @@
             <span>HTML 输出</span>
             <code>{{ tiptapValue || '（空）' }}</code>
           </div>
-        </div>
-      </section>
-
-      <section v-if="!tiptapFocused" id="media-picker" class="acceptance-section" data-testid="media-picker-section">
-        <div class="section-heading">
-          <div>
-            <span class="section-index">05</span>
-            <h2>AMediaPicker</h2>
-          </div>
-          <div class="section-controls">
-            <a-radio-group v-model="mediaType" type="button" size="small" data-testid="media-type-control">
-              <a-radio v-for="option in mediaTypeOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </a-radio>
-            </a-radio-group>
-            <a-radio-group v-model="mediaState" type="button" size="small" data-testid="media-state-control">
-              <a-radio v-for="option in stateOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </a-radio>
-            </a-radio-group>
-          </div>
-        </div>
-
-        <div class="media-workspace component-frame">
-          <div>
-            <div class="field-label">素材字段</div>
-            <AMediaPicker
-              :key="`${mediaType}-${mediaState}`"
-              v-model="mediaValue"
-              :service="mediaService"
-              :media-type="mediaType"
-              :limit="3"
-              :page-size="8"
-              multiple
-              can-upload
-              data-testid="media-picker"
-              @change="recordMediaEvent"
-              @selection-change="recordMediaEvent"
-            />
-          </div>
-          <dl class="event-readout" aria-live="polite">
-            <dt>当前场景</dt>
-            <dd>{{ stateOptions.find((option) => option.value === mediaState)?.label }}</dd>
-            <dt>素材类型</dt>
-            <dd>{{ mediaTypeOptions.find((option) => option.value === mediaType)?.label }}</dd>
-            <dt>最近事件</dt>
-            <dd>{{ lastMediaEvent }}</dd>
-          </dl>
-        </div>
-      </section>
-
-      <section v-if="!tiptapFocused" id="media-library" class="acceptance-section" data-testid="media-library-section">
-        <div class="section-heading">
-          <div>
-            <span class="section-index">06</span>
-            <h2>AMediaLibrary</h2>
-          </div>
-          <div class="section-controls">
-            <a-radio-group v-model="libraryMode" type="button" size="small" data-testid="library-mode-control">
-              <a-radio v-for="option in libraryModeOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </a-radio>
-            </a-radio-group>
-            <a-radio-group v-model="libraryType" type="button" size="small" data-testid="library-type-control">
-              <a-radio v-for="option in mediaTypeOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </a-radio>
-            </a-radio-group>
-            <a-radio-group v-model="libraryState" type="button" size="small" data-testid="library-state-control">
-              <a-radio v-for="option in stateOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </a-radio>
-            </a-radio-group>
-          </div>
-        </div>
-
-        <div class="library-workspace">
-          <AMediaLibrary
-            :key="`${libraryMode}-${libraryType}-${libraryState}`"
-            :service="mediaLibraryService"
-            :media-type="libraryType"
-            :page-size="2"
-            :can-upload="!libraryReadOnly"
-            :can-delete="!libraryReadOnly"
-            :can-move="!libraryReadOnly"
-            :can-manage-groups="!libraryReadOnly"
-            data-testid="media-library"
-            @upload-success="recordLibraryUpload"
-            @delete-success="recordLibraryDelete"
-            @move-success="recordLibraryMove"
-          />
-          <dl class="library-event-readout" aria-live="polite">
-            <dt>素材类型</dt>
-            <dd>{{ mediaTypeOptions.find((option) => option.value === libraryType)?.label }}</dd>
-            <dt>当前场景</dt>
-            <dd>{{ stateOptions.find((option) => option.value === libraryState)?.label }}</dd>
-            <dt>最近事件</dt>
-            <dd>{{ lastLibraryEvent }}</dd>
-          </dl>
         </div>
       </section>
 

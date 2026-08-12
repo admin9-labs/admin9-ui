@@ -94,10 +94,8 @@ try {
     'dist/locale/index.cjs',
     'dist/locale/index.d.ts',
     'dist/style.css',
-    'docs/components/media-library.md',
     'docs/components/file-manager.md',
     'docs/components/file-picker.md',
-    'docs/components/media-picker.md',
     'docs/components/icon-picker.md',
     'docs/components/tiptap-editor.md',
   ];

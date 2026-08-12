@@ -5,18 +5,15 @@
     ACoordinatePicker,
     AFileManager,
     AFilePicker,
-    AMediaLibrary,
-    AMediaPicker,
     AProTable,
     ATiptapEditor,
-    type MediaLibraryService,
     type FileManagerAdapter,
     type FilePickerAdapter,
     type FileItem,
   } from '@admin9-labs/admin9-ui';
 
   defineProps<{
-    service: MediaLibraryService;
+    service: FilePickerAdapter;
     fileService: FileManagerAdapter;
     filePickerService: FilePickerAdapter;
   }>();
@@ -39,8 +36,6 @@
       :can-upload-video="false"
       :can-upload-audio="false"
     />
-    <AMediaPicker :service="service" :can-upload="false" :show-file-list="false" />
-    <AMediaLibrary :service="service" :can-upload="false" :can-delete="false" :can-move="false" :can-manage-groups="false" />
     <AFileManager :service="fileService" />
     <AFilePicker v-model="attachments" :service="filePickerService" :file-types="['image', 'document']" :limit="3" multiple />
   </section>

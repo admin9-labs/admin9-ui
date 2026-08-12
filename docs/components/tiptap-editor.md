@@ -1,6 +1,6 @@
 # ATiptapEditor
 
-`ATiptapEditor` 是基于 Tiptap 的表单级 HTML 富文本编辑器。它提供中后台常用的内容格式，并在存在 `MediaService` 时复用 `AMediaPicker` 插入或替换图片、视频和音频。
+`ATiptapEditor` 是基于 Tiptap 的表单级 HTML 富文本编辑器。它提供中后台常用的内容格式，并在存在 `FilePickerAdapter` 时复用 `AFilePicker` 插入或替换图片、视频和音频。
 
 ## 使用
 
@@ -23,9 +23,9 @@
 </template>
 ```
 
-若应用已经通过 `app.use(Admin9UI, { mediaService })` 注入素材服务，编辑器会自动显示图片、视频和音频按钮；也可在使用点通过 `service` prop 覆盖。未提供服务时只隐藏三个素材按钮，不影响其他编辑能力。
+若应用已经通过 `app.use(Admin9UI, { fileService })` 注入文件服务，编辑器会自动显示图片、视频和音频按钮；也可在使用点通过 `service` prop 覆盖。未提供服务时只隐藏三个文件按钮，不影响其他编辑能力。
 
-素材服务默认只需实现 `list()`。若需要在某一类 Picker 中上传，显式开启对应的 `canUploadImage`、`canUploadVideo` 或 `canUploadAudio`，并为 service 提供 `upload()`。
+文件服务默认只需实现 `list()`。若需要在某一类 Picker 中上传，显式开启对应的 `canUploadImage`、`canUploadVideo` 或 `canUploadAudio`，并为 service 提供 `upload()`。
 
 ## Props
 
@@ -39,7 +39,7 @@
 | `maxHeight`           | `number \| string`    | `min(640px, 60dvh)` | 正文滚动区最大高度；数字按 px 处理                 |
 | `maxLength`           | `number`              | `0`                 | 最大字符数，`0` 表示不限                           |
 | `showWordCount`       | `boolean`             | `true`              | 是否显示字符统计                                   |
-| `service`             | `MediaPickerService`  | 插件注入值          | 图片、视频和音频素材浏览服务；启用上传时需上传能力 |
+| `service`             | `FilePickerAdapter`   | 插件注入值          | 图片、视频和音频文件浏览服务；启用上传时需上传能力 |
 | `canUploadImage`      | `boolean`             | `false`             | 图片素材弹窗是否允许上传                           |
 | `canUploadVideo`      | `boolean`             | `false`             | 视频素材弹窗是否允许上传                           |
 | `canUploadAudio`      | `boolean`             | `false`             | 音频素材弹窗是否允许上传                           |
@@ -58,7 +58,7 @@
 - 视频：提供小、中、大、铺满快捷项，桌面仍可等比拖动微调；调整后可重置为默认铺满，并支持左中右对齐、替换和删除。
 - 音频：在可编辑状态下操作原生播放器会同时选中音频并打开悬浮操作栏，不取消或替代播放、暂停、进度和音量等原生行为。悬浮栏提供小播放器、标准播放器、铺满编辑区三档宽度，以及左中右对齐、替换和删除；默认标准播放器并左对齐。音频不提供高度或自由缩放，移动端会自动铺满编辑区，避免播放控件被压缩。
 
-媒体始终插入当前选区。编辑器显式要求 Picker 返回完整 `MediaItem`，并在写入 Tiptap 前逐项复核类型与 URL：混合选择中的有效项仍会插入，被拒项通过界面反馈和 `media-error` 事件报告；全部无效时不执行插入命令。替换只接受一个完全有效且与当前节点同类型的素材。独占一行的媒体之后使用 Gap Cursor 保持可继续输入，连续插入不会覆盖上一个节点，也不会为此向 HTML 写入尾随空段落。超高媒体以媒体 DOM 与正文滚动视口的可见交集作为 BubbleMenu 锚点，完全滚出时隐藏、重新进入时恢复。图片替代文字通过 Popover 按需编辑。移动端隐藏拖动柄，以尺寸预设作为主要调整方式；悬浮操作栏使用受正文宽度约束的单行分组，可横向访问全部操作。
+媒体始终插入当前选区。编辑器显式要求 `AFilePicker` 返回完整 `FileItem`，并在写入 Tiptap 前逐项复核类型与 URL：混合选择中的有效项仍会插入，被拒项通过界面反馈和 `media-error` 事件报告；全部无效时不执行插入命令。替换只接受一个完全有效且与当前节点同类型的文件。独占一行的媒体之后使用 Gap Cursor 保持可继续输入，连续插入不会覆盖上一个节点，也不会为此向 HTML 写入尾随空段落。超高媒体以媒体 DOM 与正文滚动视口的可见交集作为 BubbleMenu 锚点，完全滚出时隐藏、重新进入时恢复。图片替代文字通过 Popover 按需编辑。移动端隐藏拖动柄，以尺寸预设作为主要调整方式；悬浮操作栏使用受正文宽度约束的单行分组，可横向访问全部操作。
 
 界面只显示上述操作结果名称，不向普通用户展示 CSS 尺寸或节点术语。图片和视频始终保持比例且不超过编辑区宽度；拖动和外部 HTML 中的超限尺寸都会收敛到 100% 以内。内部序列化契约保持稳定：独占一行的图片使用 `data-display="block"`、`data-width`、`data-align`；跟随文字的图片使用 `data-display="inline"`、`data-size`；视频使用百分比 `data-width` 和 `data-align`；音频使用 `compact | standard | full` 的 `data-width` 与 `data-align`。重新解析 HTML 会恢复布局，输入中的任意 `style`、无效枚举值和不安全 URL 不会进入规范化输出。
 

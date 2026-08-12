@@ -44,8 +44,6 @@ admin9-ui/
     │   ├── icon-picker/
     │   ├── file-manager/
     │   ├── file-picker/
-    │   ├── media-library/
-    │   ├── media-picker/
     │   ├── pro-table/
     │   └── tiptap-editor/
     ├── internal/
@@ -55,22 +53,20 @@ admin9-ui/
     └── styles/
 ```
 
-包名固定为 `@admin9-labs/admin9-ui`。版本 `0.1.0` 是公开首发版本，当前版本为 `0.3.1`；在 `0.x` 阶段继续遵循语义化版本，但不承诺 1.0 级别的兼容稳定性。
+包名固定为 `@admin9-labs/admin9-ui`。版本 `0.1.0` 是公开首发版本，当前版本为 `0.5.0`；在 `0.x` 阶段继续遵循语义化版本，但不承诺 1.0 级别的兼容稳定性。
 
 ## 3. 公开能力
 
 | 导出                                                   | 定位                            | 数据依赖                   |
 | ------------------------------------------------------ | ------------------------------- | -------------------------- |
-| default `Admin9UI`                                     | 全局组件注册与默认 service 注入 | 可选媒体与文件 adapter     |
-| `AMediaPicker`                                         | 表单级素材浏览、选择与可选上传  | `MediaPickerService` 注入  |
-| `AMediaLibrary`                                        | 页面级素材与单级分组管理        | `MediaLibraryAdapter` 注入 |
+| default `Admin9UI`                                     | 全局组件注册与默认 service 注入 | 可选文件 adapter           |
 | `AFileManager`                                         | 页面级文件浏览与管理            | `FileManagerAdapter` 注入  |
 | `AFilePicker`                                          | 表单级文件浏览与选择            | `FilePickerAdapter` 注入   |
 | `AIconPicker`                                          | Arco 图标搜索与选择             | 无                         |
 | `AProTable`                                            | fetcher 驱动的页面级表格        | fetcher prop 注入          |
-| `ATiptapEditor`                                        | Tiptap 驱动的 HTML 富文本编辑器 | 可选 `MediaService`        |
+| `ATiptapEditor`                                        | Tiptap 驱动的 HTML 富文本编辑器 | 可选 `FilePickerAdapter`   |
 | `ACoordinatePicker`                                    | 腾讯地图坐标搜索与点选          | 消费方提供腾讯地图 API Key |
-| `Admin9UIPluginOptions`、`MediaService` 及相关公共类型 | 插件配置与素材 adapter 契约     | 消费方实现                 |
+| `Admin9UIPluginOptions` 及相关公共类型                 | 插件配置与文件 adapter 契约     | 消费方实现                 |
 | `messages`、`localePrefix`、`zhCN`、`enUS`             | 中英文 locale                   | 宿主 i18n 实例             |
 | `arcoIconNames`                                        | 图标名清单                      | Arco 图标全局注册          |
 | `@admin9-labs/admin9-ui/styles`                        | 组件统一样式入口                | 无                         |
@@ -84,141 +80,31 @@ admin9-ui/
 
 组件库只调用注入的接口，不感知数据来自何处，也不处理应用级认证和响应转换。
 
-### Media capability contracts
+### File capability contracts
 
 ```ts
-export type MediaType = 'image' | 'video' | 'audio';
-
-export interface MediaGroup {
-  id: string;
-  name: string;
-  count?: number;
-}
-
-export interface MediaItem {
-  id: string;
-  name: string;
-  type: MediaType;
-  groupId: string | null;
-  url: string | null;
-  path?: string;
-  status?: 'pending' | 'ready' | 'failed';
-  size?: number;
-  mime?: string;
-  extension?: string;
-  thumbnail?: string;
-  width?: number;
-  height?: number;
-  duration?: number;
-  createdAt?: string;
-}
-
-export interface MediaListParams {
-  page: number;
-  pageSize: number;
-  keyword?: string;
-  mediaType: MediaType;
-  groupId?: string | null;
-}
-
-export interface MediaListResult {
-  list: MediaItem[];
-  pagination: {
-    page: number;
-    pageSize: number;
-    total: number;
-    hasMore: boolean;
-  };
-}
-
-export interface MediaBrowseService {
-  list(params: MediaListParams): Promise<MediaListResult>;
-  listGroups?(mediaType: MediaType): Promise<MediaGroup[]>;
-}
-
-export interface MediaUploadCapability {
-  upload(options: {
-    file: File;
-    mediaType: MediaType;
-    groupId: string | null;
-    onProgress?: (percent: number) => void;
-    signal?: AbortSignal;
-  }): Promise<MediaItem>;
-}
-
-export interface MediaRemoveCapability {
-  remove(ids: string[]): Promise<string[]>;
-}
-
-export interface CreateMediaGroupOptions {
-  mediaType: MediaType;
-  name: string;
-}
-
-export interface RenameMediaGroupOptions extends CreateMediaGroupOptions {
-  groupId: string;
-}
-
-export interface RemoveMediaGroupOptions {
-  mediaType: MediaType;
-  groupId: string;
-}
-
-export interface MoveMediaOptions {
-  mediaType: MediaType;
-  ids: string[];
-  groupId: string | null;
-}
-
-export interface MediaGroupCapability {
-  listGroups(mediaType: MediaType): Promise<MediaGroup[]>;
-  createGroup(options: CreateMediaGroupOptions): Promise<MediaGroup>;
-  renameGroup(options: RenameMediaGroupOptions): Promise<MediaGroup>;
-  removeGroup(options: RemoveMediaGroupOptions): Promise<void>;
-}
-
-export interface MediaMoveCapability {
-  move(options: MoveMediaOptions): Promise<string[]>;
-}
-
-export type MediaPickerService = MediaBrowseService & Partial<MediaUploadCapability>;
-export type MediaLibraryAdapter = MediaBrowseService &
-  Partial<MediaUploadCapability> &
-  Partial<MediaRemoveCapability> &
-  Partial<MediaGroupCapability> &
-  Partial<MediaMoveCapability>;
-
-export interface MediaService extends MediaBrowseService, MediaUploadCapability, MediaRemoveCapability {}
-export type MediaLibraryService = MediaService & MediaGroupCapability & MediaMoveCapability;
+/* File capability combinations are defined by the public source types. */
+export type FilePickerAdapter = FileBrowseCapability & Partial<FileUploadCapability>;
+export type FileManagerAdapter = FileBrowseCapability &
+  Partial<FileUploadCapability> &
+  Partial<FileRemoveCapability> &
+  Partial<FileGroupCapability> &
+  Partial<FileMoveCapability>;
 ```
 
-能力接口按副作用拆分，组件只在相应功能开启时要求对应方法：
-
-- `MediaBrowseService` 是只读选择与管理表面的最小依赖；`listGroups` 未实现时可隐藏分组导航；
-- `MediaUploadCapability`、`MediaRemoveCapability` 和 `MediaMoveCapability` 分别承载上传、删除和移动副作用；
-- `MediaGroupCapability` 负责分组浏览与增删改，不把业务权限或非空分组策略放进组件；
-- `MediaPickerService` 与 `MediaLibraryAdapter` 是按需能力组合；
-- `MediaService`、`MediaLibraryService` 继续保留为完整能力兼容接口，已有 adapter 仍可直接赋值；
-- `listGroups(mediaType)` 返回该类型的后端真实单级分组；
-- `createGroup`、`renameGroup` 和 `removeGroup` 都使用对象参数并显式携带 `mediaType`；
-- `removeGroup` 仅删除分组，不得隐式删除组内素材；非空分组的处理或拒绝由 adapter 明确实现；
-- `move` 使用 `groupId: null` 表示移动到未分组，返回成功移动的 ID，以支持部分成功反馈；
-- 继承的 `remove(ids)` 同样返回成功删除的 ID；组件只清理已成功 ID 的选择状态。
+`FileBrowseCapability`、`FileUploadCapability`、`FileRemoveCapability`、`FileGroupCapability` 和 `FileMoveCapability` 是可组合的最小能力。完整字段定义以 `src/services/types.ts` 的公共类型为准；编辑器只依赖 `FilePickerAdapter`，文件管理器才依赖完整的 `FileManagerAdapter`。
 
 消费方可以在组件使用点传入 `service`，也可以在插件安装时提供默认 service：
 
 ```ts
 app.use(Admin9UI, {
-  mediaService,
   fileService,
 });
 ```
 
 使用点传入的 service 优先于插件默认值。缺少必需 service 时，组件应给出明确错误，而不是自行猜测网络行为。
 
-### File capability contracts
-
-文件契约与现有媒体契约并列，避免 `AMediaLibrary` 和 `AFileManager` 形成公开耦合。`FileBrowseCapability` 与 `FileUploadCapability` 是文件浏览/上传表面可复用的最小能力；删除、移动和分组管理保持独立组合，不强加给只读消费者。
+`FileBrowseCapability` 与 `FileUploadCapability` 是文件浏览/上传表面可复用的最小能力；删除、移动和分组管理保持独立组合，不强加给只读消费者。
 
 ```ts
 export type FileType = 'image' | 'video' | 'audio' | 'document' | 'archive' | 'other';
@@ -271,35 +157,9 @@ export type FileManagerAdapter = FileBrowseCapability &
 
 ## 5. 组件设计
 
-### AMediaPicker
-
-- 表单级轻量选择表面；单个实例只处理一种 `MediaType`，并支持单选或带上限的多选。
-- 列表筛选、分页、分组和可选上传均通过 `MediaPickerService` 交给 adapter，不在分页结果上做前端筛选。
-- `listGroups` 保持可选；未实现时 Picker 仍可作为无分组选择器使用。
-- 单选与多选都使用“草稿选择 -> 显式确认”流程；`valueType` 明确决定写回完整项还是 URL，不猜测消费方意图。
-- 图片预览、音视频播放和选择是独立能力；点击选择不会隐式打开预览。
-- 组件只暴露选择和可选上传，不提供删除、分组管理、批量移动或应用业务能力。
-- `canUpload` 默认关闭；启用时才要求 `MediaUploadCapability`，后端授权始终由消费方负责。
-
-Props、Events、Slots、状态行为和示例见 [AMediaPicker 使用文档](./docs/components/media-picker.md)。
-
-### AMediaLibrary
-
-`AMediaLibrary` 与 `AMediaPicker` 并存。Picker 服务于表单轻量选择；Library 是后端无关的页面级素材浏览与管理组件，不包含路由、store、鉴权或具体 API。
-
-- 基础只读模式只要求 `MediaBrowseService.list`；`listGroups` 缺失时隐藏分组导航。
-- 上传、删除、移动和分组管理分别由能力开关启用，并只要求对应 capability；分组管理要求完整 `MediaGroupCapability`。
-- 仅启用移动但没有 `listGroups` 时，目标列表只提供“未分组”；单项移动选择目标后还需显式确认。
-- 后端负责分页、筛选、权限和部分成功结果；组件维护跨页选择，并只清理 service 确认成功的 ID。
-- 分组只有一级，`removeGroup` 不得隐式删除素材；更复杂的 DAM 策略留在消费应用。
-- 组件可复用包内私有媒体展示实现，但不把 helper、状态或管理逻辑导出为通用 API。
-- `refresh()` 与 `clearSelection()` 仅作为组件实例方法暴露，不属于独立 hooks 或工具。
-
-Props、Events、Slots、状态行为和示例见 [AMediaLibrary 使用文档](./docs/components/media-library.md)。
-
 ### AFileManager
 
-`AFileManager` 是后端无关的页面级文件管理组件，与 `AMediaLibrary` 并存且不扩大其媒体职责。
+`AFileManager` 是后端无关的页面级文件管理组件。
 
 - 信息层级固定为文件类型优先、当前真实类型内单级分组其次；“全部”只是一种聚合筛选状态；
 - 默认只读，只要求 `FileBrowseCapability.list`；`listGroups` 存在时可在真实类型内浏览分组，不因此要求分组管理能力；
@@ -354,7 +214,7 @@ Props、Events、Slots 和键盘行为见 [AIconPicker 使用文档](./docs/comp
 - 上述节点名、百分比、em 和像素值仅属于 schema 与样式实现。界面 locale 使用“独占一行 / 跟随文字”“小 / 中 / 大 / 铺满”“重置大小”“小播放器 / 标准播放器 / 铺满编辑区”等操作结果名称，并为图标按钮提供 Tooltip、`aria-label` 和可选择操作的 `aria-pressed` 状态。
 - 主工具栏与媒体上下文栏的普通操作使用 Arco 中性文字和填充变量；只有实际生效的格式、尺寸和对齐状态使用品牌主色，危险删除保留 danger 状态。颜色不是唯一状态信号，切换型按钮同时暴露 `aria-pressed`。
 - 媒体节点只持久化校验后的 `data-display`、`data-width`、`data-size`、`data-align` 等属性，不接受任意 `style`。URL 只允许 HTTP(S) 或相对地址；音视频固定输出 `controls` 与 `preload="metadata"`，不保留 `autoplay`。
-- 图片、视频和音频通过已有 `MediaPickerService` 与对应类型的 `AMediaPicker` 插入或替换；编辑器显式使用 `valueType="item"`、`trigger` 插槽并仅监听确认后的 `change`，没有外部选择状态。插入前逐项复核类型和安全 URL，有效项保持部分成功，被拒项通过 locale 消息与结构化 `media-error` 报告；替换保持单项全有或全无。Tiptap 命令返回 `false` 或抛错同样报告失败。没有 service 时编辑器保持可用但不显示素材入口。
+- 图片、视频和音频通过 `FilePickerAdapter` 与对应类型的 `AFilePicker` 插入或替换；插入前逐项复核类型和安全 URL，有效项保持部分成功，被拒项通过 locale 消息与结构化 `media-error` 报告；替换保持单项全有或全无。没有 service 时编辑器保持可用但不显示素材入口。
 - 块媒体插入后使用 Gap Cursor 继续输入，并关闭 StarterKit 的 trailing node，不把辅助空段落写入最终 HTML。
 - 可编辑节点选中后通过 Tiptap BubbleMenu 显示尺寸、对齐、图片替代文字、显示方式、替换和删除操作；图片替代文字按需在 Popover 中编辑。操作原生音频播放器会同时选中对应节点并显示 BubbleMenu，不取消播放、暂停、进度或音量等原生行为。只读和禁用状态不显示编辑控件，但仍保留音视频播放能力。
 - 正文在 `minHeight` 与响应式 `maxHeight` 之间自动增高，达到上限后由正文容器内部滚动；主工具栏和字数统计保持在滚动区外。BubbleMenu portal 到页面浮层层级，不参与编辑器布局，也不主动修改页面或正文滚动位置。

@@ -12,8 +12,8 @@
   import { EditorContent, useEditor } from '@tiptap/vue-3';
   import { useI18n } from 'vue-i18n';
   import admin9UIOptionsKey from '../../internal/options';
-  import type { MediaItem, MediaType } from '../../services/types';
-  import AMediaPicker from '../media-picker/index.vue';
+  import type { FileItem, FileType } from '../../services/types';
+  import AFilePicker from '../file-picker/index.vue';
   import MediaBubbleMenu from './media-bubble-menu.vue';
   import { Audio, BlockImage, InlineImage, isSafeMediaUrl, type TiptapMediaNodeName, Video } from './media-node';
   import type {
@@ -54,7 +54,7 @@
 
   const { t } = useI18n();
   const globalOptions = inject(admin9UIOptionsKey, undefined);
-  const resolvedMediaService = computed(() => props.service ?? globalOptions?.mediaService);
+  const resolvedFileService = computed(() => props.service ?? globalOptions?.fileService);
   const isEditable = computed(() => !props.disabled && !props.readonly);
   const linkPopupVisible = ref(false);
   const altPopupVisible = ref(false);
@@ -68,10 +68,10 @@
   const bubbleMenuReady = ref(false);
   const isFocused = ref(false);
   const mediaPickerVisible = ref(false);
-  const imagePickerValue = ref<MediaItem>();
-  const videoPickerValue = ref<MediaItem>();
-  const audioPickerValue = ref<MediaItem>();
-  const replacementPickerValue = ref<MediaItem>();
+  const imagePickerValue = ref<FileItem>();
+  const videoPickerValue = ref<FileItem>();
+  const audioPickerValue = ref<FileItem>();
+  const replacementPickerValue = ref<FileItem>();
   const selectedMedia = ref<{
     pos: number;
     type: TiptapMediaNodeName;
@@ -424,10 +424,10 @@
 
   const reportMediaError = (
     operation: TiptapMediaOperation,
-    mediaType: MediaType,
+    mediaType: Extract<FileType, 'image' | 'video' | 'audio'>,
     reason: TiptapMediaError['reason'],
-    attemptedItems: MediaItem[],
-    rejectedItems: MediaItem[],
+    attemptedItems: FileItem[],
+    rejectedItems: FileItem[],
     cause?: unknown
   ) => {
     const error: TiptapMediaError = {
@@ -446,11 +446,11 @@
     emit('mediaError', error);
   };
 
-  const partitionMediaSelection = (items: MediaItem[], mediaType: MediaType) => {
-    const valid: (MediaItem & { url: string })[] = [];
-    const rejected: MediaItem[] = [];
+  const partitionMediaSelection = (items: FileItem[], mediaType: Extract<FileType, 'image' | 'video' | 'audio'>) => {
+    const valid: (FileItem & { url: string })[] = [];
+    const rejected: FileItem[] = [];
     items.forEach((item) => {
-      if (item.type === mediaType && isSafeMediaUrl(item.url)) valid.push(item as MediaItem & { url: string });
+      if (item.type === mediaType && isSafeMediaUrl(item.url)) valid.push(item as FileItem & { url: string });
       else rejected.push(item);
     });
     return { valid, rejected };
@@ -459,8 +459,8 @@
   const insertMediaContent = (
     content: { type: TiptapMediaNodeName; attrs: Record<string, unknown> }[],
     block: boolean,
-    mediaType: MediaType,
-    items: MediaItem[]
+    mediaType: Extract<FileType, 'image' | 'video' | 'audio'>,
+    items: FileItem[]
   ) => {
     if (!editor.value || !isEditable.value || !content.length) {
       reportMediaError('insert', mediaType, 'command-failed', items, []);
@@ -478,7 +478,7 @@
     }
   };
 
-  const insertImages = (items: MediaItem[]) => {
+  const insertImages = (items: FileItem[]) => {
     if (!items.length) return false;
     const { valid, rejected } = partitionMediaSelection(items, 'image');
     if (rejected.length) reportMediaError('insert', 'image', 'invalid-selection', items, rejected);
@@ -496,7 +496,7 @@
     return insertMediaContent(content, type === 'blockImage', 'image', valid);
   };
 
-  const insertMedia = (items: MediaItem[], mediaType: 'video' | 'audio') => {
+  const insertMedia = (items: FileItem[], mediaType: 'video' | 'audio') => {
     if (!items.length) return false;
     const { valid, rejected } = partitionMediaSelection(items, mediaType);
     if (rejected.length) reportMediaError('insert', mediaType, 'invalid-selection', items, rejected);
@@ -513,19 +513,19 @@
     return insertMediaContent(content, true, mediaType, valid);
   };
 
-  const clearPickerValueAfterUpdate = (pickerValue: Ref<MediaItem | undefined>) => {
+  const clearPickerValueAfterUpdate = (pickerValue: Ref<FileItem | undefined>) => {
     nextTick(() => {
       pickerValue.value = undefined;
     });
   };
 
-  const insertImagesFromPicker = (items: MediaItem[]) => {
+  const insertImagesFromPicker = (items: FileItem[]) => {
     if (insertImages(items)) clearPickerValueAfterUpdate(imagePickerValue);
   };
-  const insertVideosFromPicker = (items: MediaItem[]) => {
+  const insertVideosFromPicker = (items: FileItem[]) => {
     if (insertMedia(items, 'video')) clearPickerValueAfterUpdate(videoPickerValue);
   };
-  const insertAudiosFromPicker = (items: MediaItem[]) => {
+  const insertAudiosFromPicker = (items: FileItem[]) => {
     if (insertMedia(items, 'audio')) clearPickerValueAfterUpdate(audioPickerValue);
   };
 
@@ -564,12 +564,19 @@
     if (selectedMediaDefaultWidth.value) updateSelectedMedia({ width: selectedMediaDefaultWidth.value });
   };
 
-  const replaceSelectedMedia = (items: MediaItem[]) => {
+  const replaceSelectedMedia = (items: FileItem[]) => {
     if (!items.length) return false;
     const current = getSelectedNode();
     const expectedType = selectedMediaKind.value;
     if (!current || !expectedType) {
-      reportMediaError('replace', expectedType ?? items[0].type, 'command-failed', items, []);
+      reportMediaError(
+        'replace',
+        expectedType ??
+          (items[0].type === 'image' || items[0].type === 'video' || items[0].type === 'audio' ? items[0].type : 'image'),
+        'command-failed',
+        items,
+        []
+      );
       return false;
     }
     const { valid, rejected } = partitionMediaSelection(items, expectedType);
@@ -585,7 +592,7 @@
     return true;
   };
 
-  const replaceSelectedMediaFromPicker = (items: MediaItem[]) => {
+  const replaceSelectedMediaFromPicker = (items: FileItem[]) => {
     if (replaceSelectedMedia(items)) clearPickerValueAfterUpdate(replacementPickerValue);
   };
 
@@ -830,19 +837,17 @@
       </a-popover>
 
       <a-tooltip
-        v-if="resolvedMediaService"
+        v-if="resolvedFileService"
         v-model:popup-visible="imagePickerTooltipVisible"
         :content="t('admin9Ui.tiptapEditor.image')"
       >
-        <AMediaPicker
+        <AFilePicker
           v-model="imagePickerValue"
           class="a9-tiptap-editor__media-picker"
           data-media-type="image"
-          media-type="image"
-          value-type="item"
-          :service="resolvedMediaService"
+          :file-types="['image']"
+          :service="resolvedFileService"
           :can-upload="canUploadImage"
-          :show-file-list="false"
           @change="insertImagesFromPicker"
           @visible-change="onMediaPickerVisibleChange"
         >
@@ -851,23 +856,21 @@
               <template #icon><icon-image /></template>
             </a-button>
           </template>
-        </AMediaPicker>
+        </AFilePicker>
       </a-tooltip>
 
       <a-tooltip
-        v-if="resolvedMediaService"
+        v-if="resolvedFileService"
         v-model:popup-visible="videoPickerTooltipVisible"
         :content="t('admin9Ui.tiptapEditor.video')"
       >
-        <AMediaPicker
+        <AFilePicker
           v-model="videoPickerValue"
           class="a9-tiptap-editor__media-picker"
           data-media-type="video"
-          media-type="video"
-          value-type="item"
-          :service="resolvedMediaService"
+          :file-types="['video']"
+          :service="resolvedFileService"
           :can-upload="canUploadVideo"
-          :show-file-list="false"
           @change="insertVideosFromPicker"
           @visible-change="onMediaPickerVisibleChange"
         >
@@ -876,23 +879,21 @@
               <template #icon><icon-video-camera /></template>
             </a-button>
           </template>
-        </AMediaPicker>
+        </AFilePicker>
       </a-tooltip>
 
       <a-tooltip
-        v-if="resolvedMediaService"
+        v-if="resolvedFileService"
         v-model:popup-visible="audioPickerTooltipVisible"
         :content="t('admin9Ui.tiptapEditor.audio')"
       >
-        <AMediaPicker
+        <AFilePicker
           v-model="audioPickerValue"
           class="a9-tiptap-editor__media-picker"
           data-media-type="audio"
-          media-type="audio"
-          value-type="item"
-          :service="resolvedMediaService"
+          :file-types="['audio']"
+          :service="resolvedFileService"
           :can-upload="canUploadAudio"
-          :show-file-list="false"
           @change="insertAudiosFromPicker"
           @visible-change="onMediaPickerVisibleChange"
         >
@@ -901,7 +902,7 @@
               <template #icon><icon-sound /></template>
             </a-button>
           </template>
-        </AMediaPicker>
+        </AFilePicker>
       </a-tooltip>
 
       <span class="a9-tiptap-editor__divider" aria-hidden="true" />
@@ -1157,16 +1158,15 @@
           </a-tooltip>
         </template>
 
-        <AMediaPicker
-          v-if="resolvedMediaService"
+        <AFilePicker
+          v-if="resolvedFileService"
           v-model="replacementPickerValue"
           class="a9-tiptap-editor__media-picker a9-tiptap-editor__replacement-picker"
           data-media-replace
-          value-type="item"
-          :media-type="
-            selectedMedia.type === 'blockImage' || selectedMedia.type === 'inlineImage' ? 'image' : selectedMedia.type
-          "
-          :service="resolvedMediaService"
+          :file-types="[
+            selectedMedia.type === 'blockImage' || selectedMedia.type === 'inlineImage' ? 'image' : selectedMedia.type,
+          ]"
+          :service="resolvedFileService"
           :can-upload="
             selectedMedia.type === 'blockImage' || selectedMedia.type === 'inlineImage'
               ? canUploadImage
@@ -1174,7 +1174,6 @@
               ? canUploadVideo
               : canUploadAudio
           "
-          :show-file-list="false"
           @change="replaceSelectedMediaFromPicker"
           @visible-change="onMediaPickerVisibleChange"
         >
@@ -1185,7 +1184,7 @@
               </a-button>
             </a-tooltip>
           </template>
-        </AMediaPicker>
+        </AFilePicker>
 
         <a-tooltip :content="deleteMediaLabel">
           <a-button

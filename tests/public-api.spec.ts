@@ -94,8 +94,6 @@ describe('package public API', () => {
         'ACoordinatePicker',
         'AFileManager',
         'AFilePicker',
-        'AMediaLibrary',
-        'AMediaPicker',
         'AProTable',
         'ATiptapEditor',
         'arcoIconNames',
@@ -108,8 +106,6 @@ describe('package public API', () => {
 
   it('keeps the locale entry limited to consumer-facing locale resources', () => {
     expect(Object.keys(localeApi).sort()).toEqual(['enUS', 'localePrefix', 'messages', 'zhCN'].sort());
-    expect(localeApi.enUS.mediaLibrary.groupAll).toBe('All');
-    expect(localeApi.zhCN.mediaLibrary.groupUngrouped).toBe('未分组');
     expect(localeApi.enUS.fileManager.types.archive).toBe('Archives');
     expect(localeApi.enUS.filePicker.typeAllowed).toBe('All allowed types');
     expect(localeApi.zhCN.coordinatePicker.choose).toBe('选择坐标');
@@ -123,7 +119,7 @@ describe('package public API', () => {
     const app = createApp(defineComponent({ template: '<div />' }));
     app.use(publicApi.default);
 
-    expect(app.component('AMediaLibrary')).toBe(publicApi.AMediaLibrary);
+    expect(app.component('AMediaLibrary')).toBeUndefined();
     expect(app.component('AFileManager')).toBe(publicApi.AFileManager);
     expect(app.component('AFilePicker')).toBe(publicApi.AFilePicker);
     expect(app.component('ATiptapEditor')).toBe(publicApi.ATiptapEditor);

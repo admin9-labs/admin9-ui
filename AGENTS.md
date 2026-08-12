@@ -18,7 +18,7 @@ corepack enable
 corepack prepare pnpm@10.5.2 --activate
 pnpm install --frozen-lockfile
 # During development, run only checks relevant to the changed scope.
-pnpm test -- tests/media-picker.spec.ts
+pnpm test -- tests/file-picker.spec.ts
 pnpm run type:check
 pnpm run lint
 pnpm run changelog:check

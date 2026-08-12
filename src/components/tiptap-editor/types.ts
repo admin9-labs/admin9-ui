@@ -1,4 +1,4 @@
-import type { MediaItem, MediaPickerService, MediaType } from '../../services/types';
+import type { FileItem, FilePickerAdapter, FileType } from '../../services/types';
 
 export type TiptapImageDisplay = 'block' | 'inline';
 export type TiptapMediaAlign = 'left' | 'center' | 'right';
@@ -10,12 +10,12 @@ export type TiptapMediaErrorReason = 'invalid-selection' | 'command-failed';
 
 export interface TiptapMediaError {
   operation: TiptapMediaOperation;
-  mediaType: MediaType;
+  mediaType: Extract<FileType, 'image' | 'video' | 'audio'>;
   reason: TiptapMediaErrorReason;
   /** 本次选择或命令实际处理的素材。 */
-  attemptedItems: MediaItem[];
+  attemptedItems: FileItem[];
   /** 最终校验拒绝的素材；命令执行失败时为空。 */
-  rejectedItems: MediaItem[];
+  rejectedItems: FileItem[];
   cause?: unknown;
 }
 
@@ -28,7 +28,7 @@ export interface ATiptapEditorProps {
   maxHeight?: number | string;
   maxLength?: number;
   showWordCount?: boolean;
-  service?: MediaPickerService;
+  service?: FilePickerAdapter;
   /** Enable image upload in the picker. Defaults to false and requires upload capability when enabled. */
   canUploadImage?: boolean;
   /** Enable video upload in the picker. Defaults to false and requires upload capability when enabled. */

@@ -11,7 +11,7 @@ import type {
   RemoveFileGroupOptions,
   RenameFileGroupOptions,
 } from '../src';
-import { type AcceptanceState, wait } from './fake-media-service';
+import { type AcceptanceState, wait } from './fake-acceptance-utils';
 
 const FILE_TYPES: FileType[] = ['image', 'video', 'audio', 'document', 'archive', 'other'];
 

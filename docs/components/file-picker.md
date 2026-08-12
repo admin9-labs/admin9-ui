@@ -2,7 +2,7 @@
 
 `AFilePicker` 是后端无关的轻量文件选择器，适合表单、弹窗和附件字段。它复用 `AFileManager` 的 `FileItem`、`FileType`、分页、分组浏览与上传能力，但不提供移动、删除或分组管理。
 
-`AMediaPicker`、`AMediaLibrary` 继续负责既有图片/视频/音频素材工作流；`AFilePicker` 不替代或扩大它们的职责。
+`AFilePicker` 是图片、视频、音频及其他文件的统一轻量选择器；`ATiptapEditor` 使用它作为媒体资源选择来源。
 
 ## 基础示例
 

@@ -3,8 +3,6 @@ import admin9UIPluginOptionsKey from './internal/options';
 import type { Admin9UIPluginOptions } from './services/types';
 
 // 组件
-import AMediaPicker from './components/media-picker/index.vue';
-import AMediaLibrary from './components/media-library/index.vue';
 import AFileManager from './components/file-manager/index.vue';
 import AFilePicker from './components/file-picker/index.vue';
 import AIconPicker from './components/icon-picker/index.vue';
@@ -14,26 +12,6 @@ import ACoordinatePicker from './components/coordinate-picker/index.vue';
 
 // 服务接口契约（供 App 实现 adapter 时 import 类型）
 export type {
-  MediaBrowseService,
-  MediaUploadCapability,
-  MediaRemoveCapability,
-  MediaGroupCapability,
-  MediaMoveCapability,
-  MediaPickerService,
-  MediaLibraryAdapter,
-  MediaService,
-  MediaLibraryService,
-  MediaType,
-  MediaGroup,
-  MediaItem,
-  MediaListParams,
-  MediaListResult,
-  MediaPagination,
-  MediaUploadOptions,
-  CreateMediaGroupOptions,
-  RenameMediaGroupOptions,
-  RemoveMediaGroupOptions,
-  MoveMediaOptions,
   Admin9UIPluginOptions,
   Admin9UIOptions,
   FileType,
@@ -83,13 +61,13 @@ export type {
 } from './components/coordinate-picker/types';
 
 // 组件命名导出（供按需 import）
-export { ACoordinatePicker, AMediaPicker, AMediaLibrary, AFileManager, AFilePicker, AIconPicker, AProTable, ATiptapEditor };
+export { ACoordinatePicker, AFileManager, AFilePicker, AIconPicker, AProTable, ATiptapEditor };
 
 /**
  * 安装插件。
  *
  * @example 全局注入默认服务
- * app.use(Admin9UI, { mediaService, fileService })
+ * app.use(Admin9UI, { fileService })
  *
  * @example 仅安装组件（service 由使用点 :service 传入）
  * app.use(Admin9UI)
@@ -97,16 +75,7 @@ export { ACoordinatePicker, AMediaPicker, AMediaLibrary, AFileManager, AFilePick
 const Admin9UI = {
   install(app: App, options: Admin9UIPluginOptions = {}) {
     // 名称冲突检测：A 前缀下若与 Arco 原生组件重名，提示及早发现
-    const reserved = [
-      'AMediaPicker',
-      'AMediaLibrary',
-      'AFileManager',
-      'AFilePicker',
-      'AIconPicker',
-      'AProTable',
-      'ATiptapEditor',
-      'ACoordinatePicker',
-    ];
+    const reserved = ['AFileManager', 'AFilePicker', 'AIconPicker', 'AProTable', 'ATiptapEditor', 'ACoordinatePicker'];
     reserved.forEach((name) => {
       if (app.component(name)) {
         // eslint-disable-next-line no-console
@@ -117,8 +86,6 @@ const Admin9UI = {
       }
     });
 
-    app.component('AMediaPicker', AMediaPicker);
-    app.component('AMediaLibrary', AMediaLibrary);
     app.component('AFileManager', AFileManager);
     app.component('AFilePicker', AFilePicker);
     app.component('AIconPicker', AIconPicker);

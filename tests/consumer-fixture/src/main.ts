@@ -8,8 +8,6 @@ import Admin9UI, {
   ACoordinatePicker,
   AFileManager,
   AFilePicker,
-  AMediaLibrary,
-  AMediaPicker,
   AProTable,
   ATiptapEditor,
   arcoIconNames,
@@ -18,18 +16,12 @@ import Admin9UI, {
   type ATiptapEditorProps,
   type CoordinateSelection,
   type CoordinateValue,
-  type CreateMediaGroupOptions,
   type Admin9UIOptions,
   type Admin9UIPluginOptions,
-  type MediaItem,
   type FileItem,
   type FileManagerAdapter,
   type FilePickerAdapter,
   type FileListParams,
-  type MediaLibraryService,
-  type MoveMediaOptions,
-  type RemoveMediaGroupOptions,
-  type RenameMediaGroupOptions,
   type TiptapAudioWidth,
   type TiptapBlockWidth,
   type TiptapImageDisplay,
@@ -40,14 +32,6 @@ import { enUS, localePrefix, messages, zhCN } from '@admin9-labs/admin9-ui/local
 import '@arco-design/web-vue/dist/arco.css';
 import '@admin9-labs/admin9-ui/styles';
 import FixtureSfc from './FixtureSfc.vue';
-
-const mediaItem: MediaItem = {
-  id: 'fixture-image',
-  name: 'Fixture image',
-  type: 'image',
-  groupId: null,
-  url: 'https://example.invalid/fixture.png',
-};
 
 const fileItem: FileItem = {
   id: 'fixture-document',
@@ -69,43 +53,7 @@ const fileService: FileManagerAdapter = {
 };
 const filePickerService: FilePickerAdapter = { list: fileService.list };
 
-const mediaService: MediaLibraryService = {
-  async list(params) {
-    return {
-      list: params.mediaType === 'image' ? [mediaItem] : [],
-      pagination: {
-        page: params.page,
-        pageSize: params.pageSize,
-        total: 1,
-        hasMore: false,
-      },
-    };
-  },
-  async upload(options) {
-    options.onProgress?.(100);
-    return mediaItem;
-  },
-  async remove(ids) {
-    return ids;
-  },
-  async listGroups(mediaType) {
-    return [{ id: `${mediaType}-fixtures`, name: 'Fixture group', count: 1 }];
-  },
-  async createGroup(options: CreateMediaGroupOptions) {
-    return { id: `${options.mediaType}-created`, name: options.name };
-  },
-  async renameGroup(options: RenameMediaGroupOptions) {
-    return { id: options.groupId, name: options.name };
-  },
-  async removeGroup(options: RemoveMediaGroupOptions) {
-    if (!options.groupId) throw new Error('A group id is required.');
-  },
-  async move(options: MoveMediaOptions) {
-    return options.ids;
-  },
-};
-
-const pluginOptions: Admin9UIPluginOptions = { mediaService, fileService };
+const pluginOptions: Admin9UIPluginOptions = { fileService };
 const legacyPluginOptions: Admin9UIOptions = pluginOptions;
 const compatiblePluginOptions: Admin9UIPluginOptions = legacyPluginOptions;
 const defaultImageDisplay: TiptapImageDisplay = 'inline';
@@ -144,24 +92,16 @@ const app = createApp({
           `<img src="/fixture-block.png" alt="Block" data-display="block" data-width="${blockWidth}" data-align="${mediaAlign}">` +
           '<video src="/fixture.mp4" autoplay data-width="75%" data-align="right"></video>' +
           `<audio src="/fixture.mp3" autoplay data-width="${audioWidth}" data-align="center"></audio>`,
-        service: mediaService,
+        service: filePickerService,
         defaultImageDisplay,
         maxHeight: editorMaxHeight,
         canUploadImage: false,
         canUploadVideo: false,
         canUploadAudio: false,
       }),
-      h(AMediaPicker, { service: mediaService, canUpload: false, showFileList: false }),
-      h(AMediaLibrary, {
-        service: mediaService,
-        canUpload: false,
-        canDelete: false,
-        canMove: false,
-        canManageGroups: false,
-      }),
       h(AFileManager),
       h(AFilePicker, { service: filePickerService, modelValue: [fileItem], fileTypes: ['document'], multiple: true }),
-      h(FixtureSfc, { service: mediaService, fileService, filePickerService }),
+      h(FixtureSfc, { service: filePickerService, fileService, filePickerService }),
     ]),
 });
 

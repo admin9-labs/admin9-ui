@@ -1,5 +1,5 @@
 import type { FilePickerAdapter } from '../src';
-import { type AcceptanceState } from './fake-media-service';
+import { type AcceptanceState } from './fake-acceptance-utils';
 import createFakeFileManagerService from './fake-file-manager-service';
 
 export default function createFakeFilePickerService(state: AcceptanceState): FilePickerAdapter {

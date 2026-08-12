@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ATiptapEditor from '../src/components/tiptap-editor/index.vue';
 import { messages } from '../src/locale';
 
-vi.mock('../src/components/media-picker/index.vue', async () => {
+vi.mock('../src/components/file-picker/index.vue', async () => {
   const vue = await import('vue');
   const selectedMedia = {
     image: {
@@ -37,17 +37,16 @@ vi.mock('../src/components/media-picker/index.vue', async () => {
 
   return {
     default: vue.defineComponent({
-      name: 'AMediaPickerStub',
+      name: 'AFilePickerStub',
       inheritAttrs: false,
       props: {
         modelValue: Object,
-        mediaType: { type: String, default: 'image' },
-        valueType: { type: String, default: 'item' },
+        fileTypes: { type: Array, default: () => ['image'] },
       },
       emits: ['change', 'update:modelValue', 'visible-change'],
       setup(props, { attrs, emit, slots }) {
         return () => {
-          const mediaType = props.mediaType as keyof typeof selectedMedia;
+          const mediaType = (props.fileTypes?.[0] ?? 'image') as keyof typeof selectedMedia;
           const selectedItem = selectedMedia[mediaType];
           const wrongType = mediaType === 'image' ? 'video' : 'image';
           const invalidItems = [
@@ -71,7 +70,7 @@ vi.mock('../src/components/media-picker/index.vue', async () => {
             {
               ...attrs,
               'data-model-id': (props.modelValue as { id?: string } | undefined)?.id ?? '',
-              'data-value-type': props.valueType,
+              'data-file-types': props.fileTypes?.join(','),
             },
             [
               slots.trigger?.(),
@@ -811,7 +810,7 @@ describe('ATiptapEditor public contract', () => {
     expect(defaultImageWrapper?.style.maxWidth).toBe('100%');
     expect(instance.getHTML()).not.toContain(['java', 'script:'].join(''));
     expect(picker?.getAttribute('data-model-id')).toBe('');
-    expect(picker?.getAttribute('data-value-type')).toBe('item');
+    expect(picker?.getAttribute('data-file-types')).toBe('image');
     expect(picker?.querySelector('button[aria-label="Insert image"]')).not.toBeNull();
     expect(messageError).toHaveBeenCalledWith('Some selected media were skipped because their type or URL is invalid.');
     expect(onMediaError).toHaveBeenCalledTimes(1);
@@ -1103,8 +1102,8 @@ describe('ATiptapEditor public contract', () => {
     await flush();
     const videoPicker = document.querySelector('[data-media-type="video"]');
     const audioPicker = document.querySelector('[data-media-type="audio"]');
-    expect(videoPicker?.getAttribute('data-value-type')).toBe('item');
-    expect(audioPicker?.getAttribute('data-value-type')).toBe('item');
+    expect(videoPicker?.getAttribute('data-file-types')).toBe('video');
+    expect(audioPicker?.getAttribute('data-file-types')).toBe('audio');
 
     videoPicker?.querySelector<HTMLButtonElement>('.media-picker-confirm')?.click();
     audioPicker?.querySelector<HTMLButtonElement>('.media-picker-confirm')?.click();
@@ -1164,7 +1163,7 @@ describe('ATiptapEditor public contract', () => {
     await flush();
     const replacementPicker = document.querySelector('[data-media-replace]');
 
-    expect(replacementPicker?.getAttribute('data-value-type')).toBe('item');
+    expect(replacementPicker?.getAttribute('data-file-types')).toBe('image');
     replacementPicker?.querySelector<HTMLButtonElement>('.media-picker-mixed')?.click();
     await flush();
 

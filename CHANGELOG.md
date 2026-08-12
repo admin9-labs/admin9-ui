@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+### Removed
+
+- 移除独立的 `AMediaPicker`、`AMediaLibrary` 及全部 Media service 公共契约。
+
+### Changed
+
+- `ATiptapEditor` 的图片、视频和音频选择改用 `AFilePicker`、`FilePickerAdapter` 与 `fileService`。
+
+### Upgrade notes
+
+- 消费方将 `mediaService` 迁移为 `fileService`，并将 `MediaItem` 适配为 `FileItem`；编辑器的 `service` prop 也改为 `FilePickerAdapter`。
+
 ## [0.5.0] - 2026-08-13
 
 ### Added

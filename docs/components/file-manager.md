@@ -2,7 +2,7 @@
 
 `AFileManager` 是后端无关的页面级文件管理组件。信息层级固定为“文件类型优先，其次是当前类型内单级分组”，支持上传、后端分页搜索、跨页选择、移动、删除、分组管理和网格/列表视图。
 
-它与 `AMediaLibrary` 独立：Library 继续负责图片、视频、音频素材管理；FileManager 覆盖 `image`、`video`、`audio`、`document`、`archive`、`other` 六种真实文件类型。“全部”只是聚合筛选，不属于 `FileType`，不能写入 `FileItem`。
+FileManager 覆盖 `image`、`video`、`audio`、`document`、`archive`、`other` 六种真实文件类型。“全部”只是聚合筛选，不属于 `FileType`，不能写入 `FileItem`。
 
 ## 基础示例
 
