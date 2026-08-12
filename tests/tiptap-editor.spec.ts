@@ -223,6 +223,14 @@ async function flush() {
   await nextTick();
 }
 
+async function waitForEditorStateRender() {
+  // Tiptap publishes its reactive editor state after two animation frames.
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
+  await nextTick();
+}
+
 function installStubs(app: App) {
   app.component('AButton', ButtonStub);
   app.component('ATooltip', TransparentStub);
@@ -341,7 +349,8 @@ describe('ATiptapEditor public contract', () => {
 
     const internalEditor = getInternalEditor(instance);
     internalEditor.chain().setTextSelection({ from: 1, to: 8 }).toggleBold().run();
-    await flush();
+    expect(internalEditor.isActive('bold')).toBe(true);
+    await waitForEditorStateRender();
 
     expect(document.querySelector('button[aria-label="Bold"]')?.getAttribute('data-button-type')).toBe('primary');
     expect(document.querySelector('button[aria-label="Bold"]')?.getAttribute('aria-pressed')).toBe('true');
