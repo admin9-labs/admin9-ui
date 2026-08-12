@@ -4,9 +4,13 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-13
+
 ### Added
 
 - 新增腾讯地图 `ACoordinatePicker`，支持地点搜索、地图点选、经纬度输入、清空与确认，并保持消费方密钥和业务字段边界。
+
+**Full Changelog**: https://github.com/admin9-labs/admin9-ui/compare/v0.4.0...v0.5.0
 
 ## [0.4.0] - 2026-08-12
 
