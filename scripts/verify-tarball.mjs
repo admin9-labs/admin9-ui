@@ -86,6 +86,7 @@ try {
   const packedFiles = new Set(packed.files.map((file) => file.path));
   const requiredFiles = [
     'package.json',
+    'CHANGELOG.md',
     'dist/index.js',
     'dist/index.cjs',
     'dist/index.d.ts',

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { lstat, mkdir, readFile, readdir } from 'node:fs/promises';
 import { basename, isAbsolute, relative, resolve, sep } from 'node:path';
+import { normalizeReleaseNotes } from './changelog.mjs';
 
 const SAFE_OUTPUT_DIRECTORY = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const PROTECTED_OUTPUT_DIRECTORIES = new Set([
@@ -253,8 +254,15 @@ function assertGitHubReleaseAsset(metadata, { tag, assetName, assetSize, assetDi
   }
 }
 
+function assertGitHubReleaseNotes(metadata, { releaseNotes }) {
+  if (normalizeReleaseNotes(metadata.body) !== normalizeReleaseNotes(releaseNotes)) {
+    throw new Error('The GitHub Release notes do not match CHANGELOG.md.');
+  }
+}
+
 export function assertGitHubRelease(metadata, expected) {
   assertGitHubReleaseAsset(metadata, expected);
+  assertGitHubReleaseNotes(metadata, expected);
   if (metadata.draft !== false) throw new Error('The GitHub Release is still a draft.');
   if (metadata.prerelease !== false) throw new Error('The GitHub Release is not a stable release.');
 }
@@ -262,6 +270,7 @@ export function assertGitHubRelease(metadata, expected) {
 export function getGitHubReleaseDisposition(metadata, expected) {
   if (metadata === null) return 'create';
   assertGitHubReleaseAsset(metadata, expected);
+  assertGitHubReleaseNotes(metadata, expected);
   if (metadata.prerelease !== false) throw new Error('The GitHub Release is marked as a prerelease.');
   if (metadata.draft === true) return 'promote';
   if (metadata.draft !== false) throw new Error('The GitHub Release draft state is invalid.');

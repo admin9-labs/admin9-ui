@@ -163,6 +163,9 @@ jobs:
             --tag "$GITHUB_REF_NAME" \
             --commit "$GITHUB_SHA"
 
+      - name: Generate release notes from CHANGELOG
+        run: node scripts/check-changelog.mjs --release "$GITHUB_REF_NAME" > release-notes.md
+
       - name: Check GitHub Release state
         id: github-release
         env:
@@ -171,7 +174,8 @@ jobs:
           node scripts/check-github-release-status.mjs \
             --tarball-dir release-artifacts \
             --tag "$GITHUB_REF_NAME" \
-            --repository "$GITHUB_REPOSITORY" >> "$GITHUB_OUTPUT"
+            --repository "$GITHUB_REPOSITORY" \
+            --notes-file release-notes.md >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         if: steps.github-release.outputs.disposition == 'create'
@@ -180,7 +184,7 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" "./${{ steps.github-release.outputs.tarball }}" \
             --verify-tag \
-            --generate-notes \
+            --notes-file release-notes.md \
             --title "$GITHUB_REF_NAME"
 
       - name: Publish existing verified draft release
@@ -197,4 +201,5 @@ jobs:
             --tarball-dir release-artifacts \
             --tag "$GITHUB_REF_NAME" \
             --repository "$GITHUB_REPOSITORY" \
+            --notes-file release-notes.md \
             --require-existing

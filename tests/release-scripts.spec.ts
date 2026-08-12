@@ -267,9 +267,11 @@ describe('release identity validation', () => {
       assetName: 'admin9-labs-admin9-ui-0.2.0.tgz',
       assetSize: 123,
       assetDigest: `sha256:${'a'.repeat(64)}`,
+      releaseNotes: '### Added\n\n- Release notes.',
     };
     const metadata = {
       tag_name: expected.tag,
+      body: expected.releaseNotes,
       draft: false,
       prerelease: false,
       assets: [
@@ -296,9 +298,11 @@ describe('release identity validation', () => {
       assetName: 'admin9-labs-admin9-ui-0.2.0.tgz',
       assetSize: 123,
       assetDigest: `sha256:${'a'.repeat(64)}`,
+      releaseNotes: '### Added\n\n- Release notes.',
     };
     const metadata = {
       tag_name: expected.tag,
+      body: expected.releaseNotes,
       draft: false,
       prerelease: false,
       assets: [
@@ -314,6 +318,10 @@ describe('release identity validation', () => {
       assertGitHubRelease({ ...metadata, assets: [{ ...metadata.assets[0], digest: `sha256:${'b'.repeat(64)}` }] }, expected)
     ).toThrow(/does not match/);
     expect(() => assertGitHubRelease({ ...metadata, tag_name: 'v0.1.0' }, expected)).toThrow(/does not belong/);
+    expect(() => assertGitHubRelease({ ...metadata, body: 'Different notes.' }, expected)).toThrow(/do not match CHANGELOG/);
+    expect(() => getGitHubReleaseDisposition({ ...metadata, body: 'Different notes.' }, expected)).toThrow(
+      /do not match CHANGELOG/
+    );
     expect(() => getGitHubReleaseDisposition({ ...metadata, draft: undefined }, expected)).toThrow(/draft state/);
   });
 
@@ -339,6 +347,7 @@ describe('release command ownership', () => {
     const packageJson = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
     expect(packageJson.scripts.build).toBe('vite build --config vite.config.lib.ts');
     expect(packageJson.scripts['release:check'].split(' && ')).toEqual([
+      'pnpm run changelog:check',
       'pnpm run type:check',
       'pnpm run acceptance:typecheck',
       'pnpm run lint',
@@ -349,6 +358,8 @@ describe('release command ownership', () => {
     expect(packageJson.scripts['pack:check']).toBeUndefined();
 
     const verifier = readFileSync(join(packageRoot, 'scripts', 'verify-tarball.mjs'), 'utf8');
+    expect(packageJson.files).toContain('CHANGELOG.md');
+    expect(verifier).toMatch(/'CHANGELOG\.md'/);
     expect(verifier.match(/run\('pnpm', \['run', 'build'\], \{ cwd: packageRoot \}\)/g)).toHaveLength(1);
     expect(verifier.match(/execFileSync\('npm', \['pack'/g)).toHaveLength(1);
 
@@ -368,6 +379,10 @@ describe('release command ownership', () => {
     );
     expect(releaseWorkflow).toMatch(/verify-published-package\.mjs/);
     expect(releaseWorkflow).toMatch(/check-github-release-status\.mjs/);
+    expect(releaseWorkflow).toMatch(/check-changelog\.mjs --release "\$GITHUB_REF_NAME" > release-notes\.md/);
+    expect(releaseWorkflow).toMatch(/gh release create[\s\S]*--notes-file release-notes\.md/);
+    expect(releaseWorkflow).not.toMatch(/--generate-notes/);
+    expect(releaseWorkflow.match(/--notes-file release-notes\.md/g)).toHaveLength(3);
     expect(releaseWorkflow.match(/--remote-tag/g)).toHaveLength(2);
     expect(releaseWorkflow).toMatch(
       /Revalidate remote tag before npm publication[\s\S]*Check npm publication state[\s\S]*Publish verified tarball to npm/

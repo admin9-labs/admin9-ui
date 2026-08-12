@@ -1,5 +1,5 @@
-import { lstat } from 'node:fs/promises';
-import { basename, dirname, relative, resolve, sep } from 'node:path';
+import { lstat, readFile } from 'node:fs/promises';
+import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   calculateSha256Digest,
@@ -16,19 +16,34 @@ const requireExisting = args.includes('--require-existing');
 const normalizedArgs = args.filter((arg) => arg !== '--require-existing');
 
 if (
-  normalizedArgs.length !== 6 ||
+  normalizedArgs.length !== 8 ||
   normalizedArgs[0] !== '--tarball-dir' ||
   normalizedArgs[2] !== '--tag' ||
-  normalizedArgs[4] !== '--repository'
+  normalizedArgs[4] !== '--repository' ||
+  normalizedArgs[6] !== '--notes-file'
 ) {
   throw new Error(
-    'Usage: check-github-release-status.mjs --tarball-dir <directory> --tag <tag> --repository <owner/repo> [--require-existing]'
+    'Usage: check-github-release-status.mjs --tarball-dir <directory> --tag <tag> --repository <owner/repo> --notes-file <file> [--require-existing]'
   );
 }
 
 const outputDirectory = resolveOutputDirectory(['--output-dir', normalizedArgs[1]], packageRoot);
 const tag = normalizedArgs[3];
 const repository = normalizedArgs[5];
+const requestedNotesFile = normalizedArgs[7];
+if (!requestedNotesFile || isAbsolute(requestedNotesFile)) {
+  throw new Error('The release notes file must be a relative path inside the package root.');
+}
+const notesFile = resolve(packageRoot, requestedNotesFile);
+const relativeNotesFile = relative(packageRoot, notesFile);
+if (!relativeNotesFile || relativeNotesFile.startsWith('..') || isAbsolute(relativeNotesFile)) {
+  throw new Error('The release notes file must be inside the package root.');
+}
+const notesFileStats = await lstat(notesFile);
+if (!notesFileStats.isFile() || notesFileStats.isSymbolicLink()) {
+  throw new Error('The release notes path must be a real file.');
+}
+const releaseNotes = await readFile(notesFile, 'utf8');
 const tarballPath = await findSingleTarball(outputDirectory);
 const tarballStats = await lstat(tarballPath);
 const tarballDigest = await calculateSha256Digest(tarballPath);
@@ -62,6 +77,7 @@ async function inspectRelease() {
     assetName: basename(tarballPath),
     assetSize: tarballStats.size,
     assetDigest: tarballDigest,
+    releaseNotes,
   });
   return requireExisting ? requirePublishedGitHubRelease(disposition, tag) : disposition;
 }

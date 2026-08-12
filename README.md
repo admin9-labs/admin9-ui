@@ -5,6 +5,7 @@
 本包不提供通用 hooks、工具函数、路由、状态管理或其他宿主应用基础设施。
 
 当前版本为 `0.3.1`。本项目遵循语义化版本；在 `0.x` 阶段，次版本可能包含不兼容调整。
+完整版本记录见 [CHANGELOG.md](./CHANGELOG.md)。
 
 ## 安装
 
@@ -115,14 +116,15 @@ GitHub Actions 是 PR、`main` push 和正式发布的最终质量权威。正�
 2. 运行完整质量门禁，构建真实 tgz，并在隔离消费工程验证该 tgz；
 3. 通过 artifact 原样传递该 tgz，使用 npm Trusted Publishing/OIDC 发布；已存在版本仅在 Registry integrity 一致时跳过；
 4. 有限重试校验 Registry 包名、版本、`dist.integrity`、`dist-tags.latest`，以及 SLSA provenance 中的仓库、workflow、tag、Git SHA 和 subject digest；
-5. 创建 GitHub Release、转正式发布完全一致的 draft，或确认已有正式 Release 的 tag、附件名称、大小和 SHA-256 完全一致。工作流不会覆盖不一致的已有附件，也不会接受 prerelease。
+5. 从 `CHANGELOG.md` 提取对应版本章节，创建 GitHub Release、转正式发布完全一致的 draft，或确认已有正式 Release 的正文、tag、附件名称、大小和 SHA-256 完全一致。工作流不会覆盖不一致的正文或附件，也不会接受 prerelease。
 
 ### 维护者发版步骤
 
-1. 确认下一版本号，在一个可审查的提交中更新 `package.json`，完成变更记录，并将该提交推送到 `main`。不要复用任何已经发布的版本号。
-2. 等待该提交的 `main` CI 通过。首次发版通常在这个计划好的发布提交上创建 annotated tag；ancestor 校验只用于允许 `main` 前进后的安全重跑。
-3. 创建规范 tag，例如 `git tag -a v0.3.1 <release-commit> -m "v0.3.1"`，再次确认 tag、package 版本和提交后，单独推送该 tag。一次只能推送一个发布 tag，必须等该 workflow 完成后再推送下一版本；GitHub concurrency 只保留一个 running 和一个 pending，新的 pending 可能替换旧的 pending。
-4. 观察 Release workflow 的三个 job 全部通过，再核对 npm package 页、`latest` dist-tag、provenance 和 GitHub Release 附件。
+1. 整理 `CHANGELOG.md` 的 `Unreleased` 内容，将本次变更移入带日期的 `## [X.Y.Z] - YYYY-MM-DD` 章节，并保留新的空 `Unreleased` 章节。
+2. 在同一个可审查的发布提交中更新 `package.json` 版本，运行 `pnpm run changelog:check`，确认版本章节与 manifest 一致；不要复用任何已经发布的版本号。
+3. 将发布提交推送到 `main` 并等待 CI 通过。首次发版通常在这个计划好的发布提交上创建 annotated tag；ancestor 校验只用于允许 `main` 前进后的安全重跑。
+4. 创建规范 tag，例如 `git tag -a v0.3.2 <release-commit> -m "v0.3.2"`，再次确认 tag、package 版本、CHANGELOG 和提交后，单独推送该 tag。一次只能推送一个发布 tag，必须等该 workflow 完成后再推送下一版本；GitHub concurrency 只保留一个 running 和一个 pending，新的 pending 可能替换旧的 pending。
+5. 观察 Release workflow 的三个 job 全部通过，再核对 npm package 页、`latest` dist-tag、provenance，以及 GitHub Release 正文与附件。
 
 失败时优先在 GitHub Actions 中重跑同一个 workflow。相同版本和相同 integrity 会安全跳过重复 npm 发布；一致的 GitHub Release 也会跳过。若 Registry integrity、`latest`、provenance 或 Release 附件不一致，工作流会失败，维护者不得通过移动 tag、复用版本或覆盖附件绕过校验。已发布的错误版本应执行 `npm deprecate @admin9-labs/admin9-ui@<bad-version> "<reason>"`，修复后发布新的 patch 版本；除 npm 安全事件和官方策略允许的紧急情况外，不使用 unpublish。
 

@@ -39,6 +39,7 @@
   "files": [
     "dist",
     "docs/components",
+    "CHANGELOG.md",
     "README.md",
     "LICENSE"
   ],
@@ -61,8 +62,9 @@
     "lint": "pnpm run lint:eslint && pnpm run lint:style",
     "lint:eslint": "eslint \"./src/**/*.{js,jsx,ts,tsx,vue}\" \"./tests/**/*.{js,jsx,ts,tsx}\" \"./dev/**/*.{js,jsx,ts,tsx,vue}\" \"./scripts/**/*.mjs\" \"./vite.config.*.ts\"",
     "lint:style": "stylelint \"./src/**/*.{css,less,vue}\" \"./dev/**/*.{css,less,vue}\"",
+    "changelog:check": "node scripts/check-changelog.mjs --check",
     "verify:tarball": "node scripts/verify-tarball.mjs",
-    "release:check": "pnpm run type:check && pnpm run acceptance:typecheck && pnpm run lint && pnpm test && pnpm run acceptance:build && pnpm run verify:tarball"
+    "release:check": "pnpm run changelog:check && pnpm run type:check && pnpm run acceptance:typecheck && pnpm run lint && pnpm test && pnpm run acceptance:build && pnpm run verify:tarball"
   },
   "peerDependencies": {
     "vue": "^3.5.0",
