@@ -257,6 +257,15 @@ input {
   box-shadow: 0 1px 2px rgb(29 33 41 / 4%);
 }
 
+.file-manager-workspace {
+  min-width: 0;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #e5e6eb;
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgb(29 33 41 / 4%);
+}
+
 .library-event-readout {
   display: grid;
   grid-template-columns: 72px minmax(0, 1fr) 72px minmax(0, 1fr) 72px minmax(0, 2fr);
@@ -349,6 +358,10 @@ input {
 
   .library-workspace {
     padding: 14px;
+  }
+
+  .file-manager-workspace {
+    padding: 8px;
   }
 
   .library-event-readout {

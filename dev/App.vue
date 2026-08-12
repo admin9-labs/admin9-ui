@@ -2,6 +2,7 @@
   import { computed, ref, watch } from 'vue';
   import type { TableColumnData } from '@arco-design/web-vue';
   import {
+    AFileManager,
     AIconPicker,
     AMediaLibrary,
     AMediaPicker,
@@ -10,9 +11,12 @@
     type MediaItem,
     type MediaLibraryAdapter,
     type MediaType,
+    type FileItem,
+    type FileManagerAdapter,
   } from '../src';
   import { createFakeMediaService, type AcceptanceState } from './fake-media-service';
   import createFakeMediaLibraryService from './fake-media-library-service';
+  import createFakeFileManagerService from './fake-file-manager-service';
 
   interface TableRow {
     id: number;
@@ -97,6 +101,9 @@
   const libraryType = ref<MediaType>('image');
   const libraryMode = ref<(typeof libraryModeOptions)[number]['value']>('manage');
   const lastLibraryEvent = ref('等待管理操作');
+  const fileManagerState = ref<AcceptanceState>('normal');
+  const fileManagerMode = ref<(typeof libraryModeOptions)[number]['value']>('manage');
+  const lastFileManagerEvent = ref('等待文件操作');
 
   const tableFetcher = computed(() => {
     const scenario = tableState.value;
@@ -133,6 +140,13 @@
     return libraryMode.value === 'readOnly' ? { list: (params) => service.list(params) } : service;
   });
   const libraryReadOnly = computed(() => libraryMode.value === 'readOnly');
+  const fileManagerService = computed<FileManagerAdapter>(() => {
+    const service = createFakeFileManagerService(fileManagerState.value);
+    return fileManagerMode.value === 'readOnly'
+      ? { list: (params) => service.list(params), listGroups: (fileType) => service.listGroups(fileType) }
+      : service;
+  });
+  const fileManagerReadOnly = computed(() => fileManagerMode.value === 'readOnly');
   const statusColor = (status: TableRow['status']) => {
     if (status === 'ready') return 'green';
     if (status === 'blocked') return 'red';
@@ -155,6 +169,15 @@
   const recordLibraryMove = (ids: string[], groupId: string | null) => {
     lastLibraryEvent.value = `已移动 ${ids.length} 项到 ${groupId || '未分组'}`;
   };
+  const recordFileUpload = (item: FileItem) => {
+    lastFileManagerEvent.value = `已上传 ${item.name}`;
+  };
+  const recordFileDelete = (ids: string[]) => {
+    lastFileManagerEvent.value = `已删除 ${ids.length} 项`;
+  };
+  const recordFileMove = (ids: string[], groupId: string | null) => {
+    lastFileManagerEvent.value = `已移动 ${ids.length} 项到 ${groupId || '未分组'}`;
+  };
 
   watch(mediaType, () => {
     mediaValue.value = [];
@@ -162,6 +185,9 @@
   });
   watch(libraryType, () => {
     lastLibraryEvent.value = '等待管理操作';
+  });
+  watch([fileManagerMode, fileManagerState], () => {
+    lastFileManagerEvent.value = '等待文件操作';
   });
 </script>
 
@@ -181,6 +207,7 @@
       <a href="#tiptap-editor">ATiptapEditor</a>
       <a href="#media-picker">AMediaPicker</a>
       <a href="#media-library">AMediaLibrary</a>
+      <a href="#file-manager">AFileManager</a>
     </nav>
 
     <main>
@@ -386,6 +413,51 @@
             <dd>{{ stateOptions.find((option) => option.value === libraryState)?.label }}</dd>
             <dt>最近事件</dt>
             <dd>{{ lastLibraryEvent }}</dd>
+          </dl>
+        </div>
+      </section>
+
+      <section v-if="!tiptapFocused" id="file-manager" class="acceptance-section" data-testid="file-manager-section">
+        <div class="section-heading">
+          <div>
+            <span class="section-index">06</span>
+            <h2>AFileManager</h2>
+          </div>
+          <div class="section-controls">
+            <a-radio-group v-model="fileManagerMode" type="button" size="small" data-testid="file-manager-mode-control">
+              <a-radio v-for="option in libraryModeOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </a-radio>
+            </a-radio-group>
+            <a-radio-group v-model="fileManagerState" type="button" size="small" data-testid="file-manager-state-control">
+              <a-radio v-for="option in stateOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </a-radio>
+            </a-radio-group>
+          </div>
+        </div>
+
+        <div class="file-manager-workspace">
+          <AFileManager
+            :key="`${fileManagerMode}-${fileManagerState}`"
+            :service="fileManagerService"
+            :page-size="6"
+            :can-upload="!fileManagerReadOnly"
+            :can-delete="!fileManagerReadOnly"
+            :can-move="!fileManagerReadOnly"
+            :can-manage-groups="!fileManagerReadOnly"
+            data-testid="file-manager"
+            @upload-success="recordFileUpload"
+            @delete-success="recordFileDelete"
+            @move-success="recordFileMove"
+          />
+          <dl class="library-event-readout" aria-live="polite">
+            <dt>模式</dt>
+            <dd>{{ libraryModeOptions.find((option) => option.value === fileManagerMode)?.label }}</dd>
+            <dt>当前场景</dt>
+            <dd>{{ stateOptions.find((option) => option.value === fileManagerState)?.label }}</dd>
+            <dt>最近事件</dt>
+            <dd>{{ lastFileManagerEvent }}</dd>
           </dl>
         </div>
       </section>

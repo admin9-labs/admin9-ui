@@ -1,15 +1,18 @@
 <script setup lang="ts">
   import {
     AIconPicker,
+    AFileManager,
     AMediaLibrary,
     AMediaPicker,
     AProTable,
     ATiptapEditor,
     type MediaLibraryService,
+    type FileManagerAdapter,
   } from '@admin9-labs/admin9-ui';
 
   defineProps<{
     service: MediaLibraryService;
+    fileService: FileManagerAdapter;
   }>();
 
   const fetchRows = async () => ({ list: [], total: 0 });
@@ -30,5 +33,6 @@
     />
     <AMediaPicker :service="service" :can-upload="false" :show-file-list="false" />
     <AMediaLibrary :service="service" :can-upload="false" :can-delete="false" :can-move="false" :can-manage-groups="false" />
+    <AFileManager :service="fileService" />
   </section>
 </template>

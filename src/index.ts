@@ -5,6 +5,7 @@ import type { Admin9UIPluginOptions } from './services/types';
 // 组件
 import AMediaPicker from './components/media-picker/index.vue';
 import AMediaLibrary from './components/media-library/index.vue';
+import AFileManager from './components/file-manager/index.vue';
 import AIconPicker from './components/icon-picker/index.vue';
 import AProTable from './components/pro-table/index.vue';
 import ATiptapEditor from './components/tiptap-editor/index.vue';
@@ -33,6 +34,24 @@ export type {
   MoveMediaOptions,
   Admin9UIPluginOptions,
   Admin9UIOptions,
+  FileType,
+  FileGroup,
+  FileItem,
+  FileListParams,
+  FilePagination,
+  FileListResult,
+  FileUploadOptions,
+  FileBrowseCapability,
+  FileUploadCapability,
+  FileRemoveCapability,
+  FileGroupCapability,
+  FileMoveCapability,
+  CreateFileGroupOptions,
+  RenameFileGroupOptions,
+  RemoveFileGroupOptions,
+  MoveFileOptions,
+  FileManagerAdapter,
+  FileManagerService,
 } from './services/types';
 
 // locale（供 App 合并进宿主 vue-i18n）
@@ -54,13 +73,13 @@ export type {
 } from './components/tiptap-editor/types';
 
 // 组件命名导出（供按需 import）
-export { AMediaPicker, AMediaLibrary, AIconPicker, AProTable, ATiptapEditor };
+export { AMediaPicker, AMediaLibrary, AFileManager, AIconPicker, AProTable, ATiptapEditor };
 
 /**
  * 安装插件。
  *
  * @example 全局注入默认服务
- * app.use(Admin9UI, { mediaService })
+ * app.use(Admin9UI, { mediaService, fileService })
  *
  * @example 仅安装组件（service 由使用点 :service 传入）
  * app.use(Admin9UI)
@@ -68,7 +87,7 @@ export { AMediaPicker, AMediaLibrary, AIconPicker, AProTable, ATiptapEditor };
 const Admin9UI = {
   install(app: App, options: Admin9UIPluginOptions = {}) {
     // 名称冲突检测：A 前缀下若与 Arco 原生组件重名，提示及早发现
-    const reserved = ['AMediaPicker', 'AMediaLibrary', 'AIconPicker', 'AProTable', 'ATiptapEditor'];
+    const reserved = ['AMediaPicker', 'AMediaLibrary', 'AFileManager', 'AIconPicker', 'AProTable', 'ATiptapEditor'];
     reserved.forEach((name) => {
       if (app.component(name)) {
         // eslint-disable-next-line no-console
@@ -81,6 +100,7 @@ const Admin9UI = {
 
     app.component('AMediaPicker', AMediaPicker);
     app.component('AMediaLibrary', AMediaLibrary);
+    app.component('AFileManager', AFileManager);
     app.component('AIconPicker', AIconPicker);
     app.component('AProTable', AProTable);
     app.component('ATiptapEditor', ATiptapEditor);

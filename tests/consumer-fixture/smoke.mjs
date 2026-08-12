@@ -40,6 +40,7 @@ assert.equal(packageExports.default.install instanceof Function, true);
 assert.equal(packageExports.localePrefix, 'admin9Ui');
 assert.equal(localeExports.localePrefix, 'admin9Ui');
 assert.ok(packageExports.AIconPicker);
+assert.ok(packageExports.AFileManager);
 assert.ok(packageExports.AMediaLibrary);
 assert.ok(packageExports.AMediaPicker);
 assert.ok(packageExports.AProTable);
@@ -49,13 +50,15 @@ const require = createRequire(import.meta.url);
 const commonJsPackage = require('@admin9-labs/admin9-ui');
 const commonJsLocale = require('@admin9-labs/admin9-ui/locale');
 assert.ok(commonJsPackage.AIconPicker);
+assert.ok(commonJsPackage.AFileManager);
 assert.ok(commonJsPackage.AMediaLibrary);
 assert.ok(commonJsPackage.ATiptapEditor);
 assert.equal(commonJsLocale.localePrefix, 'admin9Ui');
 
 const cssPath = import.meta.resolve('@admin9-labs/admin9-ui/styles');
 const css = await readFile(new URL(cssPath), 'utf8');
-assert.match(css, /\.a9-(icon|media|pro|tiptap)-/);
+assert.match(css, /\.a9-(file|icon|media|pro|tiptap)-/);
+assert.match(css, /\.a9-file-manager/);
 assert.match(css, /\.a9-media-library/);
 assert.match(css, /\.a9-tiptap-editor__media-bubble/);
 
@@ -83,6 +86,11 @@ const mediaService = {
   },
   async move({ ids }) {
     return ids;
+  },
+};
+const fileService = {
+  async list({ page, pageSize }) {
+    return { list: [], pagination: { page, pageSize, total: 0, hasMore: false }, typeCounts: {} };
   },
 };
 let replacementListCalls = 0;
@@ -130,13 +138,14 @@ const app = createApp({
         canMove: false,
         canManageGroups: false,
       }),
+      h(packageExports.AFileManager),
     ]),
 });
 
 app.use(ArcoVue);
 Object.entries(ArcoVueIcon).forEach(([name, component]) => app.component(name, component));
 app.use(createI18n({ legacy: false, locale: 'en-US', messages: localeExports.messages }));
-app.use(packageExports.default, { mediaService });
+app.use(packageExports.default, { mediaService, fileService });
 app.mount(host);
 await nextTick();
 await new Promise((resolve) => setTimeout(resolve, 0));
@@ -171,10 +180,12 @@ assert.equal(mountedAudioWrapper?.style.getPropertyValue('--a9-media-width'), '4
 });
 assert.ok(host.querySelector('.a9-media-picker'), 'AMediaPicker did not mount.');
 assert.ok(host.querySelector('.a9-media-library'), 'AMediaLibrary did not mount.');
+assert.ok(host.querySelector('.a9-file-manager'), 'AFileManager did not mount from list-only fileService.');
 assert.ok(host.querySelector('.arco-input-wrapper'), 'Arco input integration did not mount.');
 assert.ok(host.querySelector('.arco-table'), 'Arco table integration did not mount.');
 assert.ok(host.querySelector('.arco-upload'), 'Arco upload integration did not mount.');
 assert.ok(host.querySelector('.a9-media-library .arco-spin'), 'AMediaLibrary Arco integration did not mount.');
+assert.ok(host.querySelector('.a9-file-manager .arco-spin'), 'AFileManager Arco integration did not mount.');
 
 activeLibraryService.value = replacementService;
 await nextTick();

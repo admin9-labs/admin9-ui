@@ -23,9 +23,10 @@ const leafKeys = (value: Record<string, unknown>, prefix = ''): string[] =>
 
 describe('package public API', () => {
   it('exports plugin installation options under the specific public name', () => {
-    const options: Admin9UIPluginOptions = {};
+    const fileService = { list: async () => ({ list: [], pagination: { page: 1, pageSize: 24, total: 0, hasMore: false } }) };
+    const options: Admin9UIPluginOptions = { fileService };
 
-    expect(options).toEqual({});
+    expect(options.fileService).toBe(fileService);
   });
 
   it('exports the ATiptapEditor media contract types', () => {
@@ -68,6 +69,7 @@ describe('package public API', () => {
     expect(Object.keys(publicApi).sort()).toEqual(
       [
         'AIconPicker',
+        'AFileManager',
         'AMediaLibrary',
         'AMediaPicker',
         'AProTable',
@@ -84,6 +86,7 @@ describe('package public API', () => {
     expect(Object.keys(localeApi).sort()).toEqual(['enUS', 'localePrefix', 'messages', 'zhCN'].sort());
     expect(localeApi.enUS.mediaLibrary.groupAll).toBe('All');
     expect(localeApi.zhCN.mediaLibrary.groupUngrouped).toBe('未分组');
+    expect(localeApi.enUS.fileManager.types.archive).toBe('Archives');
   });
 
   it('keeps English and Chinese locale keys structurally aligned', () => {
@@ -95,6 +98,7 @@ describe('package public API', () => {
     app.use(publicApi.default);
 
     expect(app.component('AMediaLibrary')).toBe(publicApi.AMediaLibrary);
+    expect(app.component('AFileManager')).toBe(publicApi.AFileManager);
     expect(app.component('ATiptapEditor')).toBe(publicApi.ATiptapEditor);
   });
 });

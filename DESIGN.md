@@ -2,7 +2,7 @@
 
 > 状态：独立公开 package 设计基线 v2
 >
-> 更新日期：2026-08-09
+> 更新日期：2026-08-12
 
 ## 1. 定位
 
@@ -42,6 +42,7 @@ admin9-ui/
     ├── index.ts
     ├── components/
     │   ├── icon-picker/
+    │   ├── file-manager/
     │   ├── media-library/
     │   ├── media-picker/
     │   ├── pro-table/
@@ -59,9 +60,10 @@ admin9-ui/
 
 | 导出                                                   | 定位                            | 数据依赖                   |
 | ------------------------------------------------------ | ------------------------------- | -------------------------- |
-| default `Admin9UI`                                     | 全局组件注册与默认 service 注入 | 可选 `MediaLibraryAdapter` |
+| default `Admin9UI`                                     | 全局组件注册与默认 service 注入 | 可选媒体与文件 adapter     |
 | `AMediaPicker`                                         | 表单级素材浏览、选择与可选上传  | `MediaPickerService` 注入  |
 | `AMediaLibrary`                                        | 页面级素材与单级分组管理        | `MediaLibraryAdapter` 注入 |
+| `AFileManager`                                         | 页面级六类文件管理              | `FileManagerAdapter` 注入  |
 | `AIconPicker`                                          | Arco 图标搜索与选择             | 无                         |
 | `AProTable`                                            | fetcher 驱动的页面级表格        | fetcher prop 注入          |
 | `ATiptapEditor`                                        | Tiptap 驱动的 HTML 富文本编辑器 | 可选 `MediaService`        |
@@ -205,10 +207,61 @@ export type MediaLibraryService = MediaService & MediaGroupCapability & MediaMov
 ```ts
 app.use(Admin9UI, {
   mediaService,
+  fileService,
 });
 ```
 
 使用点传入的 service 优先于插件默认值。缺少必需 service 时，组件应给出明确错误，而不是自行猜测网络行为。
+
+### File capability contracts
+
+文件契约与现有媒体契约并列，避免 `AMediaLibrary` 和 `AFileManager` 形成公开耦合。`FileBrowseCapability` 与 `FileUploadCapability` 是文件浏览/上传表面可复用的最小能力；删除、移动和分组管理保持独立组合，不强加给只读消费者。
+
+```ts
+export type FileType = 'image' | 'video' | 'audio' | 'document' | 'archive' | 'other';
+
+export interface FileItem {
+  id: string;
+  name: string;
+  type: FileType;
+  groupId: string | null;
+  url: string | null;
+  status?: 'pending' | 'ready' | 'failed';
+  size?: number;
+  mime?: string;
+  extension?: string;
+  thumbnail?: string;
+  duration?: number;
+  createdAt?: string;
+}
+
+type FileListParams = FileListParamsBase &
+  (
+    | { fileType?: undefined; fileTypes?: readonly FileType[]; groupId?: never }
+    | { fileType: FileType; fileTypes?: never; groupId?: string | null }
+  );
+
+export interface FileBrowseCapability {
+  list(params: FileListParams): Promise<FileListResult>;
+  listGroups?(fileType: FileType): Promise<FileGroup[]>;
+}
+
+export interface FileUploadCapability {
+  upload(options: FileUploadOptions & { fileType: FileType }): Promise<FileItem>;
+}
+
+export type FileManagerAdapter = FileBrowseCapability &
+  Partial<FileUploadCapability> &
+  Partial<FileRemoveCapability> &
+  Partial<FileGroupCapability> &
+  Partial<FileMoveCapability>;
+```
+
+- 聚合查询省略 `fileTypes` 表示六类全部；提供 `fileTypes` 表示后端准确筛选该真实类型集合，空数组表示无匹配结果，不能退化为全部；
+- adapter 必须先在完整数据集上按 `fileTypes` 筛选，再执行分页并返回准确 `pagination.total/typeCounts`，不得对当前页做客户端过滤；
+- 只有具体 `fileType` 查询可以携带 `groupId`；上传、`listGroups`、分组变更与移动始终要求真实 `FileType`；
+- 插件注入字段统一为 `fileService`，供文件浏览/上传/管理表面复用；使用点的 `service` prop 仍优先；
+- `FileManagerAdapter` 默认只要求 `list`，其余 capability 只在对应界面功能显式开启时要求。
 
 ## 5. 组件设计
 
@@ -237,6 +290,20 @@ Props、Events、Slots、状态行为和示例见 [AMediaPicker 使用文档](./
 - `refresh()` 与 `clearSelection()` 仅作为组件实例方法暴露，不属于独立 hooks 或工具。
 
 Props、Events、Slots、状态行为和示例见 [AMediaLibrary 使用文档](./docs/components/media-library.md)。
+
+### AFileManager
+
+`AFileManager` 是后端无关的页面级文件管理组件，与 `AMediaLibrary` 并存且不扩大其媒体职责。
+
+- 信息层级固定为文件类型优先、当前真实类型内单级分组其次；“全部”只是一种聚合筛选状态；
+- 默认只读，只要求 `FileBrowseCapability.list`；`listGroups` 存在时可在真实类型内浏览分组，不因此要求分组管理能力；
+- 上传、删除、移动和分组管理默认关闭，显式开启后才校验对应 capability；能力开关不是后端授权；
+- “全部”视图不显示分组；上传和移动禁用并提示先进入具体类型，混合类型批量删除仍可使用；
+- 搜索、分页、类型/分组切换由 adapter 在完整数据集上处理，组件不对分页结果二次筛选；
+- 支持网格/列表、跨页选择、部分成功、旧请求隔离、失败重试、无效记录清理和 `720px` 以下完整分组管理；
+- 图片显示缩略图，音视频体现时长或处理状态，文档/压缩包/其他显示清晰类型图标与元数据；不承诺在线 Office 预览。
+
+完整 Props、Events、Slots、service 行为和安全边界见 [AFileManager 使用文档](./docs/components/file-manager.md)。
 
 ### AIconPicker
 

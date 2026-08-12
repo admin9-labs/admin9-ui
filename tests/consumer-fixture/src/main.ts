@@ -5,6 +5,7 @@ import ArcoVue from '@arco-design/web-vue';
 import * as ArcoVueIcon from '@arco-design/web-vue/es/icon';
 import Admin9UI, {
   AIconPicker,
+  AFileManager,
   AMediaLibrary,
   AMediaPicker,
   AProTable,
@@ -17,6 +18,9 @@ import Admin9UI, {
   type Admin9UIOptions,
   type Admin9UIPluginOptions,
   type MediaItem,
+  type FileItem,
+  type FileManagerAdapter,
+  type FileListParams,
   type MediaLibraryService,
   type MoveMediaOptions,
   type RemoveMediaGroupOptions,
@@ -38,6 +42,25 @@ const mediaItem: MediaItem = {
   type: 'image',
   groupId: null,
   url: 'https://example.invalid/fixture.png',
+};
+
+const fileItem: FileItem = {
+  id: 'fixture-document',
+  name: 'Fixture document.pdf',
+  type: 'document',
+  groupId: null,
+  url: 'https://example.invalid/fixture.pdf',
+  extension: 'pdf',
+};
+
+const fileService: FileManagerAdapter = {
+  async list(params: FileListParams) {
+    return {
+      list: [fileItem],
+      pagination: { page: params.page, pageSize: params.pageSize, total: 1, hasMore: false },
+      typeCounts: { document: 1 },
+    };
+  },
 };
 
 const mediaService: MediaLibraryService = {
@@ -76,7 +99,7 @@ const mediaService: MediaLibraryService = {
   },
 };
 
-const pluginOptions: Admin9UIPluginOptions = { mediaService };
+const pluginOptions: Admin9UIPluginOptions = { mediaService, fileService };
 const legacyPluginOptions: Admin9UIOptions = pluginOptions;
 const compatiblePluginOptions: Admin9UIPluginOptions = legacyPluginOptions;
 const defaultImageDisplay: TiptapImageDisplay = 'inline';
@@ -126,7 +149,8 @@ const app = createApp({
         canMove: false,
         canManageGroups: false,
       }),
-      h(FixtureSfc, { service: mediaService }),
+      h(AFileManager),
+      h(FixtureSfc, { service: mediaService, fileService }),
     ]),
 });
 
