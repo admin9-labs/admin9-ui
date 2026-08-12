@@ -74,15 +74,15 @@ describe('changelog release notes', () => {
       encoding: 'utf8',
     });
     expect(check.status).toBe(0);
-    expect(check.stdout).toMatch(/Validated 6 changelog releases through 0\.5\.0/);
+    expect(check.stdout).toMatch(/Validated 7 changelog releases through 0\.6\.0/);
 
-    const release = spawnSync(process.execPath, ['scripts/check-changelog.mjs', '--release', 'v0.5.0'], {
+    const release = spawnSync(process.execPath, ['scripts/check-changelog.mjs', '--release', 'v0.6.0'], {
       cwd: packageRoot,
       encoding: 'utf8',
     });
     expect(release.status).toBe(0);
-    expect(release.stdout).toContain('新增腾讯地图 `ACoordinatePicker`');
-    expect(release.stdout).not.toContain('## [0.5.0]');
+    expect(release.stdout).toContain('移除独立的 `AMediaPicker`、`AMediaLibrary`');
+    expect(release.stdout).not.toContain('## [0.6.0]');
 
     const invalid = spawnSync(process.execPath, ['scripts/check-changelog.mjs', '--unknown'], {
       cwd: packageRoot,

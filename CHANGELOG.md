@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-13
+
 ### Removed
 
 - 移除独立的 `AMediaPicker`、`AMediaLibrary` 及全部 Media service 公共契约。
@@ -15,6 +17,8 @@
 ### Upgrade notes
 
 - 消费方将 `mediaService` 迁移为 `fileService`，并将 `MediaItem` 适配为 `FileItem`；编辑器的 `service` prop 也改为 `FilePickerAdapter`。
+
+**Full Changelog**: https://github.com/admin9-labs/admin9-ui/compare/v0.5.0...v0.6.0
 
 ## [0.5.0] - 2026-08-13
 
