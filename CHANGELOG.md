@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- 新增页面级 `AFileManager`，支持六类文件的准确分页浏览、类型内单级分组、上传、移动和删除，并按 adapter 能力启用管理操作。
+- 新增表单级 `AFilePicker`，支持单选或多选、跨页选择、文件类型限制、可选上传和响应式弹窗交互。
+- 新增共享文件 service 契约与 `fileService` 插件注入，包括 `FileItem`、`FileType`、浏览、上传、分组、移动和删除能力类型。
+
+### Upgrade notes
+
+- 文件组件不包含具体 API、认证或权限逻辑；消费方必须提供满足准确服务端筛选、分页及文件安全校验要求的 adapter。
+
 ## [0.3.1] - 2026-08-11
 
 ### Fixed
