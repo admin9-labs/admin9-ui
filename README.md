@@ -46,6 +46,7 @@ app.use(Admin9UI, {
 import {
   AFileManager,
   AFilePicker,
+  ACoordinatePicker,
   AMediaLibrary,
   AMediaPicker,
   AIconPicker,
@@ -59,7 +60,8 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 
 ## 公开能力
 
-- 默认导出的 `Admin9UI` 插件：全局注册七个组件，并可注入默认媒体与文件 adapter
+- 默认导出的 `Admin9UI` 插件：全局注册八个组件，并可注入默认媒体与文件 adapter
+- [`ACoordinatePicker`](./docs/components/coordinate-picker.md)：基于腾讯地图 JS API GL 的表单级坐标选择器
 - [`AMediaPicker`](./docs/components/media-picker.md)：支持图片、视频和音频的表单级轻量素材选择器
 - [`AMediaLibrary`](./docs/components/media-library.md)：支持分组、上传、移动和删除的页面级素材管理组件
 - [`AFileManager`](./docs/components/file-manager.md)：以文件类型优先、类型内单级分组为信息层级的页面级文件管理组件
@@ -69,7 +71,7 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 - [`ATiptapEditor`](./docs/components/tiptap-editor.md)：基于 Tiptap，支持内部滚动工作区、悬浮媒体工具栏、独占一行/跟随文字图片、可调尺寸视频与三档播放器宽度的表单级 HTML 富文本编辑器
 - `Admin9UIPluginOptions`、媒体与文件 browse/upload/management 能力、兼容的完整 service 类型及相关数据类型
 - `messages`、`localePrefix`、`zhCN`、`enUS` 和 `arcoIconNames`
-- `@admin9-labs/admin9-ui/styles`：七个组件的统一样式入口
+- `@admin9-labs/admin9-ui/styles`：八个组件的统一样式入口
 
 ## 素材组件边界
 

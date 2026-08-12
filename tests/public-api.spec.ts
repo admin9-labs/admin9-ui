@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import * as publicApi from '../src';
 import type {
   Admin9UIPluginOptions,
+  CoordinateSelection,
+  CoordinateValue,
   FilePickerAdapter,
   ATiptapEditorProps,
   TiptapAudioWidth,
@@ -40,6 +42,13 @@ describe('package public API', () => {
 
     expect(picker.list).toBeTypeOf('function');
     expect(picker.upload).toBeUndefined();
+  });
+
+  it('exports the coordinate picker value and selection types', () => {
+    const value: CoordinateValue = { latitude: 27.8945, longitude: 102.2644 };
+    const selection: CoordinateSelection = { ...value, source: 'search', title: '邛海' };
+
+    expect(selection).toEqual({ latitude: 27.8945, longitude: 102.2644, source: 'search', title: '邛海' });
   });
 
   it('exports the ATiptapEditor media contract types', () => {
@@ -82,6 +91,7 @@ describe('package public API', () => {
     expect(Object.keys(publicApi).sort()).toEqual(
       [
         'AIconPicker',
+        'ACoordinatePicker',
         'AFileManager',
         'AFilePicker',
         'AMediaLibrary',
@@ -102,6 +112,7 @@ describe('package public API', () => {
     expect(localeApi.zhCN.mediaLibrary.groupUngrouped).toBe('未分组');
     expect(localeApi.enUS.fileManager.types.archive).toBe('Archives');
     expect(localeApi.enUS.filePicker.typeAllowed).toBe('All allowed types');
+    expect(localeApi.zhCN.coordinatePicker.choose).toBe('选择坐标');
   });
 
   it('keeps English and Chinese locale keys structurally aligned', () => {
@@ -116,5 +127,6 @@ describe('package public API', () => {
     expect(app.component('AFileManager')).toBe(publicApi.AFileManager);
     expect(app.component('AFilePicker')).toBe(publicApi.AFilePicker);
     expect(app.component('ATiptapEditor')).toBe(publicApi.ATiptapEditor);
+    expect(app.component('ACoordinatePicker')).toBe(publicApi.ACoordinatePicker);
   });
 });

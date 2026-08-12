@@ -2,6 +2,7 @@
   import { ref } from 'vue';
   import {
     AIconPicker,
+    ACoordinatePicker,
     AFileManager,
     AFilePicker,
     AMediaLibrary,
@@ -27,6 +28,7 @@
 <template>
   <section data-testid="host-baseline-sfc">
     <AIconPicker model-value="" />
+    <ACoordinatePicker :model-value="{ latitude: 27.8945, longitude: 102.2644 }" api-key="fixture-key" readonly />
     <AProTable :columns="[{ title: 'Name', dataIndex: 'name' }]" :fetcher="fetchRows" />
     <ATiptapEditor
       model-value="<p>Fixture <img src='/fixture-inline.png' alt='Inline fixture' data-display='inline' data-size='1em'> content</p><audio src='/fixture-sfc.mp3' data-width='compact' data-align='right'></audio>"
@@ -40,12 +42,6 @@
     <AMediaPicker :service="service" :can-upload="false" :show-file-list="false" />
     <AMediaLibrary :service="service" :can-upload="false" :can-delete="false" :can-move="false" :can-manage-groups="false" />
     <AFileManager :service="fileService" />
-    <AFilePicker
-      v-model="attachments"
-      :service="filePickerService"
-      :file-types="['image', 'document']"
-      :limit="3"
-      multiple
-    />
+    <AFilePicker v-model="attachments" :service="filePickerService" :file-types="['image', 'document']" :limit="3" multiple />
   </section>
 </template>

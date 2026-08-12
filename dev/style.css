@@ -197,6 +197,13 @@ input {
   align-items: start;
 }
 
+.coordinate-workspace {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(240px, 340px);
+  gap: 28px;
+  align-items: start;
+}
+
 .tiptap-workspace {
   display: grid;
   gap: 16px;
@@ -344,7 +351,8 @@ input {
 
   .icon-workspace,
   .media-workspace,
-  .file-picker-workspace {
+  .file-picker-workspace,
+  .coordinate-workspace {
     grid-template-columns: minmax(0, 1fr);
   }
 

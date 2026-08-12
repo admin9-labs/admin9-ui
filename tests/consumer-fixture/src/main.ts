@@ -5,6 +5,7 @@ import ArcoVue from '@arco-design/web-vue';
 import * as ArcoVueIcon from '@arco-design/web-vue/es/icon';
 import Admin9UI, {
   AIconPicker,
+  ACoordinatePicker,
   AFileManager,
   AFilePicker,
   AMediaLibrary,
@@ -15,6 +16,8 @@ import Admin9UI, {
   localePrefix as rootLocalePrefix,
   messages as rootMessages,
   type ATiptapEditorProps,
+  type CoordinateSelection,
+  type CoordinateValue,
   type CreateMediaGroupOptions,
   type Admin9UIOptions,
   type Admin9UIPluginOptions,
@@ -111,6 +114,8 @@ const blockWidth: TiptapBlockWidth = '50%';
 const inlineSize: TiptapInlineImageSize = '1.25em';
 const mediaAlign: TiptapMediaAlign = 'center';
 const editorMaxHeight: ATiptapEditorProps['maxHeight'] = 480;
+const coordinateValue: CoordinateValue = { latitude: 27.8945, longitude: 102.2644 };
+const coordinateSelection: CoordinateSelection = { ...coordinateValue, source: 'model' };
 
 if (
   localePrefix !== 'admin9Ui' ||
@@ -121,12 +126,14 @@ if (
 ) {
   throw new Error('Package exports are inconsistent.');
 }
+if (coordinateSelection.source !== 'model') throw new Error('Coordinate selection type is inconsistent.');
 
 const i18n = createI18n({ legacy: false, locale: 'en-US', messages });
 const app = createApp({
   render: () =>
     h('main', [
       h(AIconPicker, { modelValue: '', allowClear: true }),
+      h(ACoordinatePicker, { modelValue: coordinateValue, apiKey: 'fixture-key', readonly: true }),
       h(AProTable, {
         columns: [{ title: 'Name', dataIndex: 'name' }],
         fetcher: async () => ({ list: [{ id: 1, name: 'Fixture row' }], total: 1 }),

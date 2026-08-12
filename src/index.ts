@@ -10,6 +10,7 @@ import AFilePicker from './components/file-picker/index.vue';
 import AIconPicker from './components/icon-picker/index.vue';
 import AProTable from './components/pro-table/index.vue';
 import ATiptapEditor from './components/tiptap-editor/index.vue';
+import ACoordinatePicker from './components/coordinate-picker/index.vue';
 
 // 服务接口契约（供 App 实现 adapter 时 import 类型）
 export type {
@@ -74,8 +75,15 @@ export type {
   TiptapMediaOperation,
 } from './components/tiptap-editor/types';
 
+export type {
+  CoordinateSelection,
+  CoordinateSelectionSource,
+  CoordinateValue,
+  TencentMapSuggestion,
+} from './components/coordinate-picker/types';
+
 // 组件命名导出（供按需 import）
-export { AMediaPicker, AMediaLibrary, AFileManager, AFilePicker, AIconPicker, AProTable, ATiptapEditor };
+export { ACoordinatePicker, AMediaPicker, AMediaLibrary, AFileManager, AFilePicker, AIconPicker, AProTable, ATiptapEditor };
 
 /**
  * 安装插件。
@@ -97,6 +105,7 @@ const Admin9UI = {
       'AIconPicker',
       'AProTable',
       'ATiptapEditor',
+      'ACoordinatePicker',
     ];
     reserved.forEach((name) => {
       if (app.component(name)) {
@@ -115,6 +124,7 @@ const Admin9UI = {
     app.component('AIconPicker', AIconPicker);
     app.component('AProTable', AProTable);
     app.component('ATiptapEditor', ATiptapEditor);
+    app.component('ACoordinatePicker', ACoordinatePicker);
 
     // 提供默认服务，供使用点不传 :service 时回退
     app.provide(admin9UIPluginOptionsKey, options);

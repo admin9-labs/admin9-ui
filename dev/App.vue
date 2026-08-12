@@ -2,6 +2,7 @@
   import { computed, ref, watch } from 'vue';
   import type { TableColumnData } from '@arco-design/web-vue';
   import {
+    ACoordinatePicker,
     AFileManager,
     AFilePicker,
     AIconPicker,
@@ -16,6 +17,8 @@
     type FileManagerAdapter,
     type FilePickerAdapter,
     type FileType,
+    type CoordinateSelection,
+    type CoordinateValue,
   } from '../src';
   import { createFakeMediaService, type AcceptanceState } from './fake-media-service';
   import createFakeMediaLibraryService from './fake-media-library-service';
@@ -74,6 +77,10 @@
   const selectedRowKeys = ref<(string | number)[]>([]);
   const iconValue = ref('icon-apps');
   const iconMode = ref<'normal' | 'readonly' | 'disabled'>('normal');
+  const coordinateValue = ref<CoordinateValue>({ latitude: 27.894504, longitude: 102.264449 });
+  const coordinateMode = ref<'normal' | 'readonly' | 'disabled'>('normal');
+  const lastCoordinateEvent = ref('等待选择');
+  const tencentMapApiKey = import.meta.env.VITE_TENCENT_MAP_KEY || '';
   const editorMode = ref<'normal' | 'readonly' | 'disabled'>('normal');
   const tiptapFocused = new URLSearchParams(window.location.search).get('component') === 'tiptap-editor';
   const tiptapValue = ref(
@@ -180,6 +187,11 @@
   const recordMediaEvent = (items: MediaItem[]) => {
     lastMediaEvent.value = items.length ? items.map((item) => item.name).join('、') : '已清空';
   };
+  const recordCoordinateEvent = (selection: CoordinateSelection) => {
+    lastCoordinateEvent.value = selection.title
+      ? `${selection.title} · ${selection.latitude}, ${selection.longitude}`
+      : `${selection.latitude}, ${selection.longitude}`;
+  };
   const recordLibraryUpload = (item: MediaItem) => {
     lastLibraryEvent.value = `已上传 ${item.name}`;
   };
@@ -234,6 +246,7 @@
     <nav v-if="!tiptapFocused" class="section-nav" aria-label="组件验收导航">
       <a href="#pro-table">AProTable</a>
       <a href="#icon-picker">AIconPicker</a>
+      <a href="#coordinate-picker">ACoordinatePicker</a>
       <a href="#tiptap-editor">ATiptapEditor</a>
       <a href="#media-picker">AMediaPicker</a>
       <a href="#media-library">AMediaLibrary</a>
@@ -309,6 +322,44 @@
         </div>
       </section>
 
+      <section v-if="!tiptapFocused" id="coordinate-picker" class="acceptance-section" data-testid="coordinate-picker-section">
+        <div class="section-heading">
+          <div>
+            <span class="section-index">03</span>
+            <h2>ACoordinatePicker</h2>
+          </div>
+          <div class="section-controls">
+            <a-radio-group v-model="coordinateMode" type="button" size="small" data-testid="coordinate-mode-control">
+              <a-radio value="normal">正常</a-radio>
+              <a-radio value="readonly">只读</a-radio>
+              <a-radio value="disabled">禁用</a-radio>
+            </a-radio-group>
+          </div>
+        </div>
+
+        <div class="coordinate-workspace component-frame">
+          <div>
+            <div class="field-label">门店坐标</div>
+            <ACoordinatePicker
+              v-model="coordinateValue"
+              :api-key="tencentMapApiKey"
+              :center="coordinateValue"
+              :readonly="coordinateMode === 'readonly'"
+              :disabled="coordinateMode === 'disabled'"
+              allow-clear
+              data-testid="coordinate-picker"
+              @confirm="recordCoordinateEvent"
+            />
+          </div>
+          <dl class="event-readout" aria-live="polite">
+            <dt>当前坐标</dt>
+            <dd>{{ coordinateValue ? `${coordinateValue.latitude}, ${coordinateValue.longitude}` : '未选择' }}</dd>
+            <dt>最近确认</dt>
+            <dd>{{ lastCoordinateEvent }}</dd>
+          </dl>
+        </div>
+      </section>
+
       <section
         id="tiptap-editor"
         class="acceptance-section"
@@ -317,7 +368,7 @@
       >
         <div class="section-heading">
           <div>
-            <span class="section-index">03</span>
+            <span class="section-index">04</span>
             <h2>ATiptapEditor</h2>
           </div>
           <a-radio-group v-model="editorMode" type="button" size="small" data-testid="editor-mode-control">
@@ -352,7 +403,7 @@
       <section v-if="!tiptapFocused" id="media-picker" class="acceptance-section" data-testid="media-picker-section">
         <div class="section-heading">
           <div>
-            <span class="section-index">04</span>
+            <span class="section-index">05</span>
             <h2>AMediaPicker</h2>
           </div>
           <div class="section-controls">
@@ -400,7 +451,7 @@
       <section v-if="!tiptapFocused" id="media-library" class="acceptance-section" data-testid="media-library-section">
         <div class="section-heading">
           <div>
-            <span class="section-index">05</span>
+            <span class="section-index">06</span>
             <h2>AMediaLibrary</h2>
           </div>
           <div class="section-controls">
@@ -451,7 +502,7 @@
       <section v-if="!tiptapFocused" id="file-picker" class="acceptance-section" data-testid="file-picker-section">
         <div class="section-heading">
           <div>
-            <span class="section-index">06</span>
+            <span class="section-index">07</span>
             <h2>AFilePicker</h2>
           </div>
           <div class="section-controls">
@@ -510,7 +561,7 @@
       <section v-if="!tiptapFocused" id="file-manager" class="acceptance-section" data-testid="file-manager-section">
         <div class="section-heading">
           <div>
-            <span class="section-index">07</span>
+            <span class="section-index">08</span>
             <h2>AFileManager</h2>
           </div>
           <div class="section-controls">

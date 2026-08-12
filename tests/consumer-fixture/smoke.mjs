@@ -40,6 +40,7 @@ assert.equal(packageExports.default.install instanceof Function, true);
 assert.equal(packageExports.localePrefix, 'admin9Ui');
 assert.equal(localeExports.localePrefix, 'admin9Ui');
 assert.ok(packageExports.AIconPicker);
+assert.ok(packageExports.ACoordinatePicker);
 assert.ok(packageExports.AFileManager);
 assert.ok(packageExports.AFilePicker);
 assert.ok(packageExports.AMediaLibrary);
@@ -51,6 +52,7 @@ const require = createRequire(import.meta.url);
 const commonJsPackage = require('@admin9-labs/admin9-ui');
 const commonJsLocale = require('@admin9-labs/admin9-ui/locale');
 assert.ok(commonJsPackage.AIconPicker);
+assert.ok(commonJsPackage.ACoordinatePicker);
 assert.ok(commonJsPackage.AFileManager);
 assert.ok(commonJsPackage.AFilePicker);
 assert.ok(commonJsPackage.AMediaLibrary);
@@ -59,7 +61,7 @@ assert.equal(commonJsLocale.localePrefix, 'admin9Ui');
 
 const cssPath = import.meta.resolve('@admin9-labs/admin9-ui/styles');
 const css = await readFile(new URL(cssPath), 'utf8');
-assert.match(css, /\.a9-(file|icon|media|pro|tiptap)-/);
+assert.match(css, /\.a9-(coordinate|file|icon|media|pro|tiptap)-/);
 assert.match(css, /\.a9-file-manager/);
 assert.match(css, /\.a9-media-library/);
 assert.match(css, /\.a9-tiptap-editor__media-bubble/);
@@ -111,6 +113,11 @@ const app = createApp({
   render: () =>
     h('main', [
       h(packageExports.AIconPicker, { modelValue: '' }),
+      h(packageExports.ACoordinatePicker, {
+        modelValue: { latitude: 27.8945, longitude: 102.2644 },
+        apiKey: 'fixture-key',
+        readonly: true,
+      }),
       h(packageExports.AProTable, {
         columns: [{ title: 'Name', dataIndex: 'name' }],
         fetcher: async () => ({ list: [], total: 0 }),
@@ -155,6 +162,7 @@ await new Promise((resolve) => setTimeout(resolve, 0));
 await nextTick();
 
 assert.ok(host.querySelector('.a9-icon-picker'), 'AIconPicker did not mount.');
+assert.ok(host.querySelector('.a9-coordinate-picker'), 'ACoordinatePicker did not mount.');
 assert.ok(host.querySelector('.a9-pro-table'), 'AProTable did not mount.');
 assert.ok(host.querySelector('.a9-tiptap-editor'), 'ATiptapEditor did not mount.');
 assert.equal(host.querySelector('.a9-tiptap-editor')?.style.getPropertyValue('--a9-tiptap-editor-max-height'), '480px');

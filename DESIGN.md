@@ -69,6 +69,7 @@ admin9-ui/
 | `AIconPicker`                                          | Arco 图标搜索与选择             | 无                         |
 | `AProTable`                                            | fetcher 驱动的页面级表格        | fetcher prop 注入          |
 | `ATiptapEditor`                                        | Tiptap 驱动的 HTML 富文本编辑器 | 可选 `MediaService`        |
+| `ACoordinatePicker`                                    | 腾讯地图坐标搜索与点选          | 消费方提供腾讯地图 API Key |
 | `Admin9UIPluginOptions`、`MediaService` 及相关公共类型 | 插件配置与素材 adapter 契约     | 消费方实现                 |
 | `messages`、`localePrefix`、`zhCN`、`enUS`             | 中英文 locale                   | 宿主 i18n 实例             |
 | `arcoIconNames`                                        | 图标名清单                      | Arco 图标全局注册          |
