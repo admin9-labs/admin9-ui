@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-14
+
+### Fixed
+
+- 修复 `ATiptapEditor` 无法通过退格删除独占图片、视频或音频前首个空段落的问题。
+
+**Full Changelog**: https://github.com/admin9-labs/admin9-ui/compare/v0.6.0...v0.6.1
+
 ## [0.6.0] - 2026-08-13
 
 ### Removed
