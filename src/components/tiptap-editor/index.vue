@@ -83,6 +83,7 @@
   const audioWidths: TiptapAudioWidth[] = ['compact', 'standard', 'full'];
   const inlineSizes: TiptapInlineImageSize[] = ['1em', '1.25em', '1.5em', '2em'];
   const mediaAlignments: TiptapMediaAlign[] = ['left', 'center', 'right'];
+  const blockMediaNodeNames: TiptapMediaNodeName[] = ['blockImage', 'video', 'audio'];
   const mediaNodeNames: TiptapMediaNodeName[] = ['blockImage', 'inlineImage', 'video', 'audio'];
   const blockWidthLocaleKeys: Record<TiptapBlockPresetWidth, string> = {
     '25%': 'sizeSmall',
@@ -137,6 +138,38 @@
           },
         }),
       ];
+    },
+  });
+  const RemoveLeadingEmptyParagraphBeforeMedia = Extension.create({
+    name: 'a9RemoveLeadingEmptyParagraphBeforeMedia',
+    priority: 1000,
+    addKeyboardShortcuts() {
+      return {
+        Backspace: () => {
+          const { state, view } = this.editor;
+          const { doc, selection } = state;
+          if (!(selection instanceof TextSelection) || !selection.empty) return false;
+
+          const { $from } = selection;
+          if (
+            $from.depth !== 1 ||
+            $from.before() !== 0 ||
+            $from.parent.type.name !== 'paragraph' ||
+            $from.parent.content.size !== 0 ||
+            doc.childCount < 2
+          ) {
+            return false;
+          }
+
+          const nextNode = doc.child(1);
+          if (!blockMediaNodeNames.includes(nextNode.type.name as TiptapMediaNodeName)) return false;
+
+          const transaction = state.tr.delete(0, $from.parent.nodeSize);
+          const $gap = transaction.doc.resolve(0);
+          view.dispatch(transaction.setSelection(new GapCursor($gap)).scrollIntoView());
+          return true;
+        },
+      };
     },
   });
 
@@ -207,6 +240,7 @@
       }),
       CharacterCount,
       DynamicCharacterLimit,
+      RemoveLeadingEmptyParagraphBeforeMedia,
     ],
     editorProps: {
       attributes: {

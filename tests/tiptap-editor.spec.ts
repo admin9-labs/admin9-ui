@@ -3,7 +3,7 @@ import { createApp, defineComponent, h, nextTick, ref, type App, type ComponentP
 import { Message } from '@arco-design/web-vue';
 import type { Editor } from '@tiptap/core';
 import { GapCursor } from '@tiptap/pm/gapcursor';
-import { NodeSelection } from '@tiptap/pm/state';
+import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { createI18n } from 'vue-i18n';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ATiptapEditor from '../src/components/tiptap-editor/index.vue';
@@ -286,6 +286,14 @@ function findNodePosition(editor: Editor, nodeName: string) {
   return position;
 }
 
+function dispatchEditorKey(key: 'ArrowLeft' | 'Backspace') {
+  const prose = document.querySelector<HTMLElement>('.a9-tiptap-editor__prose');
+  if (!prose) throw new Error('ATiptapEditor editable surface was not found');
+  const event = new KeyboardEvent('keydown', { key, code: key, bubbles: true, cancelable: true });
+  prose.dispatchEvent(event);
+  return event;
+}
+
 describe('ATiptapEditor public contract', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="app"></div>';
@@ -316,6 +324,153 @@ describe('ATiptapEditor public contract', () => {
     expect(instance.getHTML()).toBe('');
     expect(onUpdate).toHaveBeenLastCalledWith('');
     expect(onChange).toHaveBeenLastCalledWith('');
+  });
+
+  it('removes a leading empty paragraph before block media when the cursor is already in it and supports undo', async () => {
+    const onUpdate = vi.fn();
+    const onChange = vi.fn();
+    const instance = mountEditor({
+      'modelValue': '<p></p><img src="/cover.png" data-display="block">',
+      'onUpdate:modelValue': onUpdate,
+      'onChange': onChange,
+    });
+    await flush();
+
+    const internalEditor = getInternalEditor(instance);
+    internalEditor.commands.setTextSelection(1);
+    internalEditor.view.focus();
+    const event = dispatchEditorKey('Backspace');
+    await flush();
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(instance.getHTML()).not.toContain('<p></p>');
+    expect(new DOMParser().parseFromString(instance.getHTML(), 'text/html').body.children).toHaveLength(1);
+    expect(internalEditor.state.selection).toBeInstanceOf(GapCursor);
+    expect(internalEditor.state.selection.from).toBe(0);
+    expect(onUpdate).toHaveBeenLastCalledWith(instance.getHTML());
+    expect(onChange).toHaveBeenLastCalledWith(instance.getHTML());
+
+    expect(internalEditor.commands.undo()).toBe(true);
+    await flush();
+    expect(instance.getHTML()).toContain('<p></p>');
+  });
+
+  it.each([
+    ['block image', 'blockImage', '<img src="/cover.png" data-display="block">', 'img'],
+    ['video', 'video', '<video src="/demo.mp4"></video>', 'video'],
+    ['audio', 'audio', '<audio src="/demo.mp3"></audio>', 'audio'],
+  ])('removes a leading empty paragraph after moving left from selected %s', async (_label, nodeName, mediaHtml, tagName) => {
+    const onUpdate = vi.fn();
+    const onChange = vi.fn();
+    const instance = mountEditor({
+      'modelValue': `<p></p>${mediaHtml}`,
+      'onUpdate:modelValue': onUpdate,
+      'onChange': onChange,
+    });
+    await flush();
+
+    const internalEditor = getInternalEditor(instance);
+    internalEditor.commands.setNodeSelection(findNodePosition(internalEditor, nodeName));
+    internalEditor.view.focus();
+    const leftEvent = dispatchEditorKey('ArrowLeft');
+    await flush();
+
+    expect(leftEvent.defaultPrevented).toBe(false);
+    // happy-dom does not apply native caret movement, so model the browser's ArrowLeft result explicitly.
+    internalEditor.commands.setTextSelection(1);
+    expect(internalEditor.state.selection).toBeInstanceOf(TextSelection);
+    expect(internalEditor.state.selection.from).toBe(1);
+
+    const event = dispatchEditorKey('Backspace');
+    await flush();
+    const parsedDocument = new DOMParser().parseFromString(instance.getHTML(), 'text/html');
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(parsedDocument.body.children).toHaveLength(1);
+    expect(parsedDocument.body.firstElementChild?.tagName.toLowerCase()).toBe(tagName);
+    expect(internalEditor.state.selection).toBeInstanceOf(GapCursor);
+    expect(internalEditor.state.selection.from).toBe(0);
+    expect(onUpdate).toHaveBeenLastCalledWith(instance.getHTML());
+    expect(onChange).toHaveBeenLastCalledWith(instance.getHTML());
+  });
+
+  it.each([
+    ['a space', ' '],
+    ['a tab', '\t'],
+    ['text', 'A'],
+  ])('deletes %s as ordinary content without removing its paragraph', async (_label, text) => {
+    const instance = mountEditor({ modelValue: '<p></p><img src="/cover.png" data-display="block">' });
+    await flush();
+
+    const internalEditor = getInternalEditor(instance);
+    internalEditor.commands.setContent({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text }] },
+        { type: 'blockImage', attrs: { src: '/cover.png' } },
+      ],
+    });
+    internalEditor.commands.setTextSelection(2);
+    internalEditor.view.focus();
+    const event = dispatchEditorKey('Backspace');
+    await flush();
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(internalEditor.state.doc.childCount).toBe(2);
+    expect(internalEditor.state.doc.firstChild?.type.name).toBe('paragraph');
+    expect(internalEditor.state.doc.firstChild?.textContent).toBe(text);
+    expect(internalEditor.state.doc.child(1).type.name).toBe('blockImage');
+  });
+
+  it('leaves a leading empty paragraph before a non-media atom to the default keymap', async () => {
+    const instance = mountEditor({ modelValue: '<p></p><hr>' });
+    await flush();
+
+    const internalEditor = getInternalEditor(instance);
+    internalEditor.commands.setTextSelection(1);
+    internalEditor.view.focus();
+    dispatchEditorKey('Backspace');
+    await flush();
+
+    expect(internalEditor.state.doc.childCount).toBe(2);
+    expect(internalEditor.state.doc.firstChild?.type.name).toBe('paragraph');
+    expect(internalEditor.state.doc.child(1).type.name).toBe('horizontalRule');
+  });
+
+  it('leaves a leading empty paragraph before an inline image to the default keymap', async () => {
+    const instance = mountEditor({
+      modelValue: '<p></p><p><img src="/inline.png" data-display="inline"></p>',
+    });
+    await flush();
+
+    const internalEditor = getInternalEditor(instance);
+    internalEditor.commands.setTextSelection(1);
+    internalEditor.view.focus();
+    const event = dispatchEditorKey('Backspace');
+    await flush();
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(internalEditor.state.doc.childCount).toBe(2);
+    expect(internalEditor.state.doc.firstChild?.type.name).toBe('paragraph');
+    expect(internalEditor.state.doc.child(1).firstChild?.type.name).toBe('inlineImage');
+  });
+
+  it('leaves an empty paragraph outside the document start to the default keymap', async () => {
+    const instance = mountEditor({
+      modelValue: '<p>Before</p><p></p><img src="/cover.png" data-display="block">',
+    });
+    await flush();
+
+    const internalEditor = getInternalEditor(instance);
+    const emptyParagraphPosition = internalEditor.state.doc.child(0).nodeSize;
+    internalEditor.commands.setTextSelection(emptyParagraphPosition + 1);
+    internalEditor.view.focus();
+    dispatchEditorKey('Backspace');
+    await flush();
+
+    expect(internalEditor.state.selection).not.toBeInstanceOf(GapCursor);
+    expect(internalEditor.state.doc.firstChild?.textContent).toBe('Before');
+    expect(internalEditor.state.doc.lastChild?.type.name).toBe('blockImage');
   });
 
   it('toggles the focused class with the editable surface focus state', async () => {
