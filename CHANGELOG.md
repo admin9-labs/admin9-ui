@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复 `ATiptapEditor` 图片、视频、音频插入按钮和选中媒体后的替换按钮无法打开 `AFilePicker` 的问题。
+
 ## [0.6.1] - 2026-08-14
 
 ### Fixed

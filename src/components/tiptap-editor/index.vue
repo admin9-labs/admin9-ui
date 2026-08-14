@@ -885,8 +885,15 @@
           @change="insertImagesFromPicker"
           @visible-change="onMediaPickerVisibleChange"
         >
-          <template #trigger>
-            <a-button size="small" type="text" :disabled="disabled" :aria-label="t('admin9Ui.tiptapEditor.image')">
+          <template #trigger="{ open, disabled: pickerDisabled }">
+            <a-button
+              size="small"
+              type="text"
+              :disabled="disabled || pickerDisabled"
+              :aria-label="t('admin9Ui.tiptapEditor.image')"
+              @mousedown.prevent
+              @click="open"
+            >
               <template #icon><icon-image /></template>
             </a-button>
           </template>
@@ -908,8 +915,15 @@
           @change="insertVideosFromPicker"
           @visible-change="onMediaPickerVisibleChange"
         >
-          <template #trigger>
-            <a-button size="small" type="text" :disabled="disabled" :aria-label="t('admin9Ui.tiptapEditor.video')">
+          <template #trigger="{ open, disabled: pickerDisabled }">
+            <a-button
+              size="small"
+              type="text"
+              :disabled="disabled || pickerDisabled"
+              :aria-label="t('admin9Ui.tiptapEditor.video')"
+              @mousedown.prevent
+              @click="open"
+            >
               <template #icon><icon-video-camera /></template>
             </a-button>
           </template>
@@ -931,8 +945,15 @@
           @change="insertAudiosFromPicker"
           @visible-change="onMediaPickerVisibleChange"
         >
-          <template #trigger>
-            <a-button size="small" type="text" :disabled="disabled" :aria-label="t('admin9Ui.tiptapEditor.audio')">
+          <template #trigger="{ open, disabled: pickerDisabled }">
+            <a-button
+              size="small"
+              type="text"
+              :disabled="disabled || pickerDisabled"
+              :aria-label="t('admin9Ui.tiptapEditor.audio')"
+              @mousedown.prevent
+              @click="open"
+            >
               <template #icon><icon-sound /></template>
             </a-button>
           </template>
@@ -1211,9 +1232,16 @@
           @change="replaceSelectedMediaFromPicker"
           @visible-change="onMediaPickerVisibleChange"
         >
-          <template #trigger>
+          <template #trigger="{ open, disabled: pickerDisabled }">
             <a-tooltip v-model:popup-visible="replacePickerTooltipVisible" :content="replaceMediaLabel">
-              <a-button size="mini" type="text" :aria-label="replaceMediaLabel">
+              <a-button
+                size="mini"
+                type="text"
+                :disabled="disabled || pickerDisabled"
+                :aria-label="replaceMediaLabel"
+                @mousedown.prevent
+                @click="open"
+              >
                 <template #icon><icon-refresh /></template>
               </a-button>
             </a-tooltip>

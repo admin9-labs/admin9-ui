@@ -73,7 +73,12 @@ vi.mock('../src/components/file-picker/index.vue', async () => {
               'data-file-types': props.fileTypes?.join(','),
             },
             [
-              slots.trigger?.(),
+              slots.trigger?.({
+                open: () => emit('visible-change', true),
+                selectedItems: [],
+                selectedCount: 0,
+                disabled: false,
+              }),
               vue.h(
                 'button',
                 {
