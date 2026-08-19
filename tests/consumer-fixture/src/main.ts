@@ -8,6 +8,7 @@ import Admin9UI, {
   ACoordinatePicker,
   AFileManager,
   AFilePicker,
+  AFileUploader,
   AProTable,
   ATiptapEditor,
   arcoIconNames,
@@ -21,6 +22,8 @@ import Admin9UI, {
   type FileItem,
   type FileManagerAdapter,
   type FilePickerAdapter,
+  type FileUploadBatchResult,
+  type FileUploadCapability,
   type FileListParams,
   type TiptapAudioWidth,
   type TiptapBlockWidth,
@@ -52,6 +55,20 @@ const fileService: FileManagerAdapter = {
   },
 };
 const filePickerService: FilePickerAdapter = { list: fileService.list };
+const fileUploaderService: FileUploadCapability = {
+  async upload({ file, fileType, groupId, onProgress }) {
+    onProgress?.(100);
+    return {
+      id: `fixture-upload-${file.name}`,
+      name: file.name,
+      type: fileType,
+      groupId,
+      url: `https://example.invalid/uploads/${encodeURIComponent(file.name)}`,
+      status: 'ready',
+    };
+  },
+};
+const emptyUploadResult: FileUploadBatchResult = { succeeded: [], failed: [], cancelled: [] };
 
 const pluginOptions: Admin9UIPluginOptions = { fileService };
 const legacyPluginOptions: Admin9UIOptions = pluginOptions;
@@ -75,6 +92,7 @@ if (
   throw new Error('Package exports are inconsistent.');
 }
 if (coordinateSelection.source !== 'model') throw new Error('Coordinate selection type is inconsistent.');
+if (emptyUploadResult.failed.length !== 0) throw new Error('File uploader result type is inconsistent.');
 
 const i18n = createI18n({ legacy: false, locale: 'en-US', messages });
 const app = createApp({
@@ -101,7 +119,8 @@ const app = createApp({
       }),
       h(AFileManager),
       h(AFilePicker, { service: filePickerService, modelValue: [fileItem], fileTypes: ['document'], multiple: true }),
-      h(FixtureSfc, { service: filePickerService, fileService, filePickerService }),
+      h(AFileUploader, { service: fileUploaderService, fileType: 'image', groupId: 'fixture-images' }),
+      h(FixtureSfc, { service: filePickerService, fileService, filePickerService, fileUploaderService }),
     ]),
 });
 

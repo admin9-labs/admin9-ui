@@ -5,6 +5,7 @@ import type { Admin9UIPluginOptions } from './services/types';
 // 组件
 import AFileManager from './components/file-manager/index.vue';
 import AFilePicker from './components/file-picker/index.vue';
+import AFileUploader from './components/file-uploader/index.vue';
 import AIconPicker from './components/icon-picker/index.vue';
 import AProTable from './components/pro-table/index.vue';
 import ATiptapEditor from './components/tiptap-editor/index.vue';
@@ -35,6 +36,16 @@ export type {
   FileManagerService,
 } from './services/types';
 
+export type {
+  AFileUploaderExposed,
+  AFileUploaderProps,
+  FileUploadBatchResult,
+  FileUploadFailure,
+  FileUploadFailureReason,
+  FileUploadTask,
+  FileUploadTaskStatus,
+} from './components/file-uploader/types';
+
 // locale（供 App 合并进宿主 vue-i18n）
 export { messages, localePrefix } from './locale';
 
@@ -61,7 +72,7 @@ export type {
 } from './components/coordinate-picker/types';
 
 // 组件命名导出（供按需 import）
-export { ACoordinatePicker, AFileManager, AFilePicker, AIconPicker, AProTable, ATiptapEditor };
+export { ACoordinatePicker, AFileManager, AFilePicker, AFileUploader, AIconPicker, AProTable, ATiptapEditor };
 
 /**
  * 安装插件。
@@ -75,7 +86,15 @@ export { ACoordinatePicker, AFileManager, AFilePicker, AIconPicker, AProTable, A
 const Admin9UI = {
   install(app: App, options: Admin9UIPluginOptions = {}) {
     // 名称冲突检测：A 前缀下若与 Arco 原生组件重名，提示及早发现
-    const reserved = ['AFileManager', 'AFilePicker', 'AIconPicker', 'AProTable', 'ATiptapEditor', 'ACoordinatePicker'];
+    const reserved = [
+      'AFileManager',
+      'AFilePicker',
+      'AFileUploader',
+      'AIconPicker',
+      'AProTable',
+      'ATiptapEditor',
+      'ACoordinatePicker',
+    ];
     reserved.forEach((name) => {
       if (app.component(name)) {
         // eslint-disable-next-line no-console
@@ -88,6 +107,7 @@ const Admin9UI = {
 
     app.component('AFileManager', AFileManager);
     app.component('AFilePicker', AFilePicker);
+    app.component('AFileUploader', AFileUploader);
     app.component('AIconPicker', AIconPicker);
     app.component('AProTable', AProTable);
     app.component('ATiptapEditor', ATiptapEditor);

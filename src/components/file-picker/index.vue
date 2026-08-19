@@ -1,8 +1,8 @@
 <script setup lang="ts">
   import { computed, inject, onMounted, ref, watch } from 'vue';
-  import { Message } from '@arco-design/web-vue';
-  import type { RequestOption, UploadRequest } from '@arco-design/web-vue';
   import { useI18n } from 'vue-i18n';
+  import AFileUploader from '../file-uploader/index.vue';
+  import type { AFileUploaderExposed, FileUploadBatchResult, FileUploadFailure } from '../file-uploader/types';
   import FileItemView from '../../internal/file-item.vue';
   import admin9UIOptionsKey from '../../internal/options';
   import type { FileGroup, FileItem, FileListParams, FilePickerAdapter, FileType } from '../../services/types';
@@ -102,7 +102,9 @@
   const groupError = ref(false);
   const draftMap = ref(new Map<string, FileItem>());
   const committedItems = ref<FileItem[]>([]);
-  const uploadCounts = ref(new Map<number, number>());
+  const lastUploadFileType = ref<FileType>();
+  const triggerRoot = ref<HTMLElement>();
+  const uploader = ref<AFileUploaderExposed>();
   let viewGeneration = 0;
   let latestListRequest = 0;
   let latestGroupRequest = 0;
@@ -121,7 +123,6 @@
   const draftItems = computed(() => Array.from(draftMap.value.values()));
   const draftCount = computed(() => draftMap.value.size);
   const selectedDraftId = computed(() => draftItems.value[0]?.id ?? '');
-  const uploadLoading = computed(() => (uploadCounts.value.get(viewGeneration) ?? 0) > 0);
   const empty = computed(() => list.value.length === 0 && !loading.value && !listError.value);
   const aggregateLabel = computed(() =>
     allowedFileTypes.value.length === FILE_TYPES.length
@@ -129,6 +130,21 @@
       : t('admin9Ui.filePicker.typeAllowed')
   );
   const triggerLabel = computed(() => props.buttonText || t('admin9Ui.filePicker.trigger'));
+  const uploadFileType = computed(
+    () =>
+      activeFileType.value ??
+      (lastUploadFileType.value && allowedTypeSet.value.has(lastUploadFileType.value)
+        ? lastUploadFileType.value
+        : allowedFileTypes.value[0])
+  );
+  const uploadGroupId = computed(() =>
+    activeFileType.value === uploadFileType.value && typeof activeGroupId.value === 'string' ? activeGroupId.value : null
+  );
+  const uploadTooltip = computed(() =>
+    uploadFileType.value
+      ? t('admin9Ui.filePicker.uploadToType', { type: t(`admin9Ui.filePicker.types.${uploadFileType.value}`) })
+      : t('admin9Ui.filePicker.upload')
+  );
 
   const hasStableId = (item: FileItem) => typeof item.id === 'string' && item.id.trim().length > 0;
   const hasUsableUrl = (item: FileItem) => typeof item.url === 'string' && item.url.trim().length > 0;
@@ -348,6 +364,7 @@
     if (activeFileType.value === fileType) return;
     invalidateRequests();
     activeFileType.value = fileType;
+    if (fileType) lastUploadFileType.value = fileType;
     activeGroupId.value = undefined;
     current.value = 1;
     groups.value = [];
@@ -398,8 +415,14 @@
     if (!visible.value) return;
     invalidateRequests();
     visible.value = false;
+    uploader.value?.clear();
     replaceDraft(committedItems.value, false);
     emit('visibleChange', false);
+  };
+  const restoreTriggerFocus = () => {
+    triggerRoot.value
+      ?.querySelector<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+      ?.focus();
   };
   const clear = () => {
     replaceDraft([], visible.value);
@@ -428,58 +451,12 @@
     if (matches.length === 1) toggleItem(matches[0]);
   };
 
-  const changeUploadCount = (generation: number, delta: number) => {
-    const next = new Map(uploadCounts.value);
-    const count = Math.max(0, (next.get(generation) ?? 0) + delta);
-    if (count) next.set(generation, count);
-    else next.delete(generation);
-    uploadCounts.value = next;
-  };
-  const customUpload = (option: RequestOption): UploadRequest => {
-    const controller = new AbortController();
-    const generation = viewGeneration;
-    const service = requireService();
-    const fileType = activeFileType.value;
-    const groupId = typeof activeGroupId.value === 'string' ? activeGroupId.value : null;
-    const { file } = option.fileItem;
-    if (!file || !fileType) {
-      const error = new Error('[admin9-ui] AFilePicker upload requires a concrete FileType.');
-      option.onError(error);
-      emit('uploadError', error);
-      return { abort: () => controller.abort() };
-    }
-    if (!service.upload) {
-      const error = new Error('[admin9-ui] AFilePicker requires FileUploadCapability when canUpload is true.');
-      option.onError(error);
-      emit('uploadError', error);
-      return { abort: () => controller.abort() };
-    }
-    changeUploadCount(generation, 1);
-    service
-      .upload({ file, fileType, groupId, onProgress: option.onProgress, signal: controller.signal })
-      .then(async (item) => {
-        option.onSuccess(item);
-        if (generation !== viewGeneration || service !== resolvedService.value || fileType !== activeFileType.value) {
-          return;
-        }
-        emit('uploadSuccess', item);
-        const conflictsWithKnownItem = list.value.some((entry) => entry.id === item.id) || draftMap.value.has(item.id);
-        if (item.type === fileType && isValueEligible(item) && !conflictsWithKnownItem) {
-          if (!props.multiple) replaceDraft([item]);
-          else if (props.limit <= 0 || draftMap.value.size < props.limit) {
-            replaceDraft([...draftItems.value, item]);
-          }
-        }
-        await refresh();
-      })
-      .catch((error: unknown) => {
-        option.onError(error);
-        if (generation !== viewGeneration || service !== resolvedService.value) return;
-        emit('uploadError', error);
-        Message.error(t('admin9Ui.filePicker.uploadFailed'));
-      })
-      .finally(() => changeUploadCount(generation, -1));
-    return { abort: () => controller.abort() };
+  const onUploadResponse = (item: FileItem) => emit('uploadSuccess', item);
+  const onUploadError = (failure: FileUploadFailure) => emit('uploadError', failure.error);
+  const onUploadComplete = async (result: FileUploadBatchResult) => {
+    if (!visible.value) return;
+    const hasResolvedResponse = result.succeeded.length > 0 || result.failed.some((failure) => Boolean(failure.task.item));
+    if (hasResolvedResponse) await refresh();
   };
 
   watch(
@@ -523,13 +500,15 @@
 <template>
   <div class="a9-file-picker">
     <div class="a9-file-picker__trigger-row">
-      <slot name="trigger" :open="open" :selected-items="selectedItems" :selected-count="selectedCount" :disabled="false">
-        <a-button data-testid="file-picker-trigger" @click="open">
-          <template #icon><icon-folder /></template>
-          {{ triggerLabel }}
-          <span v-if="selectedCount">({{ selectedCount }})</span>
-        </a-button>
-      </slot>
+      <span ref="triggerRoot" class="a9-file-picker__trigger">
+        <slot name="trigger" :open="open" :selected-items="selectedItems" :selected-count="selectedCount" :disabled="false">
+          <a-button data-testid="file-picker-trigger" @click="open">
+            <template #icon><icon-folder /></template>
+            {{ triggerLabel }}
+            <span v-if="selectedCount">({{ selectedCount }})</span>
+          </a-button>
+        </slot>
+      </span>
       <a-tooltip v-if="selectedCount" :content="t('admin9Ui.filePicker.clear')">
         <a-button
           type="text"
@@ -558,6 +537,7 @@
       modal-class="a9-file-picker-modal"
       unmount-on-close
       @cancel="close"
+      @close="restoreTriggerFocus"
     >
       <div class="a9-file-picker__workspace">
         <aside class="a9-file-picker__sidebar" :aria-label="t('admin9Ui.filePicker.fileTypes')">
@@ -625,24 +605,19 @@
                     <a-radio value="list" :aria-label="t('admin9Ui.filePicker.listView')"><icon-list /></a-radio>
                   </a-tooltip>
                 </a-radio-group>
-                <a-tooltip
-                  v-if="canUpload"
-                  :content="activeFileType ? t('admin9Ui.filePicker.upload') : t('admin9Ui.filePicker.chooseTypeForUpload')"
-                >
+                <a-tooltip v-if="canUpload" :content="uploadTooltip">
                   <span>
-                    <a-upload
+                    <AFileUploader
+                      ref="uploader"
+                      :service="resolvedService"
+                      :file-type="uploadFileType"
+                      :group-id="uploadGroupId"
                       :accept="accept"
-                      :disabled="!activeFileType || uploadLoading"
-                      :show-file-list="false"
-                      :custom-request="customUpload"
-                    >
-                      <template #upload-button>
-                        <a-button type="primary" :disabled="!activeFileType" :loading="uploadLoading">
-                          <template #icon><icon-upload /></template>
-                          {{ t('admin9Ui.filePicker.upload') }}
-                        </a-button>
-                      </template>
-                    </a-upload>
+                      :button-text="t('admin9Ui.filePicker.upload')"
+                      @response="onUploadResponse"
+                      @error="onUploadError"
+                      @complete="onUploadComplete"
+                    />
                   </span>
                 </a-tooltip>
               </div>
@@ -765,6 +740,10 @@
       display: flex;
       gap: 8px;
       align-items: center;
+    }
+
+    &__trigger {
+      display: inline-flex;
     }
 
     &__workspace {

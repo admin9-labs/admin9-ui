@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- 新增公开组件 `AFileUploader`，基于现有单文件上传能力提供本地批量队列、进度、取消、重试、部分成功和结果校验。
+
+### Changed
+
+- `AFilePicker` 与 `AFileManager` 复用统一上传队列；聚合视图和上传进行中仍可继续选择文件，默认不限制本地文件格式，Picker 上传后不再自动改变选择草稿。
+
 ### Fixed
 
 - 修复 `ATiptapEditor` 图片、视频、音频插入按钮和选中媒体后的替换按钮无法打开 `AFilePicker` 的问题。

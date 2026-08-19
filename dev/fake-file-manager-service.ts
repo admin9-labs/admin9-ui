@@ -160,6 +160,7 @@ const demoFiles: FileItem[] = [
 
 export default function createFakeFileManagerService(state: AcceptanceState): FileManagerService {
   let files = demoFiles.map((item) => ({ ...item }));
+  let uploadSequence = 0;
   const groups = Object.fromEntries(
     Object.entries(demoGroups).map(([type, entries]) => [type, entries.map((group) => ({ ...group }))])
   ) as Record<FileType, FileGroup[]>;
@@ -217,10 +218,22 @@ export default function createFakeFileManagerService(state: AcceptanceState): Fi
     listGroups,
 
     async upload(options: FileUploadOptions) {
-      await wait(360);
+      const ensureActive = () => {
+        if (options.signal?.aborted) throw new DOMException('Upload cancelled', 'AbortError');
+      };
+      ensureActive();
+      await wait(120);
+      ensureActive();
+      options.onProgress?.(35);
+      await wait(120);
+      ensureActive();
+      options.onProgress?.(72);
+      await wait(120);
+      ensureActive();
       options.onProgress?.(100);
+      uploadSequence += 1;
       const item: FileItem = {
-        id: `file-upload-${Date.now()}`,
+        id: `file-upload-${Date.now()}-${uploadSequence}`,
         name: options.file.name,
         type: options.fileType,
         groupId: options.groupId,

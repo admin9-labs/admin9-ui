@@ -1,5 +1,5 @@
 /* eslint-disable vue/one-component-per-file */
-import { createApp, defineComponent, h, inject, nextTick, provide, ref, shallowRef, type App, type Ref } from 'vue';
+import { createApp, defineComponent, h, inject, nextTick, provide, ref, shallowRef, watch, type App, type Ref } from 'vue';
 import { Checkbox, Modal, Radio, RadioGroup } from '@arco-design/web-vue';
 import { createI18n } from 'vue-i18n';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -81,8 +81,14 @@ const ButtonStub = defineComponent({
 });
 const ModalStub = defineComponent({
   props: { visible: Boolean },
-  emits: ['cancel'],
+  emits: ['cancel', 'close'],
   setup(props, { attrs, emit, slots }) {
+    watch(
+      () => props.visible,
+      (visible, previous) => {
+        if (previous && !visible) emit('close');
+      }
+    );
     return () =>
       props.visible
         ? h('div', { ...attrs, 'data-testid': 'file-picker-modal' }, [
@@ -257,6 +263,7 @@ function installStubs(app: App, options: { realModal?: boolean; realSelectionCon
   app.component('ATooltip', Transparent);
   app.component('AAlert', Transparent);
   app.component('ASpin', SpinStub);
+  app.component('AProgress', Transparent);
   app.component('AEmpty', Transparent);
   app.component('AImage', ImageStub);
   app.component('AInputSearch', InputSearchStub);
@@ -271,6 +278,7 @@ function installStubs(app: App, options: { realModal?: boolean; realSelectionCon
     'IconApps',
     'IconArchive',
     'IconClose',
+    'IconDelete',
     'IconFile',
     'IconFileAudio',
     'IconFileImage',
@@ -280,6 +288,7 @@ function installStubs(app: App, options: { realModal?: boolean; realSelectionCon
     'IconLaunch',
     'IconList',
     'IconRefresh',
+    'IconStop',
     'IconUpload',
   ].forEach((name) => app.component(name, Transparent));
 }
@@ -522,6 +531,7 @@ describe('AFilePicker', () => {
     click('[data-testid="modal-cancel"]');
     await flush();
     expect(emitted['update:modelValue']).toBeUndefined();
+    expect(document.activeElement).toBe(document.querySelector('[data-testid="file-picker-trigger"]'));
 
     click('[data-testid="file-picker-trigger"]');
     await flush();
@@ -813,7 +823,7 @@ describe('AFilePicker', () => {
     expect(errors.some((error) => String(error).includes('FileUploadCapability'))).toBe(true);
   });
 
-  it('passes accept only to the native upload hint and uploads only in a concrete type', async () => {
+  it('uploads from the aggregate view, passes accept only as a hint and leaves the draft unchanged', async () => {
     const uploaded = deferred<FileItem>();
     const service = makeService({ upload: vi.fn().mockReturnValue(uploaded.promise) });
     const { emitted } = mountPicker({
@@ -822,12 +832,7 @@ describe('AFilePicker', () => {
     });
     click('[data-testid="file-picker-trigger"]');
     await flush();
-    expect(document.querySelector('[data-testid="file-picker-upload"]')?.getAttribute('data-disabled')).toBe('true');
-    expect(service.upload).not.toHaveBeenCalled();
-
-    const imageType = document.querySelector<HTMLElement>('.a9-file-picker__type-button:nth-child(2)');
-    imageType?.click();
-    await flush();
+    expect(document.querySelector('[data-testid="file-picker-upload"]')?.getAttribute('data-disabled')).toBe('false');
     click('[data-testid="file-picker-upload"]');
     expect(uploads[0].accept).toBe('.pdf');
     expect(service.upload).toHaveBeenCalledWith(
@@ -837,10 +842,32 @@ describe('AFilePicker', () => {
     uploadOptions.onProgress(42);
     expect(uploads[0].onProgress).toHaveBeenCalledWith(42);
 
+    const listCallsBeforeUploadCompletes = vi.mocked(service.list).mock.calls.length;
     uploaded.resolve({ ...image, id: 'new-image', name: 'fixture.bin' });
     await flush();
     expect(emitted.uploadSuccess).toEqual([[expect.objectContaining({ id: 'new-image' })]]);
-    expect(emitted.selectionChange?.at(-1)?.[0]).toEqual([expect.objectContaining({ id: 'new-image' })]);
+    expect(emitted.selectionChange).toBeUndefined();
+    expect(emitted['update:modelValue']).toBeUndefined();
+    expect(emitted.change).toBeUndefined();
+    expect(service.list).toHaveBeenCalledTimes(listCallsBeforeUploadCompletes + 1);
+  });
+
+  it('keeps the most recently selected concrete type as the aggregate upload target', async () => {
+    const service = makeService({
+      upload: vi.fn(async (options) => ({ ...image, id: 'document-upload', type: options.fileType })),
+    });
+    mountPicker({ service, props: { fileTypes: ['image', 'document'], canUpload: true } });
+    click('[data-testid="file-picker-trigger"]');
+    await flush();
+
+    document.querySelectorAll<HTMLElement>('.a9-file-picker__type-button')[2]?.click();
+    await flush();
+    document.querySelectorAll<HTMLElement>('.a9-file-picker__type-button')[0]?.click();
+    await flush();
+    click('[data-testid="file-picker-upload"]');
+    await flush();
+
+    expect(service.upload).toHaveBeenCalledWith(expect.objectContaining({ fileType: 'document', groupId: null }));
   });
 
   it('never auto-selects invalid, duplicate or stale upload responses and reports current errors', async () => {

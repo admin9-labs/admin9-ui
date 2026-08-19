@@ -42,40 +42,40 @@ FileManager 覆盖 `image`、`video`、`audio`、`document`、`archive`、`other
 
 ## Props
 
-| Prop | 类型 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `initialFileType` | `FileType \| undefined` | `undefined` | 首次进入的真实类型；省略表示“全部” |
-| `initialView` | `'grid' \| 'list'` | `'grid'` | 初始内容视图 |
-| `pageSize` | `number` | `24` | 后端分页容量；变化时回到第 1 页 |
-| `accept` | `string` | 按真实类型推导 | 上传选择器提示；不会用于组件端分类 |
-| `canUpload` | `boolean` | `false` | 显示上传入口并要求 `FileUploadCapability` |
-| `canDelete` | `boolean` | `false` | 显示单项/批量删除并要求 `FileRemoveCapability` |
-| `canMove` | `boolean` | `false` | 显示单项/批量移动并要求 `FileMoveCapability` |
-| `canManageGroups` | `boolean` | `false` | 显示分组增删改并要求完整 `FileGroupCapability` |
-| `service` | `FileManagerAdapter` | 插件 `fileService` | 后端无关、按能力组合的 adapter |
+| Prop              | 类型                    | 默认值             | 说明                                           |
+| ----------------- | ----------------------- | ------------------ | ---------------------------------------------- |
+| `initialFileType` | `FileType \| undefined` | `undefined`        | 首次进入的真实类型；省略表示“全部”             |
+| `initialView`     | `'grid' \| 'list'`      | `'grid'`           | 初始内容视图                                   |
+| `pageSize`        | `number`                | `24`               | 后端分页容量；变化时回到第 1 页                |
+| `accept`          | `string`                | `undefined`        | 可选的原生选择提示；默认不限制格式             |
+| `canUpload`       | `boolean`               | `false`            | 显示上传入口并要求 `FileUploadCapability`      |
+| `canDelete`       | `boolean`               | `false`            | 显示单项/批量删除并要求 `FileRemoveCapability` |
+| `canMove`         | `boolean`               | `false`            | 显示单项/批量移动并要求 `FileMoveCapability`   |
+| `canManageGroups` | `boolean`               | `false`            | 显示分组增删改并要求完整 `FileGroupCapability` |
+| `service`         | `FileManagerAdapter`    | 插件 `fileService` | 后端无关、按能力组合的 adapter                 |
 
 能力开关只控制界面，不替代后端身份、资源归属、类型、分组和操作授权。
 
 ## Events
 
-| 事件 | 参数 | 时机 |
-| --- | --- | --- |
-| `upload-success` | `(item: FileItem)` | 当前类型内上传完成 |
-| `upload-error` | `(error: unknown)` | 当前类型内上传失败 |
-| `delete-success` | `(ids: string[])` | 删除请求完成；只包含 service 确认成功的请求 ID |
-| `move-success` | `(ids: string[], groupId: string \| null)` | 移动请求完成；只包含成功 ID |
-| `file-type-change` | `(fileType: FileType \| undefined)` | 用户切换类型；`undefined` 表示“全部” |
-| `selection-change` | `(items: FileItem[])` | 跨页选择变化 |
+| 事件               | 参数                                       | 时机                                           |
+| ------------------ | ------------------------------------------ | ---------------------------------------------- |
+| `upload-success`   | `(item: FileItem)`                         | 当前类型内上传完成                             |
+| `upload-error`     | `(error: unknown)`                         | 当前类型内上传失败                             |
+| `delete-success`   | `(ids: string[])`                          | 删除请求完成；只包含 service 确认成功的请求 ID |
+| `move-success`     | `(ids: string[], groupId: string \| null)` | 移动请求完成；只包含成功 ID                    |
+| `file-type-change` | `(fileType: FileType \| undefined)`        | 用户切换类型；`undefined` 表示“全部”           |
+| `selection-change` | `(items: FileItem[])`                      | 跨页选择变化                                   |
 
 Vue 模板使用 kebab-case；TypeScript 声明事件名为 `uploadSuccess`、`uploadError`、`deleteSuccess`、`moveSuccess`、`fileTypeChange`、`selectionChange`。
 
 ## Slots 与实例方法
 
-| 插槽 | 参数 | 说明 |
-| --- | --- | --- |
-| `toolbar-extra` | `{ refresh, loading }` | 扩展工具栏命令 |
-| `item` | `{ item, available, selected, view }` | 替换文件展示；管理控制仍由组件维护 |
-| `empty` | 无 | 替换空态 |
+| 插槽            | 参数                                  | 说明                               |
+| --------------- | ------------------------------------- | ---------------------------------- |
+| `toolbar-extra` | `{ refresh, loading }`                | 扩展工具栏命令                     |
+| `item`          | `{ item, available, selected, view }` | 替换文件展示；管理控制仍由组件维护 |
+| `empty`         | 无                                    | 替换空态                           |
 
 `refresh(): Promise<void>` 刷新当前列表与适用的类型分组；`clearSelection(): void` 清空跨页选择。
 
@@ -100,11 +100,13 @@ type FileListParams = FileListParamsBase &
 ## 类型与操作行为
 
 - 切入或切出任何类型都会清空当前分组、跨页选择、移动目标、分组编辑弹窗、旧列表和旧类型计数，并用请求代次阻止旧响应覆盖新视图。
-- “全部”不显示分组。上传入口和移动目标保持可见但禁用，并提示先进入具体类型；组件不会按扩展名或 MIME 擅自分类。
+- “全部”不显示分组。移动仍需先进入具体类型；上传始终可选择文件，目标类型依次使用最近选择的具体类型和默认首项 `image`，聚合视图下目标分组为 `null`。
+- 上传所需的具体 `FileType` 是 adapter 的业务目标分类，不是浏览器文件格式限制；只有宿主显式传入 `accept` 时才限制原生选择器。
 - “全部”允许混合类型选择和批量删除。批量移动必须进入具体类型，组件不会把混合 ID 传给同一个类型分组。
 - 具体类型视图中的移动始终传该真实 `fileType`。同类型且 ID 稳定的 pending、failed 或无 URL 记录始终不可移动/打开；启用 `canDelete` 时可选择，并可单项或批量删除清理。wrong-type、无 ID 或重复 ID 记录仍不可选择。
 - `remove` 和 `move` 返回成功 ID。组件只清理实际成功项；部分失败项保持选择并显示警告。
 - 列表和分组失败显示持久重试状态；上传、移动、删除和分组变更失败使用 mutation 反馈。
+- 本地多选上传复用 `AFileUploader`，对每个文件分项调用现有单文件 capability；队列完成后刷新当前具体类型和分组，不改变 Manager 的跨页管理选择。部分失败不回滚成功项。
 - 删除当前活动分组只删除分组，不隐式删除组内文件，并清空分组范围内选择/移动目标。
 
 ## 展示与响应式

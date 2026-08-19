@@ -182,7 +182,7 @@ const CheckboxStub = defineComponent({
   },
 });
 const UploadStub = defineComponent({
-  props: { disabled: Boolean },
+  props: { accept: String, disabled: Boolean },
   setup(props, { attrs, slots }) {
     const upload = () => {
       if (props.disabled) return;
@@ -202,7 +202,12 @@ const UploadStub = defineComponent({
     return () =>
       h(
         'div',
-        { 'data-testid': 'file-upload', 'data-disabled': String(props.disabled), 'onClick': upload },
+        {
+          'data-testid': 'file-upload',
+          'data-accept': props.accept,
+          'data-disabled': String(props.disabled),
+          'onClick': upload,
+        },
         slots['upload-button']?.()
       );
   },
@@ -267,6 +272,7 @@ function installStubs(app: App) {
   app.component('AButton', ButtonStub);
   app.component('ATooltip', Transparent);
   app.component('ASpin', SpinStub);
+  app.component('AProgress', Transparent);
   app.component('AAlert', Transparent);
   app.component('AEmpty', Transparent);
   app.component('AImage', ImageStub);
@@ -286,6 +292,7 @@ function installStubs(app: App) {
   [
     'IconApps',
     'IconArchive',
+    'IconClose',
     'IconDelete',
     'IconDriveFile',
     'IconFile',
@@ -299,6 +306,7 @@ function installStubs(app: App) {
     'IconMore',
     'IconPlus',
     'IconRefresh',
+    'IconStop',
     'IconUpload',
   ].forEach((name) => app.component(name, Transparent));
 }
@@ -439,7 +447,7 @@ describe('AFileManager', () => {
     expect(manager.errors.some((error) => String(error).includes('FileUploadCapability'))).toBe(true);
   });
 
-  it('keeps all as an aggregate list filter and disables typed operations until a concrete type is selected', async () => {
+  it('keeps all as an aggregate list filter, allows upload and disables move until a concrete type is selected', async () => {
     const service = makeService();
     mountManager(service, { canUpload: true, canMove: true, canDelete: true });
     await flush();
@@ -448,9 +456,11 @@ describe('AFileManager', () => {
     expect((service.list as ReturnType<typeof vi.fn>).mock.calls[0][0]).not.toHaveProperty('fileTypes');
     expect((service.list as ReturnType<typeof vi.fn>).mock.calls[0][0]).not.toHaveProperty('groupId');
     expect(service.listGroups).not.toHaveBeenCalled();
-    expect(document.querySelector('[data-testid="file-upload"]')?.getAttribute('data-disabled')).toBe('true');
+    expect(document.querySelector('[data-testid="file-upload"]')?.getAttribute('data-disabled')).toBe('false');
     expect(document.querySelector<HTMLSelectElement>('[data-file-id="image-1"] select')?.disabled).toBe(true);
-    expect(service.upload).not.toHaveBeenCalled();
+    click('[data-testid="file-upload"]');
+    await flush();
+    expect(service.upload).toHaveBeenCalledWith(expect.objectContaining({ fileType: 'image', groupId: null }));
     expect(service.move).not.toHaveBeenCalled();
 
     click('[data-file-type="image"]');
@@ -882,6 +892,42 @@ describe('AFileManager', () => {
     expect(uploadRequests[1]?.onError).toHaveBeenCalledWith(uploadError);
     expect(onUploadError).toHaveBeenCalledWith(uploadError);
     expect(document.querySelector('[data-testid="file-upload"]')?.getAttribute('data-disabled')).toBe('false');
+  });
+
+  it('leaves native file formats unrestricted by default and forwards an explicit accept hint', async () => {
+    const service = makeService();
+    mountManager(service, { canUpload: true });
+    await flush();
+
+    expect(document.querySelector('[data-testid="file-upload"]')?.getAttribute('data-accept')).toBeNull();
+    expect(document.querySelector('[data-testid="file-upload"]')?.getAttribute('data-disabled')).toBe('false');
+    click('[data-testid="file-upload"]');
+    await flush();
+    expect(service.upload).toHaveBeenCalledWith(expect.objectContaining({ fileType: 'image', groupId: null }));
+
+    mountedApps.pop()?.unmount();
+    document.body.innerHTML = '<div id="app"></div>';
+    mountManager(service, { initialFileType: 'image', canUpload: true, accept: '.doc,.pdf' });
+    await flush();
+
+    expect(document.querySelector('[data-testid="file-upload"]')?.getAttribute('data-accept')).toBe('.doc,.pdf');
+  });
+
+  it('keeps the most recently selected concrete type as the aggregate upload target', async () => {
+    const service = makeService({
+      upload: vi.fn(async (options) => ({ ...imageFile, id: 'document-upload', type: options.fileType })),
+    });
+    mountManager(service, { canUpload: true });
+    await flush();
+
+    click('[data-file-type="document"]');
+    await flush();
+    click('[data-file-type="all"]');
+    await flush();
+    click('[data-testid="file-upload"]');
+    await flush();
+
+    expect(service.upload).toHaveBeenCalledWith(expect.objectContaining({ fileType: 'document', groupId: null }));
   });
 
   it('suppresses a stale upload event and refresh after switching to another file type', async () => {

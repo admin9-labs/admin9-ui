@@ -5,10 +5,12 @@
     ACoordinatePicker,
     AFileManager,
     AFilePicker,
+    AFileUploader,
     AIconPicker,
     AProTable,
     ATiptapEditor,
     type FileItem,
+    type FileUploadBatchResult,
     type FileManagerAdapter,
     type FilePickerAdapter,
     type FileType,
@@ -101,6 +103,7 @@
   const filePickerMultiple = ref(true);
   const filePickerValue = ref<FileItem | FileItem[] | undefined>([]);
   const lastFilePickerEvent = ref('尚未选择');
+  const lastFileUploaderEvent = ref('等待上传');
   const filePickerConstraintOptions = [
     { label: '全部类型', value: 'all' },
     { label: '图片 + 文档', value: 'subset' },
@@ -144,6 +147,7 @@
   });
   const fileManagerReadOnly = computed(() => fileManagerMode.value === 'readOnly');
   const filePickerService = computed<FilePickerAdapter>(() => createFakeFilePickerService(filePickerState.value));
+  const fileUploaderService = createFakeFileManagerService('normal');
   const filePickerTypes = computed<readonly FileType[]>(() => {
     if (filePickerConstraint.value === 'empty') return [];
     if (filePickerConstraint.value === 'subset') return ['image', 'document'];
@@ -176,6 +180,9 @@
   const recordFilePickerEvent = (items: FileItem[]) => {
     lastFilePickerEvent.value = items.length ? items.map((item) => item.name).join('、') : '已清空';
   };
+  const recordFileUploaderEvent = (result: FileUploadBatchResult) => {
+    lastFileUploaderEvent.value = `成功 ${result.succeeded.length} 项，失败 ${result.failed.length} 项，取消 ${result.cancelled.length} 项`;
+  };
 
   watch([fileManagerMode, fileManagerState], () => {
     lastFileManagerEvent.value = '等待文件操作';
@@ -206,6 +213,7 @@
       <a href="#tiptap-editor">ATiptapEditor</a>
       <a href="#file-manager">AFileManager</a>
       <a href="#file-picker">AFilePicker</a>
+      <a href="#file-uploader">AFileUploader</a>
     </nav>
 
     <main>
@@ -354,6 +362,29 @@
         </div>
       </section>
 
+      <section v-if="!tiptapFocused" id="file-uploader" class="acceptance-section" data-testid="file-uploader-section">
+        <div class="section-heading">
+          <div>
+            <span class="section-index">05</span>
+            <h2>AFileUploader</h2>
+          </div>
+        </div>
+
+        <div class="component-frame">
+          <div class="field-label">设计稿图片上传</div>
+          <AFileUploader
+            :service="fileUploaderService"
+            file-type="image"
+            group-id="image-design"
+            :max-files="5"
+            :max-file-size="5242880"
+            data-testid="standalone-file-uploader"
+            @complete="recordFileUploaderEvent"
+          />
+          <div class="scenario-note" aria-live="polite">{{ lastFileUploaderEvent }}</div>
+        </div>
+      </section>
+
       <section v-if="!tiptapFocused" id="file-picker" class="acceptance-section" data-testid="file-picker-section">
         <div class="section-heading">
           <div>
@@ -393,7 +424,6 @@
               :page-size="6"
               :limit="4"
               :multiple="filePickerMultiple"
-              accept="image/*,.pdf,.doc,.docx"
               can-upload
               data-testid="file-picker"
               @change="recordFilePickerEvent"

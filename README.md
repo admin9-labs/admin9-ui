@@ -45,6 +45,7 @@ app.use(Admin9UI, {
 import {
   AFileManager,
   AFilePicker,
+  AFileUploader,
   ACoordinatePicker,
   AIconPicker,
   AProTable,
@@ -57,16 +58,17 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 
 ## 公开能力
 
-- 默认导出的 `Admin9UI` 插件：全局注册六个组件，并可注入默认文件 adapter
+- 默认导出的 `Admin9UI` 插件：全局注册七个组件，并可注入默认文件 adapter
 - [`ACoordinatePicker`](./docs/components/coordinate-picker.md)：基于腾讯地图 JS API GL 的表单级坐标选择器
 - [`AFileManager`](./docs/components/file-manager.md)：以文件类型优先、类型内单级分组为信息层级的页面级文件管理组件
 - [`AFilePicker`](./docs/components/file-picker.md)：支持六类文件、后端准确分页与可选上传的表单级轻量选择器
+- [`AFileUploader`](./docs/components/file-uploader.md)：基于单文件 capability 的本地批量上传队列，支持进度、取消、重试、部分成功与结果校验
 - [`AIconPicker`](./docs/components/icon-picker.md)：支持分类、搜索、键盘导航和表单状态的 Arco 图标选择器
 - `AProTable`：通过 fetcher 注入数据源的页面级表格
 - [`ATiptapEditor`](./docs/components/tiptap-editor.md)：基于 Tiptap，支持内部滚动工作区、悬浮媒体工具栏、独占一行/跟随文字图片、可调尺寸视频与三档播放器宽度的表单级 HTML 富文本编辑器
 - `Admin9UIPluginOptions`、文件 browse/upload/management 能力、兼容的完整 service 类型及相关数据类型
 - `messages`、`localePrefix`、`zhCN`、`enUS` 和 `arcoIconNames`
-- `@admin9-labs/admin9-ui/styles`：六个组件的统一样式入口
+- `@admin9-labs/admin9-ui/styles`：七个组件的统一样式入口
 
 ## 素材组件边界
 
@@ -80,11 +82,11 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 
 ## 文件组件边界
 
-`AFileManager` 与 `AFilePicker` 共享文件契约，但职责独立：Manager 是页面级管理表面，Picker 用于表单、弹窗和附件字段中的轻量选择，不提供移动、删除或分组管理。两者支持 `image`、`video`、`audio`、`document`、`archive`、`other` 六种真实 `FileType`；“全部”只是聚合查询筛选，不会写入 `FileItem` 或传给上传、分组、移动能力。
+`AFileManager` 与 `AFilePicker` 共享文件契约，但职责独立：Manager 是页面级管理表面，Picker 用于表单、弹窗和附件字段中的完整选择工作流，不提供移动、删除或分组管理。两者复用 `AFileUploader` 的本地批量上传队列；上传完成会刷新当前列表，但不会自动改变 Picker 草稿，上传中也可继续追加文件。三个组件支持 `image`、`video`、`audio`、`document`、`archive`、`other` 六种真实 `FileType`；“全部”只是聚合查询筛选，不会写入 `FileItem` 或传给上传、分组、移动能力。聚合视图上传会解析为最近使用或默认首个具体类型，具体 `FileType` 只是上传目标分类；默认不会限制本地选择格式，宿主可按需传入 `accept`。
 
 消费方通过使用点的 `service` prop，或 `app.use(Admin9UI, { fileService })` 注入共享文件 service；使用点 prop 优先。Manager 使用 `FileManagerAdapter`，Picker 使用最小的 `FilePickerAdapter`。能力开关只控制界面，不替代后端授权。
 
-`FileListParams` 的聚合查询省略 `fileTypes` 表示六类全部；提供 `fileTypes` 时表示准确的真实类型集合，空数组表示无匹配。adapter 必须在后端对完整集合进行筛选、分页并返回准确 `pagination.total/typeCounts`，禁止仅过滤当前页。具体类型查询才能携带 `groupId`。完整行为见 [`AFileManager` 文档](./docs/components/file-manager.md)与 [`AFilePicker` 文档](./docs/components/file-picker.md)。
+`FileListParams` 的聚合查询省略 `fileTypes` 表示六类全部；提供 `fileTypes` 时表示准确的真实类型集合，空数组表示无匹配。adapter 必须在后端对完整集合进行筛选、分页并返回准确 `pagination.total/typeCounts`，禁止仅过滤当前页。具体类型查询才能携带 `groupId`。完整行为见 [`AFileManager` 文档](./docs/components/file-manager.md)、[`AFilePicker` 文档](./docs/components/file-picker.md)与 [`AFileUploader` 文档](./docs/components/file-uploader.md)。
 
 ## 开发
 

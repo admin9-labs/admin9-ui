@@ -57,19 +57,20 @@ admin9-ui/
 
 ## 3. 公开能力
 
-| 导出                                                   | 定位                            | 数据依赖                   |
-| ------------------------------------------------------ | ------------------------------- | -------------------------- |
-| default `Admin9UI`                                     | 全局组件注册与默认 service 注入 | 可选文件 adapter           |
-| `AFileManager`                                         | 页面级文件浏览与管理            | `FileManagerAdapter` 注入  |
-| `AFilePicker`                                          | 表单级文件浏览与选择            | `FilePickerAdapter` 注入   |
-| `AIconPicker`                                          | Arco 图标搜索与选择             | 无                         |
-| `AProTable`                                            | fetcher 驱动的页面级表格        | fetcher prop 注入          |
-| `ATiptapEditor`                                        | Tiptap 驱动的 HTML 富文本编辑器 | 可选 `FilePickerAdapter`   |
-| `ACoordinatePicker`                                    | 腾讯地图坐标搜索与点选          | 消费方提供腾讯地图 API Key |
-| `Admin9UIPluginOptions` 及相关公共类型                 | 插件配置与文件 adapter 契约     | 消费方实现                 |
-| `messages`、`localePrefix`、`zhCN`、`enUS`             | 中英文 locale                   | 宿主 i18n 实例             |
-| `arcoIconNames`                                        | 图标名清单                      | Arco 图标全局注册          |
-| `@admin9-labs/admin9-ui/styles`                        | 组件统一样式入口                | 无                         |
+| 导出                                       | 定位                            | 数据依赖                    |
+| ------------------------------------------ | ------------------------------- | --------------------------- |
+| default `Admin9UI`                         | 全局组件注册与默认 service 注入 | 可选文件 adapter            |
+| `AFileManager`                             | 页面级文件浏览与管理            | `FileManagerAdapter` 注入   |
+| `AFilePicker`                              | 表单级文件浏览与选择            | `FilePickerAdapter` 注入    |
+| `AFileUploader`                            | 本地批量上传队列与事务状态      | `FileUploadCapability` 注入 |
+| `AIconPicker`                              | Arco 图标搜索与选择             | 无                          |
+| `AProTable`                                | fetcher 驱动的页面级表格        | fetcher prop 注入           |
+| `ATiptapEditor`                            | Tiptap 驱动的 HTML 富文本编辑器 | 可选 `FilePickerAdapter`    |
+| `ACoordinatePicker`                        | 腾讯地图坐标搜索与点选          | 消费方提供腾讯地图 API Key  |
+| `Admin9UIPluginOptions` 及相关公共类型     | 插件配置与文件 adapter 契约     | 消费方实现                  |
+| `messages`、`localePrefix`、`zhCN`、`enUS` | 中英文 locale                   | 宿主 i18n 实例              |
+| `arcoIconNames`                            | 图标名清单                      | Arco 图标全局注册           |
+| `@admin9-labs/admin9-ui/styles`            | 组件统一样式入口                | 无                          |
 
 `Admin9UIPluginOptions` 专指 `app.use(Admin9UI, options)` 的插件配置对象，避免与组件 props 或 service options 混淆。
 `Admin9UIOptions` 作为弃用的兼容类型别名保留，避免破坏既有消费者的类型导入。
@@ -105,6 +106,8 @@ app.use(Admin9UI, {
 使用点传入的 service 优先于插件默认值。缺少必需 service 时，组件应给出明确错误，而不是自行猜测网络行为。
 
 `FileBrowseCapability` 与 `FileUploadCapability` 是文件浏览/上传表面可复用的最小能力；删除、移动和分组管理保持独立组合，不强加给只读消费者。
+
+`AFileUploader` 不新增 batch service。它把同一具体 `FileType` 和 `groupId/null` 上下文中的多个本地 `File` 分项交给现有 `upload(options)`，并统一队列、进度、取消、重试、部分成功、结果校验和异步生命周期。网络文件与扫码上传不属于当前公共能力。
 
 ```ts
 export type FileType = 'image' | 'video' | 'audio' | 'document' | 'archive' | 'other';
@@ -157,6 +160,19 @@ export type FileManagerAdapter = FileBrowseCapability &
 
 ## 5. 组件设计
 
+### AFileUploader
+
+`AFileUploader` 是后端无关的本地批量上传队列组件，不是 `a-upload` 的薄包装。
+
+- 每个队列绑定一个具体 `FileType` 和该类型下的 `groupId/null`，多选不表示混合业务类型；
+- 对多个本地 `File` 分项调用 `FileUploadCapability.upload`，统一 pending/uploading/succeeded/failed/cancelled 状态、确定或不确定进度、取消、重试和部分成功；
+- 完成结果只包含具备稳定 ID、匹配类型、ready 状态和可用 URL 的 `FileItem`，并拒绝队列内重复 ID；
+- service、类型或分组变化及组件卸载都会中止活动任务并屏蔽迟到回调；
+- 队列面板不创建第二个 Modal 或焦点陷阱，可由 Picker、Manager 和消费应用独立复用；
+- 网络文件、扫码上传和批量后端 API 不属于第一阶段公共契约。
+
+完整 Props、Events、Slots、实例方法和安全边界见 [AFileUploader 使用文档](./docs/components/file-uploader.md)。
+
 ### AFileManager
 
 `AFileManager` 是后端无关的页面级文件管理组件。
@@ -164,7 +180,7 @@ export type FileManagerAdapter = FileBrowseCapability &
 - 信息层级固定为文件类型优先、当前真实类型内单级分组其次；“全部”只是一种聚合筛选状态；
 - 默认只读，只要求 `FileBrowseCapability.list`；`listGroups` 存在时可在真实类型内浏览分组，不因此要求分组管理能力；
 - 上传、删除、移动和分组管理默认关闭，显式开启后才校验对应 capability；能力开关不是后端授权；
-- “全部”视图不显示分组；上传和移动禁用并提示先进入具体类型，混合类型批量删除仍可使用；
+- “全部”视图不显示分组；上传沿用最近具体类型或默认首个类型并使用未分组目标，移动仍需进入具体类型，混合类型批量删除可直接使用；
 - 搜索、分页、类型/分组切换由 adapter 在完整数据集上处理，组件不对分页结果二次筛选；
 - 支持网格/列表、跨页选择、部分成功、旧请求隔离、失败重试、无效记录清理和 `720px` 以下完整分组管理；
 - 图片显示缩略图，音视频体现时长或处理状态，文档/压缩包/其他显示清晰类型图标与元数据；不承诺在线 Office 预览。
@@ -173,13 +189,14 @@ export type FileManagerAdapter = FileBrowseCapability &
 
 ### AFilePicker
 
-`AFilePicker` 是表单、弹窗与附件字段中的轻量选择器，保留 `AFileManager` 的页面级管理职责。
+`AFilePicker` 是表单、弹窗与附件字段中的完整文件选择工作流，保留 `AFileManager` 的页面级管理职责。
 
 - `modelValue` 只使用共享 `FileItem`：单选为 `FileItem | undefined`，多选为 `FileItem[]`；
 - `fileTypes` 归一化为六种真实类型并去重：单类型直接具体查询，2-5 类的聚合页传准确子集，六类聚合省略集合，空数组零请求；
 - 选择草稿可跨页保留，取消不写回；普通列表刷新只调和草稿，只有确认、外部清空或 props 约束安全校正才改变已提交值；
 - Picker value 必须同时具备唯一非空 ID、允许类型、`ready` 或未提供状态、非空 URL。Manager 为删除清理选择异常记录的能力不适用于 Picker；
 - 上传只在真实类型视图启用，`accept` 仅传给原生选择提示，不参与类型推断或安全校验；
+- 上传队列、进度、取消和重试复用 `AFileUploader`；上传完成只刷新当前列表，不自动改变 Picker 草稿或已提交值；
 - 复用包内私有 FileItem 展示，但不公开通用 hook/helper，也不提供移动、删除或分组管理。
 
 完整契约见 [AFilePicker 使用文档](./docs/components/file-picker.md)。

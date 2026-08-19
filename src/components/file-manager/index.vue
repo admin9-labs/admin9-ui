@@ -1,8 +1,9 @@
 <script setup lang="ts">
   import { computed, inject, onMounted, ref, watch } from 'vue';
   import { Message } from '@arco-design/web-vue';
-  import type { RequestOption, UploadRequest } from '@arco-design/web-vue';
   import { useI18n } from 'vue-i18n';
+  import AFileUploader from '../file-uploader/index.vue';
+  import type { FileUploadBatchResult, FileUploadFailure } from '../file-uploader/types';
   import { useLoading } from '../../hooks';
   import FileItemView from '../../internal/file-item.vue';
   import admin9UIOptionsKey from '../../internal/options';
@@ -92,16 +93,8 @@
     archive: 'icon-archive',
     other: 'icon-drive-file',
   };
-  const acceptByType: Record<FileType, string> = {
-    image: 'image/*',
-    video: 'video/*',
-    audio: 'audio/*',
-    document: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv',
-    archive: '.zip,.rar,.7z,.tar,.gz',
-    other: '*/*',
-  };
-
   const activeFileType = ref<FileType | undefined>(props.initialFileType);
+  const lastUploadFileType = ref<FileType | undefined>(props.initialFileType);
   const view = ref<FileView>(props.initialView);
   const list = ref<FileItem[]>([]);
   const groups = ref<FileGroup[]>([]);
@@ -118,7 +111,6 @@
   const busyIds = ref(new Set<string>());
   const batchMoveTarget = ref<string>();
   const singleMoveTargets = ref(new Map<string, string>());
-  const uploadCounts = ref(new Map<number, number>());
   const groupMutationLoading = ref(false);
   const groupModalVisible = ref(false);
   const groupModalMode = ref<'create' | 'rename'>('create');
@@ -147,12 +139,14 @@
   const activeGroup = computed(() =>
     typeof activeGroupId.value === 'string' ? groups.value.find((group) => group.id === activeGroupId.value) : undefined
   );
-  const resolvedAccept = computed(() =>
-    activeFileType.value ? props.accept || acceptByType[activeFileType.value] : undefined
-  );
-  const uploadLoading = computed(() => (uploadCounts.value.get(viewGeneration.value) ?? 0) > 0);
   const mutationLoading = computed(() => busyIds.value.size > 0);
-  const uploadDisabledReason = computed(() => (activeFileType.value ? '' : t('admin9Ui.fileManager.chooseTypeForUpload')));
+  const uploadFileType = computed(() => activeFileType.value ?? lastUploadFileType.value ?? FILE_TYPES[0]);
+  const uploadGroupId = computed(() =>
+    activeFileType.value === uploadFileType.value && typeof activeGroupId.value === 'string' ? activeGroupId.value : null
+  );
+  const uploadTooltip = computed(() =>
+    t('admin9Ui.fileManager.uploadToType', { type: t(`admin9Ui.fileManager.types.${uploadFileType.value}`) })
+  );
   const moveDisabledReason = computed(() => (activeFileType.value ? '' : t('admin9Ui.fileManager.chooseTypeForMove')));
 
   const isKnownType = (type: string): type is FileType => FILE_TYPES.includes(type as FileType);
@@ -301,6 +295,7 @@
     if (activeFileType.value === fileType) return;
     resetScopedState();
     activeFileType.value = fileType;
+    if (fileType) lastUploadFileType.value = fileType;
     emit('fileTypeChange', fileType);
     refresh();
   };
@@ -356,48 +351,11 @@
     emitSelection();
   };
 
-  const changeUploadCount = (generation: number, delta: number) => {
-    const next = new Map(uploadCounts.value);
-    const count = Math.max(0, (next.get(generation) ?? 0) + delta);
-    if (count > 0) next.set(generation, count);
-    else next.delete(generation);
-    uploadCounts.value = next;
-  };
-  const customUpload = (option: RequestOption): UploadRequest => {
-    const controller = new AbortController();
-    const generation = viewGeneration.value;
-    const service = managerService.value;
-    const fileType = activeFileType.value;
-    const groupId = typeof activeGroupId.value === 'string' ? activeGroupId.value : null;
-    const { file } = option.fileItem;
-    if (!file || !fileType) {
-      const error = new Error('[admin9-ui] AFileManager upload requires a concrete FileType.');
-      option.onError(error);
-      return { abort: () => controller.abort() };
-    }
-    if (!service.upload) {
-      const error = new Error('[admin9-ui] AFileManager requires FileUploadCapability when canUpload is true.');
-      option.onError(error);
-      emit('uploadError', error);
-      return { abort: () => controller.abort() };
-    }
-    changeUploadCount(generation, 1);
-    service
-      .upload({ file, fileType, groupId, onProgress: option.onProgress, signal: controller.signal })
-      .then(async (item) => {
-        option.onSuccess(item);
-        if (generation !== viewGeneration.value || fileType !== activeFileType.value) return;
-        emit('uploadSuccess', item);
-        await refresh();
-      })
-      .catch((error: unknown) => {
-        option.onError(error);
-        if (generation !== viewGeneration.value) return;
-        emit('uploadError', error);
-        Message.error(t('admin9Ui.fileManager.uploadFailed'));
-      })
-      .finally(() => changeUploadCount(generation, -1));
-    return { abort: () => controller.abort() };
+  const onUploadResponse = (item: FileItem) => emit('uploadSuccess', item);
+  const onUploadError = (failure: FileUploadFailure) => emit('uploadError', failure.error);
+  const onUploadComplete = async (result: FileUploadBatchResult) => {
+    const hasResolvedResponse = result.succeeded.length > 0 || result.failed.some((failure) => Boolean(failure.task.item));
+    if (hasResolvedResponse) await refresh();
   };
 
   const markBusy = (ids: string[], busy: boolean) => {
@@ -810,21 +768,18 @@
               </a-radio>
             </a-tooltip>
           </a-radio-group>
-          <a-tooltip v-if="canUpload" :content="uploadDisabledReason || t('admin9Ui.fileManager.upload')">
+          <a-tooltip v-if="canUpload" :content="uploadTooltip">
             <span>
-              <a-upload
-                :accept="resolvedAccept"
-                :disabled="!activeFileType || uploadLoading"
-                :show-file-list="false"
-                :custom-request="customUpload"
-              >
-                <template #upload-button>
-                  <a-button type="primary" :disabled="!activeFileType" :loading="uploadLoading">
-                    <template #icon><icon-upload /></template>
-                    {{ t('admin9Ui.fileManager.upload') }}
-                  </a-button>
-                </template>
-              </a-upload>
+              <AFileUploader
+                :service="managerService"
+                :file-type="uploadFileType"
+                :group-id="uploadGroupId"
+                :accept="accept"
+                :button-text="t('admin9Ui.fileManager.upload')"
+                @response="onUploadResponse"
+                @error="onUploadError"
+                @complete="onUploadComplete"
+              />
             </span>
           </a-tooltip>
         </div>

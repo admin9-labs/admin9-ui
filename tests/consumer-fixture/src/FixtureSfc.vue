@@ -5,10 +5,12 @@
     ACoordinatePicker,
     AFileManager,
     AFilePicker,
+    AFileUploader,
     AProTable,
     ATiptapEditor,
     type FileManagerAdapter,
     type FilePickerAdapter,
+    type FileUploadCapability,
     type FileItem,
   } from '@admin9-labs/admin9-ui';
 
@@ -16,6 +18,7 @@
     service: FilePickerAdapter;
     fileService: FileManagerAdapter;
     filePickerService: FilePickerAdapter;
+    fileUploaderService: FileUploadCapability;
   }>();
 
   const fetchRows = async () => ({ list: [], total: 0 });
@@ -38,5 +41,6 @@
     />
     <AFileManager :service="fileService" />
     <AFilePicker v-model="attachments" :service="filePickerService" :file-types="['image', 'document']" :limit="3" multiple />
+    <AFileUploader :service="fileUploaderService" file-type="image" group-id="fixture-images" accept="image/*" />
   </section>
 </template>

@@ -6,6 +6,8 @@ import type {
   CoordinateSelection,
   CoordinateValue,
   FilePickerAdapter,
+  AFileUploaderProps,
+  FileUploadBatchResult,
   ATiptapEditorProps,
   TiptapAudioWidth,
   TiptapBlockWidth,
@@ -42,6 +44,14 @@ describe('package public API', () => {
 
     expect(picker.list).toBeTypeOf('function');
     expect(picker.upload).toBeUndefined();
+  });
+
+  it('exports the file uploader contract types', () => {
+    const props: AFileUploaderProps = { fileType: 'image', groupId: 'design', multiple: true };
+    const result: FileUploadBatchResult = { succeeded: [], failed: [], cancelled: [] };
+
+    expect(props).toEqual({ fileType: 'image', groupId: 'design', multiple: true });
+    expect(result).toEqual({ succeeded: [], failed: [], cancelled: [] });
   });
 
   it('exports the coordinate picker value and selection types', () => {
@@ -94,6 +104,7 @@ describe('package public API', () => {
         'ACoordinatePicker',
         'AFileManager',
         'AFilePicker',
+        'AFileUploader',
         'AProTable',
         'ATiptapEditor',
         'arcoIconNames',
@@ -122,6 +133,7 @@ describe('package public API', () => {
     expect(app.component('AMediaLibrary')).toBeUndefined();
     expect(app.component('AFileManager')).toBe(publicApi.AFileManager);
     expect(app.component('AFilePicker')).toBe(publicApi.AFilePicker);
+    expect(app.component('AFileUploader')).toBe(publicApi.AFileUploader);
     expect(app.component('ATiptapEditor')).toBe(publicApi.ATiptapEditor);
     expect(app.component('ACoordinatePicker')).toBe(publicApi.ACoordinatePicker);
   });

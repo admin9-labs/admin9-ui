@@ -43,6 +43,7 @@ assert.ok(packageExports.AIconPicker);
 assert.ok(packageExports.ACoordinatePicker);
 assert.ok(packageExports.AFileManager);
 assert.ok(packageExports.AFilePicker);
+assert.ok(packageExports.AFileUploader);
 assert.ok(packageExports.AProTable);
 assert.ok(packageExports.ATiptapEditor);
 
@@ -53,6 +54,7 @@ assert.ok(commonJsPackage.AIconPicker);
 assert.ok(commonJsPackage.ACoordinatePicker);
 assert.ok(commonJsPackage.AFileManager);
 assert.ok(commonJsPackage.AFilePicker);
+assert.ok(commonJsPackage.AFileUploader);
 assert.ok(commonJsPackage.ATiptapEditor);
 assert.equal(commonJsLocale.localePrefix, 'admin9Ui');
 
@@ -65,6 +67,17 @@ assert.match(css, /\.a9-tiptap-editor__media-bubble/);
 const fileService = {
   async list({ page, pageSize }) {
     return { list: [], pagination: { page, pageSize, total: 0, hasMore: false }, typeCounts: {} };
+  },
+  async upload({ file, fileType, groupId, onProgress }) {
+    onProgress?.(100);
+    return {
+      id: `smoke-${file.name}`,
+      name: file.name,
+      type: fileType,
+      groupId,
+      url: `/uploads/${encodeURIComponent(file.name)}`,
+      status: 'ready',
+    };
   },
 };
 
@@ -98,6 +111,7 @@ const app = createApp({
       }),
       h(packageExports.AFileManager),
       h(packageExports.AFilePicker, { multiple: true, fileTypes: ['image', 'document'] }),
+      h(packageExports.AFileUploader, { fileType: 'image', groupId: 'smoke-images' }),
     ]),
 });
 
@@ -140,6 +154,7 @@ assert.equal(mountedAudioWrapper?.style.getPropertyValue('--a9-media-width'), '4
 });
 assert.ok(host.querySelector('.a9-file-manager'), 'AFileManager did not mount from list-only fileService.');
 assert.ok(host.querySelector('.a9-file-picker'), 'AFilePicker did not mount from shared list-only fileService.');
+assert.ok(host.querySelector('.a9-file-uploader'), 'AFileUploader did not mount from shared fileService.');
 assert.ok(host.querySelector('.arco-input-wrapper'), 'Arco input integration did not mount.');
 assert.ok(host.querySelector('.arco-table'), 'Arco table integration did not mount.');
 assert.ok(host.querySelector('.a9-file-manager .arco-spin'), 'AFileManager Arco integration did not mount.');
