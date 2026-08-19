@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-20
+
 ### Added
 
 - 新增公开组件 `AFileUploader`，基于现有单文件上传能力提供本地批量队列、进度、取消、重试、部分成功和结果校验。
@@ -15,6 +17,8 @@
 ### Fixed
 
 - 修复 `ATiptapEditor` 图片、视频、音频插入按钮和选中媒体后的替换按钮无法打开 `AFilePicker` 的问题。
+
+**Full Changelog**: https://github.com/admin9-labs/admin9-ui/compare/v0.6.1...v0.7.0
 
 ## [0.6.1] - 2026-08-14
 
