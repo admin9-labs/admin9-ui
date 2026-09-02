@@ -86,7 +86,7 @@
       :href="item.url"
       target="_blank"
       rel="noopener noreferrer"
-      :aria-label="t('admin9Ui.fileManager.openItem', { name: item.name })"
+      :aria-label="t('admin9Ui.filePicker.openItem', { name: item.name })"
       @click.stop
     >
       <icon-launch />

@@ -41,7 +41,6 @@ assert.equal(packageExports.localePrefix, 'admin9Ui');
 assert.equal(localeExports.localePrefix, 'admin9Ui');
 assert.ok(packageExports.AIconPicker);
 assert.ok(packageExports.ACoordinatePicker);
-assert.ok(packageExports.AFileManager);
 assert.ok(packageExports.AFilePicker);
 assert.ok(packageExports.AFileUploader);
 assert.ok(packageExports.AProTable);
@@ -52,7 +51,6 @@ const commonJsPackage = require('@admin9-labs/admin9-ui');
 const commonJsLocale = require('@admin9-labs/admin9-ui/locale');
 assert.ok(commonJsPackage.AIconPicker);
 assert.ok(commonJsPackage.ACoordinatePicker);
-assert.ok(commonJsPackage.AFileManager);
 assert.ok(commonJsPackage.AFilePicker);
 assert.ok(commonJsPackage.AFileUploader);
 assert.ok(commonJsPackage.ATiptapEditor);
@@ -61,12 +59,11 @@ assert.equal(commonJsLocale.localePrefix, 'admin9Ui');
 const cssPath = import.meta.resolve('@admin9-labs/admin9-ui/styles');
 const css = await readFile(new URL(cssPath), 'utf8');
 assert.match(css, /\.a9-(coordinate|file|icon|pro|tiptap)-/);
-assert.match(css, /\.a9-file-manager/);
 assert.match(css, /\.a9-tiptap-editor__media-bubble/);
 
 const fileService = {
   async list({ page, pageSize }) {
-    return { list: [], pagination: { page, pageSize, total: 0, hasMore: false }, typeCounts: {} };
+    return { list: [], pagination: { page, pageSize, total: 0, hasMore: false } };
   },
   async upload({ file, fileType, groupId, onProgress }) {
     onProgress?.(100);
@@ -109,7 +106,6 @@ const app = createApp({
         canUploadVideo: false,
         canUploadAudio: false,
       }),
-      h(packageExports.AFileManager),
       h(packageExports.AFilePicker, { multiple: true, fileTypes: ['image', 'document'] }),
       h(packageExports.AFileUploader, { fileType: 'image', groupId: 'smoke-images' }),
     ]),
@@ -152,12 +148,9 @@ assert.equal(mountedAudioWrapper?.style.getPropertyValue('--a9-media-width'), '4
   assert.equal(element?.getAttribute('preload'), 'metadata');
   assert.ok(!element?.hasAttribute('autoplay'), 'Embedded media retained autoplay.');
 });
-assert.ok(host.querySelector('.a9-file-manager'), 'AFileManager did not mount from list-only fileService.');
 assert.ok(host.querySelector('.a9-file-picker'), 'AFilePicker did not mount from shared list-only fileService.');
 assert.ok(host.querySelector('.a9-file-uploader'), 'AFileUploader did not mount from shared fileService.');
 assert.ok(host.querySelector('.arco-input-wrapper'), 'Arco input integration did not mount.');
 assert.ok(host.querySelector('.arco-table'), 'Arco table integration did not mount.');
-assert.ok(host.querySelector('.a9-file-manager .arco-spin'), 'AFileManager Arco integration did not mount.');
-
 app.unmount();
 await window.happyDOM.abort();

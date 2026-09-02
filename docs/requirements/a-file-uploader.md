@@ -38,12 +38,7 @@
 - 默认支持本地多选上传。
 - 本地、网络文件、扫码上传等来源采用 capability/adapter 驱动；宿主未提供能力时不显示对应方式。
 - 组件库不得假设具体后端、URL、二维码服务或业务字段。
-- 可被 `AFilePicker`、`AFileManager` 和消费应用单独复用。
-
-### AFileManager
-
-- 继续承担页面级文件管理：展示、搜索、分页、移动、删除、分组管理等。
-- 上传入口复用 `AFileUploader`，不维护第二套上传实现。
+- 可被 `AFilePicker` 和消费应用单独复用。
 
 ## 关键交互语义
 
@@ -55,11 +50,6 @@
 - 多选场景在剩余选择额度内选中成功记录。
 - 不自动提交父级选择；回到文件列表后仍由用户确认。
 - 超出额度或部分失败时必须明确反馈，成功项不能因部分失败而丢失。
-
-### 从 AFileManager 发起上传
-
-- 上传完成后刷新并定位目标类型和分组。
-- 不产生业务选择副作用。
 
 ### 独立使用 AFileUploader
 
@@ -95,8 +85,7 @@
 
 ## 兼容与迁移要求
 
-- 设计或实现前先检查现有 `FilePickerAdapter`、`FileUploadCapability`、`FileManagerService` 和全部公开类型。
-- 不贸然删除旧 API。
+- 设计或实现前先检查现有 `FilePickerAdapter`、`FileUploadCapability` 和全部公开类型。
 - 新增独立上传契约后，现有上传配置应能暂时映射到 `AFileUploader`。
 - 通过文档和废弃标记提供渐进迁移路径。
 - 本包继续保持 backend-agnostic，不引入具体 API、鉴权、store、route、权限或业务字段。
@@ -106,7 +95,7 @@
 收到后续明确指令后，再依次补齐：
 
 - 公开 Props、Events、Slots、Expose 和 adapter 能力模型。
-- `AFilePicker`、`AFileManager` 与 `AFileUploader` 的组合方式。
+- `AFilePicker` 与 `AFileUploader` 的组合方式。
 - locale、组件文档、测试和验收宿主。
 - 键盘、焦点、关闭确认、响应式和无障碍行为。
 - 兼容迁移路径及废弃周期。
@@ -133,19 +122,18 @@
 - 重构必须保留现有上传成功语义：校验 `FileItem`、拒绝重复 ID、错误类型、pending 状态和空 URL，并在 limit 允许范围内自动加入草稿。
 - 最终仍由用户确认后写回 `v-model`，不得因拆分组件直接改变既有行为或兼容性。
 
-### Picker 与 Manager 的边界
+### Picker 与应用文件管理页的边界
 
-参考图 2 同时包含“使用选中图片”、搜索、分组、分页、删除和移动，是选择器与管理器混合的产品界面。本包只借鉴上传流程独立，不照搬其混合边界。
+参考图 2 同时包含“使用选中图片”、搜索、分组、分页、删除和移动，是选择器与管理页面混合的产品界面。本包只借鉴上传流程独立，不照搬其混合边界。
 
 - `AFilePicker` 继续不提供删除、移动或分组管理。
-- 删除、移动和分组管理继续属于 `AFileManager`。
-- `AFileManager` 复用上传 UI 和上传事务状态，但继续保持页面级管理职责。
+- 删除、移动和分组管理属于消费应用。
+- `AFileUploader` 可由 Picker 和消费应用复用。
 
 ### 现有服务契约与优先目标
 
-- 当前 `FileUploadCapability` 已是独立能力，`FilePickerAdapter` 和 `FileManagerAdapter` 只是按能力组合，不需要为了拆组件立即重做全部 adapter 类型。
-- 当前主要重复点是 `AFilePicker` 和 `AFileManager` 各自内嵌的 `a-upload`、自定义请求、进度桥接、`AbortController`、上传事件和刷新逻辑。
-- 第一优先级是复用上传 UI 与上传事务状态，并保留现有 capability 组合方式和兼容性。
+- 当前 `FileUploadCapability` 已是独立能力，`FilePickerAdapter` 按能力组合浏览与可选上传。
+- 第一优先级是让 Picker 与消费应用复用上传 UI 和上传事务状态。
 - 现有 `upload(options): Promise<FileItem>` 是单文件契约，足以由上传组件对多个 `File` 分项调用并组织批量队列。
 - 除非真实后端合同证明需要，不新增臆造的 batch API。
 
@@ -170,7 +158,6 @@
 - `AFileUploader` 独立使用时只返回通过校验的成功 `FileItem[]`，不负责业务选择或表单写回。
 - 被 `AFilePicker` 组合时，Picker 对成功项逐项执行资格、重复 ID、类型和 limit 校验，再加入草稿。
 - Picker 不自动确认，最终仍由用户点击确认写回 `v-model`。
-- 被 `AFileManager` 组合时，只刷新并定位当前上传范围，不产生选择副作用。
 - 部分失败不得回滚或丢失已成功的项目。
 
 ### 具体类型与分组规则
@@ -200,7 +187,7 @@
 
 根据仓库 `AGENTS.md`，公开组件必须填补 Arco Design Vue 的广泛通用缺口。`AFileUploader` 不能只是对 `a-upload` 的薄包装。
 
-只有详细设计能够证明它统一承担以下能力，并能被 Picker、Manager 和消费应用三方复用时，才作为公开组件：
+只有详细设计能够证明它统一承担以下能力，并能被 Picker 和消费应用复用时，才作为公开组件：
 
 - 批量上传队列。
 - `FileUploadCapability` 适配。
@@ -216,7 +203,7 @@
 下一阶段仍需收到明确指令后才能开始。详细设计必须先基于现有契约提出最小方案，并说明：
 
 - 复用上传事务状态的内部边界。
-- Picker 和 Manager 如何组合且保持现有语义。
+- Picker 如何组合且保持现有语义。
 - 是否满足公开组件标准。
 - 兼容性、测试、locale、文档、验收宿主、焦点和无障碍方案。
 
@@ -228,7 +215,7 @@
 
 - 上传队列只在上传进行中或需要处理失败、取消任务时显示。全部成功后自动关闭并清空；存在失败或取消时保留，以便重试、移除或手动关闭。
 - `AFilePicker` 上传完成后刷新当前具体类型和分组的列表，但不自动选择成功项，不改变选择草稿，也不写回 `v-model`。用户必须在列表中显式选择并确认。
-- `accept` 改为完全可选的原生文件选择提示。Picker、Manager 和独立 Uploader 默认都不按当前 `FileType` 推导 MIME 或扩展名限制；只有宿主显式传入时才限制原生选择器。
+- `accept` 改为完全可选的原生文件选择提示。Picker 和独立 Uploader 默认都不按当前 `FileType` 推导 MIME 或扩展名限制；只有宿主显式传入时才限制原生选择器。
 - 现有 `FileUploadCapability` 仍要求每个上传队列绑定具体 `FileType` 和该类型下的 `groupId/null`。这里的 `FileType` 是 adapter 接收的业务目标分类，不等于浏览器文件格式过滤，也不授权组件依据 MIME 或扩展名自行分类。
 - adapter 和后端仍负责真实文件内容、MIME、扩展名、大小、安全、归属以及目标类型和分组权限校验。
 
@@ -236,7 +223,7 @@
 
 ## 2026-08-20 聚合视图与并发追加复核
 
-- Picker 和 Manager 的上传入口在聚合“全部”视图中也必须可选择文件，不再要求用户先切换到具体类型。
+- Picker 的上传入口在聚合“全部”视图中也必须可选择文件，不再要求用户先切换到具体类型。
 - 底层 adapter 契约不变，仍不传 `all` 或 `undefined`。实际目标类型按“当前具体类型、最近使用的具体类型、第一允许类型”解析；聚合视图下目标分组固定为 `null`，界面提示实际目标类型。
 - 上传进行中不得禁用文件选择入口。后续选择的文件追加到当前 concrete `FileType` 和 `groupId/null` 队列，并与已有活动任务一起结算。
 - 显式 `disabled`、Picker 无允许类型或缺少上传 capability 仍按原有约束阻止上传；“任何时间可选择”不绕过这些宿主和契约级禁用条件。

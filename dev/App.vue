@@ -3,7 +3,6 @@
   import type { TableColumnData } from '@arco-design/web-vue';
   import {
     ACoordinatePicker,
-    AFileManager,
     AFilePicker,
     AFileUploader,
     AFilterForm,
@@ -12,14 +11,12 @@
     ATiptapEditor,
     type FileItem,
     type FileUploadBatchResult,
-    type FileManagerAdapter,
     type FilePickerAdapter,
     type FileType,
     type CoordinateSelection,
     type CoordinateValue,
   } from '../src';
   import { type AcceptanceState } from './fake-acceptance-utils';
-  import createFakeFileManagerService from './fake-file-manager-service';
   import createFakeFilePickerService from './fake-file-picker-service';
 
   interface TableRow {
@@ -66,11 +63,6 @@
     { label: '空数据', value: 'empty' },
     { label: '失败', value: 'error' },
   ];
-  const libraryModeOptions = [
-    { label: '管理', value: 'manage' },
-    { label: '只读', value: 'readOnly' },
-  ] as const;
-
   const rows: TableRow[] = [
     { id: 101, name: '组件契约', owner: 'UI Core', status: 'ready', updatedAt: '2026-08-09 09:40' },
     { id: 102, name: '类型声明', owner: 'Package', status: 'ready', updatedAt: '2026-08-09 09:32' },
@@ -123,9 +115,6 @@
       '<p>媒体之后仍可通过 Gap Cursor 继续输入，连续媒体不会生成空段落。</p>',
     ].join('')
   );
-  const fileManagerState = ref<AcceptanceState>('normal');
-  const fileManagerMode = ref<(typeof libraryModeOptions)[number]['value']>('manage');
-  const lastFileManagerEvent = ref('等待文件操作');
   const filePickerState = ref<AcceptanceState>('normal');
   const filePickerConstraint = ref<'all' | 'subset' | 'empty'>('subset');
   const filePickerMultiple = ref(true);
@@ -167,15 +156,8 @@
     };
   });
 
-  const fileManagerService = computed<FileManagerAdapter>(() => {
-    const service = createFakeFileManagerService(fileManagerState.value);
-    return fileManagerMode.value === 'readOnly'
-      ? { list: (params) => service.list(params), listGroups: (fileType) => service.listGroups(fileType) }
-      : service;
-  });
-  const fileManagerReadOnly = computed(() => fileManagerMode.value === 'readOnly');
   const filePickerService = computed<FilePickerAdapter>(() => createFakeFilePickerService(filePickerState.value));
-  const fileUploaderService = createFakeFileManagerService('normal');
+  const fileUploaderService = createFakeFilePickerService('normal');
   const filePickerTypes = computed<readonly FileType[]>(() => {
     if (filePickerConstraint.value === 'empty') return [];
     if (filePickerConstraint.value === 'subset') return ['image', 'document'];
@@ -197,15 +179,6 @@
       : `${selection.latitude}, ${selection.longitude}`;
   };
   const resetFilter = (model: FilterModel) => Object.assign(model, createFilterModel());
-  const recordFileUpload = (item: FileItem) => {
-    lastFileManagerEvent.value = `已上传 ${item.name}`;
-  };
-  const recordFileDelete = (ids: string[]) => {
-    lastFileManagerEvent.value = `已删除 ${ids.length} 项`;
-  };
-  const recordFileMove = (ids: string[], groupId: string | null) => {
-    lastFileManagerEvent.value = `已移动 ${ids.length} 项到 ${groupId || '未分组'}`;
-  };
   const recordFilePickerEvent = (items: FileItem[]) => {
     lastFilePickerEvent.value = items.length ? items.map((item) => item.name).join('、') : '已清空';
   };
@@ -213,9 +186,6 @@
     lastFileUploaderEvent.value = `成功 ${result.succeeded.length} 项，失败 ${result.failed.length} 项，取消 ${result.cancelled.length} 项`;
   };
 
-  watch([fileManagerMode, fileManagerState], () => {
-    lastFileManagerEvent.value = '等待文件操作';
-  });
   watch([filePickerState, filePickerConstraint], () => {
     lastFilePickerEvent.value = '等待选择';
   });
@@ -241,7 +211,6 @@
       <a href="#icon-picker">AIconPicker</a>
       <a href="#coordinate-picker">ACoordinatePicker</a>
       <a href="#tiptap-editor">ATiptapEditor</a>
-      <a href="#file-manager">AFileManager</a>
       <a href="#file-picker">AFilePicker</a>
       <a href="#file-uploader">AFileUploader</a>
     </nav>
@@ -555,51 +524,6 @@
             <dd>{{ stateOptions.find((option) => option.value === filePickerState)?.label }}</dd>
             <dt>最近事件</dt>
             <dd>{{ lastFilePickerEvent }}</dd>
-          </dl>
-        </div>
-      </section>
-
-      <section v-if="!tiptapFocused" id="file-manager" class="acceptance-section" data-testid="file-manager-section">
-        <div class="section-heading">
-          <div>
-            <span class="section-index">08</span>
-            <h2>AFileManager</h2>
-          </div>
-          <div class="section-controls">
-            <a-radio-group v-model="fileManagerMode" type="button" size="small" data-testid="file-manager-mode-control">
-              <a-radio v-for="option in libraryModeOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </a-radio>
-            </a-radio-group>
-            <a-radio-group v-model="fileManagerState" type="button" size="small" data-testid="file-manager-state-control">
-              <a-radio v-for="option in stateOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </a-radio>
-            </a-radio-group>
-          </div>
-        </div>
-
-        <div class="file-manager-workspace">
-          <AFileManager
-            :key="`${fileManagerMode}-${fileManagerState}`"
-            :service="fileManagerService"
-            :page-size="6"
-            :can-upload="!fileManagerReadOnly"
-            :can-delete="!fileManagerReadOnly"
-            :can-move="!fileManagerReadOnly"
-            :can-manage-groups="!fileManagerReadOnly"
-            data-testid="file-manager"
-            @upload-success="recordFileUpload"
-            @delete-success="recordFileDelete"
-            @move-success="recordFileMove"
-          />
-          <dl class="library-event-readout" aria-live="polite">
-            <dt>模式</dt>
-            <dd>{{ libraryModeOptions.find((option) => option.value === fileManagerMode)?.label }}</dd>
-            <dt>当前场景</dt>
-            <dd>{{ stateOptions.find((option) => option.value === fileManagerState)?.label }}</dd>
-            <dt>最近事件</dt>
-            <dd>{{ lastFileManagerEvent }}</dd>
           </dl>
         </div>
       </section>

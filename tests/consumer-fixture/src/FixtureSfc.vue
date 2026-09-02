@@ -3,13 +3,11 @@
   import {
     AIconPicker,
     ACoordinatePicker,
-    AFileManager,
     AFilePicker,
     AFileUploader,
     AFilterForm,
     AProTable,
     ATiptapEditor,
-    type FileManagerAdapter,
     type FilePickerAdapter,
     type FileUploadCapability,
     type FileItem,
@@ -17,7 +15,6 @@
 
   defineProps<{
     service: FilePickerAdapter;
-    fileService: FileManagerAdapter;
     filePickerService: FilePickerAdapter;
     fileUploaderService: FileUploadCapability;
   }>();
@@ -45,7 +42,6 @@
       :can-upload-video="false"
       :can-upload-audio="false"
     />
-    <AFileManager :service="fileService" />
     <AFilePicker v-model="attachments" :service="filePickerService" :file-types="['image', 'document']" :limit="3" multiple />
     <AFileUploader :service="fileUploaderService" file-type="image" group-id="fixture-images" accept="image/*" />
   </section>

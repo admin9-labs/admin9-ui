@@ -3,7 +3,6 @@ import admin9UIPluginOptionsKey from './internal/options';
 import type { Admin9UIPluginOptions } from './services/types';
 
 // 组件
-import AFileManager from './components/file-manager/index.vue';
 import AFilePicker from './components/file-picker/index.vue';
 import AFileUploader from './components/file-uploader/index.vue';
 import AIconPicker from './components/icon-picker/index.vue';
@@ -26,15 +25,6 @@ export type {
   FileBrowseCapability,
   FileUploadCapability,
   FilePickerAdapter,
-  FileRemoveCapability,
-  FileGroupCapability,
-  FileMoveCapability,
-  CreateFileGroupOptions,
-  RenameFileGroupOptions,
-  RemoveFileGroupOptions,
-  MoveFileOptions,
-  FileManagerAdapter,
-  FileManagerService,
 } from './services/types';
 
 export type {
@@ -75,7 +65,7 @@ export type {
 export type { AFilterFormProps } from './components/filter-form/types';
 
 // 组件命名导出（供按需 import）
-export { ACoordinatePicker, AFileManager, AFilePicker, AFileUploader, AFilterForm, AIconPicker, AProTable, ATiptapEditor };
+export { ACoordinatePicker, AFilePicker, AFileUploader, AFilterForm, AIconPicker, AProTable, ATiptapEditor };
 
 /**
  * 安装插件。
@@ -90,7 +80,6 @@ const Admin9UI = {
   install(app: App, options: Admin9UIPluginOptions = {}) {
     // 名称冲突检测：A 前缀下若与 Arco 原生组件重名，提示及早发现
     const reserved = [
-      'AFileManager',
       'AFilePicker',
       'AFileUploader',
       'AFilterForm',
@@ -109,7 +98,6 @@ const Admin9UI = {
       }
     });
 
-    app.component('AFileManager', AFileManager);
     app.component('AFilePicker', AFilePicker);
     app.component('AFileUploader', AFileUploader);
     app.component('AFilterForm', AFilterForm);

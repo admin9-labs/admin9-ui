@@ -6,7 +6,6 @@ import * as ArcoVueIcon from '@arco-design/web-vue/es/icon';
 import Admin9UI, {
   AIconPicker,
   ACoordinatePicker,
-  AFileManager,
   AFilePicker,
   AFileUploader,
   AFilterForm,
@@ -22,7 +21,6 @@ import Admin9UI, {
   type Admin9UIOptions,
   type Admin9UIPluginOptions,
   type FileItem,
-  type FileManagerAdapter,
   type FilePickerAdapter,
   type FileUploadBatchResult,
   type FileUploadCapability,
@@ -47,12 +45,11 @@ const fileItem: FileItem = {
   extension: 'pdf',
 };
 
-const fileService: FileManagerAdapter = {
+const fileService: FilePickerAdapter = {
   async list(params: FileListParams) {
     return {
       list: [fileItem],
       pagination: { page: params.page, pageSize: params.pageSize, total: 1, hasMore: false },
-      typeCounts: { document: 1 },
     };
   },
 };
@@ -125,10 +122,9 @@ const app = createApp({
         canUploadVideo: false,
         canUploadAudio: false,
       }),
-      h(AFileManager),
       h(AFilePicker, { service: filePickerService, modelValue: [fileItem], fileTypes: ['document'], multiple: true }),
       h(AFileUploader, { service: fileUploaderService, fileType: 'image', groupId: 'fixture-images' }),
-      h(FixtureSfc, { service: filePickerService, fileService, filePickerService, fileUploaderService }),
+      h(FixtureSfc, { service: filePickerService, filePickerService, fileUploaderService }),
     ]),
 });
 

@@ -113,7 +113,6 @@ describe('package public API', () => {
       [
         'AIconPicker',
         'ACoordinatePicker',
-        'AFileManager',
         'AFilePicker',
         'AFileUploader',
         'AFilterForm',
@@ -129,7 +128,7 @@ describe('package public API', () => {
 
   it('keeps the locale entry limited to consumer-facing locale resources', () => {
     expect(Object.keys(localeApi).sort()).toEqual(['enUS', 'localePrefix', 'messages', 'zhCN'].sort());
-    expect(localeApi.enUS.fileManager.types.archive).toBe('Archives');
+    expect(localeApi.enUS.filePicker.types.archive).toBe('Archives');
     expect(localeApi.enUS.filePicker.typeAllowed).toBe('All allowed types');
     expect(localeApi.zhCN.coordinatePicker.choose).toBe('选择坐标');
   });
@@ -143,7 +142,7 @@ describe('package public API', () => {
     app.use(publicApi.default);
 
     expect(app.component('AMediaLibrary')).toBeUndefined();
-    expect(app.component('AFileManager')).toBe(publicApi.AFileManager);
+    expect(app.component('AFileManager')).toBeUndefined();
     expect(app.component('AFilePicker')).toBe(publicApi.AFilePicker);
     expect(app.component('AFileUploader')).toBe(publicApi.AFileUploader);
     expect(app.component('AFilterForm')).toBe(publicApi.AFilterForm);

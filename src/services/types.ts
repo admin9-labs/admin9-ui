@@ -66,8 +66,6 @@ export interface FilePagination {
 export interface FileListResult {
   list: FileItem[];
   pagination: FilePagination;
-  /** 可选的各真实类型总数，用于文件类型导航反馈。 */
-  typeCounts?: Partial<Record<FileType, number>>;
 }
 
 export interface FileUploadOptions {
@@ -91,61 +89,9 @@ export interface FileUploadCapability {
 /** AFilePicker only requires browsing; upload remains an optional capability. */
 export type FilePickerAdapter = FileBrowseCapability & Partial<FileUploadCapability>;
 
-export interface FileRemoveCapability {
-  /** 返回实际删除成功且属于本次请求的 id，允许表达部分成功。 */
-  remove(ids: string[]): Promise<string[]>;
-}
-
-export interface CreateFileGroupOptions {
-  fileType: FileType;
-  name: string;
-}
-
-export interface RenameFileGroupOptions extends CreateFileGroupOptions {
-  groupId: string;
-}
-
-export interface RemoveFileGroupOptions {
-  fileType: FileType;
-  groupId: string;
-}
-
-export interface MoveFileOptions {
-  fileType: FileType;
-  ids: string[];
-  groupId: string | null;
-}
-
-export interface FileGroupCapability {
-  listGroups(fileType: FileType): Promise<FileGroup[]>;
-  createGroup(options: CreateFileGroupOptions): Promise<FileGroup>;
-  renameGroup(options: RenameFileGroupOptions): Promise<FileGroup>;
-  /** 仅删除分组；不得隐式删除组内文件。 */
-  removeGroup(options: RemoveFileGroupOptions): Promise<void>;
-}
-
-export interface FileMoveCapability {
-  /** 返回成功移动的文件 id，允许表达部分成功。 */
-  move(options: MoveFileOptions): Promise<string[]>;
-}
-
-/** AFileManager 的按能力组合 adapter；界面开关决定运行时必需方法。 */
-export type FileManagerAdapter = FileBrowseCapability &
-  Partial<FileUploadCapability> &
-  Partial<FileRemoveCapability> &
-  Partial<FileGroupCapability> &
-  Partial<FileMoveCapability>;
-
-/** 完整文件管理能力组合，供提供全部管理能力的 adapter 使用。 */
-export type FileManagerService = FileBrowseCapability &
-  FileUploadCapability &
-  FileRemoveCapability &
-  FileGroupCapability &
-  FileMoveCapability;
-
 /** Plugin installation options for app.use(Admin9UI, options). */
 export interface Admin9UIPluginOptions {
-  fileService?: FileManagerAdapter;
+  fileService?: FilePickerAdapter;
 }
 
 /** @deprecated Use Admin9UIPluginOptions. */

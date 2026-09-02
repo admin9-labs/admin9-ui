@@ -32,7 +32,7 @@
 </template>
 ```
 
-也可通过 `app.use(Admin9UI, { fileService })` 注入与 Manager 共用的默认 service；使用点的 `service` prop 优先。没有 `list` 时组件抛出明确错误。不得新增 `filePickerService` 等第二套注入字段。
+也可通过 `app.use(Admin9UI, { fileService })` 注入默认 service；使用点的 `service` prop 优先。没有 `list` 时组件抛出明确错误。不得新增 `filePickerService` 等第二套注入字段。
 
 ## Props
 
@@ -104,9 +104,8 @@ type FileListParams = FileListParamsBase &
 
 ## 选择与事务边界
 
-Picker value 与 Manager cleanup selection 是两套语义：
+Picker value 只表达可以交付给业务字段的文件：
 
-- `AFileManager` 在启用删除时可让具备稳定 ID 的 pending、failed 或无 URL 记录进入管理选择，以便清理。
 - `AFilePicker` 的业务值必须同时满足：唯一且非空的稳定 `id`、`type` 在允许集合、`status` 为 `ready` 或未提供、`url` 为非空字符串。
 - wrong-type、pending、failed、null/空 URL、空 ID 和单次列表响应中的所有重复 ID 行只展示，不可选择或确认；异常行使用可区分的渲染 key，不以 `Map` 静默选中任意一条。
 - 外部模型和列表项使用同一资格校验。上传与业务选择完全分离：上传成功、重复 ID 或达到 limit 都不会直接改变草稿。
