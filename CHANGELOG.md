@@ -12,11 +12,10 @@
 ### Changed
 
 - `Admin9UIPluginOptions.fileService` 收窄为 `FilePickerAdapter`，继续供 `AFilePicker`、`AFileUploader` 和 `ATiptapEditor` 复用浏览与可选上传能力。
-- 文档明确区分最新已发布版本与 `main` 的 `Unreleased` API，并补充 `AProTable` 完整使用文档。
 
 ### Fixed
 
-- Release workflow 在 npm 发布前校验 CHANGELOG 与当前版本一致，避免 package 已发布后才因 Release Notes 缺失而失败。
+- 修正全局组件重名警告，移除对未随 npm package 发布的设计文档引用，并提供可执行的本地别名建议。
 
 ### Upgrade notes
 

@@ -1,5 +1,5 @@
 import { createApp, defineComponent } from 'vue';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as publicApi from '../src';
 import type {
   Admin9UIPluginOptions,
@@ -148,5 +148,23 @@ describe('package public API', () => {
     expect(app.component('AFilterForm')).toBe(publicApi.AFilterForm);
     expect(app.component('ATiptapEditor')).toBe(publicApi.ATiptapEditor);
     expect(app.component('ACoordinatePicker')).toBe(publicApi.ACoordinatePicker);
+  });
+
+  it('reports global component conflicts without referring to repository-only documentation', () => {
+    const app = createApp(publicApi.AProTable);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    try {
+      app.component('AFilePicker', publicApi.AIconPicker);
+      app.use(publicApi.default);
+
+      const packageWarning = warn.mock.calls
+        .map(([message]) => String(message))
+        .find((message) => message.startsWith('[admin9-ui]'));
+      expect(packageWarning).toContain('按需导入并在使用点设置本地别名');
+      expect(packageWarning).not.toContain('DESIGN.md');
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

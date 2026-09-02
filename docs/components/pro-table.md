@@ -92,7 +92,7 @@
 
 ## Slots 与实例方法
 
-内部 `a-table` 会透传消费方提供的具名插槽及其作用域参数。启用 `showAction` 时，`action` 插槽用于渲染自动追加的操作列；如果 `columns` 已包含 `slotName: 'action'` 或内部操作列标识，组件不会重复追加。
+内部 `a-table` 会透传应用提供的具名插槽及其作用域参数。启用 `showAction` 时，`action` 插槽用于渲染自动追加的操作列；如果 `columns` 已包含 `slotName: 'action'` 或内部操作列标识，组件不会重复追加。
 
 `defineExpose` 提供：
 

@@ -32,7 +32,7 @@
 </template>
 ```
 
-也可通过 `app.use(Admin9UI, { fileService })` 注入默认 service；使用点的 `service` prop 优先。没有 `list` 时组件抛出明确错误。不得新增 `filePickerService` 等第二套注入字段。
+也可通过 `app.use(Admin9UI, { fileService })` 注入默认 service；使用点的 `service` prop 优先。没有 `list` 时组件会抛出明确错误。
 
 ## Props
 
@@ -100,14 +100,14 @@ type FileListParams = FileListParamsBase &
 - 聚合查询禁止 `groupId`；具体类型查询禁止 `fileTypes`。
 - adapter 必须先在完整数据集上按类型集合、关键词和分组筛选，再分页并返回准确 `pagination.total`。Picker 不过滤当前页冒充准确总数。
 
-类型、分组、搜索和 pageSize 变化都会回到第 1 页。请求代次、service 引用和视图代次共同阻止旧列表、分组和上传完成覆盖新视图。
+类型、分组、搜索和 pageSize 变化都会回到第 1 页。较早请求的迟到结果不会覆盖较新的列表、分组或上传结果。
 
 ## 选择与事务边界
 
 Picker value 只表达可以交付给业务字段的文件：
 
 - `AFilePicker` 的业务值必须同时满足：唯一且非空的稳定 `id`、`type` 在允许集合、`status` 为 `ready` 或未提供、`url` 为非空字符串。
-- wrong-type、pending、failed、null/空 URL、空 ID 和单次列表响应中的所有重复 ID 行只展示，不可选择或确认；异常行使用可区分的渲染 key，不以 `Map` 静默选中任意一条。
+- 类型不匹配、pending、failed、URL 为空、ID 为空和单次列表响应中的重复 ID 行只展示，不可选择或确认。
 - 外部模型和列表项使用同一资格校验。上传与业务选择完全分离：上传成功、重复 ID 或达到 limit 都不会直接改变草稿。
 
 草稿跨页保留。取消不写回；普通列表刷新和服务端元数据变化只调和草稿，不直接改变已提交 `v-model`。显式确认才提交草稿。唯一例外是 props 业务约束变化（例如 `fileTypes` 变空、移除类型、multiple/limit 收紧）或外部模型本身非法，此时组件立即执行安全校正，并对真实变化只发出一次 `update:modelValue/change`。
@@ -120,10 +120,10 @@ Picker value 只表达可以交付给业务字段的文件：
 - 聚合视图同样可以选择并上传文件：目标类型依次使用最近选择的具体类型和允许类型中的第一项，目标分组为 `null`；提示文字会显示实际上传目标。
 - 本地多选文件由 `AFileUploader` 分项调用现有单文件 `upload` capability；Picker 不再维护上传请求、进度、取消或重试状态。
 - 上传完成后只刷新当前具体类型和分组的列表，不自动选择新文件，也不改变已提交值；用户需要在刷新后的列表中显式选择并确认。
-- 上传队列完成后刷新当前具体类型和分组；关闭 Picker 会取消活动上传并屏蔽迟到回调，不创建第二个 Modal 或焦点陷阱。
+- 上传队列在 Picker 弹窗内连续操作。队列完成后刷新当前具体类型和分组；关闭 Picker 会取消活动上传并屏蔽迟到回调。
 - `accept` 只提供原生选择提示，不决定 `FileItem.type`。adapter/后端必须验证真实 MIME、扩展名、内容、大小、恶意文件、身份、资源归属和授权。
 - 图片使用可用 URL/缩略图预览；视频/音频显示类型和时长；PDF、Office、压缩包与其他文件显示图标和元数据，不承诺在线 Office 预览。
 - 文件结果使用语义分组，每张卡片/行使用真正的 checkbox 或 radio 暴露选中与禁用状态，支持 Tab、Space 和 Enter；打开链接是独立命令，点击不会切换选择。
 - 文件名、extension 等极长元数据在网格/列表中省略；`720px` 以下类型导航横向滚动、工具栏和 footer 换行，不造成页面横向溢出。
 
-`canUpload` 只是 UI 能力开关，不是后端授权。组件不包含 URL、auth、store、route、具体请求库或业务权限。
+`canUpload` 只是界面能力开关，不代表后端授权。使用本组件库的应用仍需负责 API、认证、状态、路由和业务权限。

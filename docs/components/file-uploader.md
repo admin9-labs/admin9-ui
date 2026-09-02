@@ -2,7 +2,7 @@
 
 `AFileUploader` 是后端无关的本地批量上传组件。它基于现有单文件 `FileUploadCapability` 组织队列，统一处理进度、取消、失败重试、部分成功、结果校验和异步生命周期，可独立使用，也由 `AFilePicker` 复用。
 
-第一阶段只支持本地 `File`。组件不提供网络文件、扫码上传，不定义 batch API，也不根据 MIME 或扩展名推断业务 `FileType`。
+当前只支持本地 `File`。组件不提供网络文件、扫码上传，不定义 batch API，也不根据 MIME 或扩展名推断业务 `FileType`。
 
 ## 基础示例
 
@@ -54,13 +54,13 @@
 
 ## Events
 
-| 事件           | 参数                                     | 时机                                                                                             |
-| -------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `response`     | `(item: FileItem, task: FileUploadTask)` | adapter Promise 已解析；为 Picker 的 `upload-success` 语义保留，结果可能尚未通过资格校验        |
-| `success`      | `(item: FileItem, task: FileUploadTask)` | 返回项通过稳定 ID、类型、ready 状态、URL 和队列重复 ID 校验                                      |
-| `error`        | `(failure: FileUploadFailure)`           | 请求失败、结果无效、超出数量或大小约束                                                           |
-| `complete`     | `(result: FileUploadBatchResult)`        | 当前队列没有 pending/uploading 任务；包含成功、失败和取消三类结果                                |
-| `tasks-change` | `(tasks: readonly FileUploadTask[])`     | 任一任务状态、进度或队列结构变化                                                                 |
+| 事件           | 参数                                     | 时机                                                                                     |
+| -------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `response`     | `(item: FileItem, task: FileUploadTask)` | adapter Promise 已解析；为 Picker 的 `upload-success` 语义保留，结果可能尚未通过资格校验 |
+| `success`      | `(item: FileItem, task: FileUploadTask)` | 返回项通过稳定 ID、类型、ready 状态、URL 和队列重复 ID 校验                              |
+| `error`        | `(failure: FileUploadFailure)`           | 请求失败、结果无效、超出数量或大小约束                                                   |
+| `complete`     | `(result: FileUploadBatchResult)`        | 当前队列没有 pending/uploading 任务；包含成功、失败和取消三类结果                        |
+| `tasks-change` | `(tasks: readonly FileUploadTask[])`     | 任一任务状态、进度或队列结构变化                                                         |
 
 `FileUploadBatchResult.succeeded` 只包含通过资格校验的 `FileItem`。部分失败不会回滚成功项。`response` 不是独立使用时的成功结果来源；新代码应使用 `success` 或 `complete`。
 
@@ -82,16 +82,16 @@
 
 ## 队列与生命周期
 
-- 每个本地 `File` 单独调用一次 `upload({ file, fileType, groupId, onProgress, signal })`，没有隐藏的 batch 合同。
+- 每个本地 `File` 单独调用一次 `upload({ file, fileType, groupId, onProgress, signal })`，应用不需要提供 batch 接口。
 - adapter 调用 `onProgress` 时显示确定进度；未提供进度时显示不确定进度。
 - 每个任务独立成功或失败，可取消、重试或移除；取消依赖 `AbortSignal`，即使 adapter 忽略信号，迟到响应也不会改变已取消任务。
-- 队列仍有活动任务时保持面板可见并提供取消入口，文件选择器同时保持可用，新文件追加到当前具体类型/分组队列。全部成功后面板自动关闭并清空；若焦点位于即将移除的队列操作中，则恢复到上传触发器。存在失败或取消时保留面板供重试或移除，手动关闭会清空队列并恢复焦点。
+- 队列仍有活动任务时保持面板可见并提供取消入口，文件选择器同时保持可用，新文件追加到当前具体类型/分组队列。全部成功后面板自动关闭并清空；存在失败或取消时保留面板供重试或移除。关闭面板后焦点会回到上传触发器。
 - `fileType`、`groupId` 或 service 变化时取消并清空旧上下文队列；组件卸载时中止活动请求并屏蔽迟到回调。
 - 同一队列只能绑定一个 concrete `FileType` 和其下的 `groupId/null`。多选表示同一上下文选择多个文件，不表示混合业务类型。
 
 ## 与文件组件组合
 
 - `AFilePicker` 在队列完成后刷新当前文件列表，但不把上传结果加入选择草稿；用户需要显式选择文件并确认后才写回 `v-model`。关闭 Picker 会清空并取消活动上传。
-- Picker 继续保留原有单项 `upload-success` / `upload-error` 事件兼容层，但不再维护自己的上传请求和进度状态。
+- Picker 通过 `upload-success` / `upload-error` 继续提供单项上传结果事件。
 
-队列面板不创建 Modal 或其他焦点陷阱。按钮和任务操作均提供可访问名称；状态摘要使用 `aria-live`，可与 Picker Modal 连续使用。
+队列面板不创建独立 Modal。按钮和任务操作均提供可访问名称；状态摘要使用 `aria-live`，可与 Picker 弹窗连续使用。

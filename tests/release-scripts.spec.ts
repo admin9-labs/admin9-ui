@@ -358,8 +358,23 @@ describe('release command ownership', () => {
     expect(packageJson.scripts['pack:check']).toBeUndefined();
 
     const verifier = readFileSync(join(packageRoot, 'scripts', 'verify-tarball.mjs'), 'utf8');
+    expect(packageJson.files).toContain('README.md');
     expect(packageJson.files).toContain('CHANGELOG.md');
-    expect(verifier).toMatch(/'CHANGELOG\.md'/);
+    [
+      'README.md',
+      'CHANGELOG.md',
+      'docs/components/coordinate-picker.md',
+      'docs/components/file-picker.md',
+      'docs/components/file-uploader.md',
+      'docs/components/filter-form.md',
+      'docs/components/icon-picker.md',
+      'docs/components/pro-table.md',
+      'docs/components/tiptap-editor.md',
+    ].forEach((file) => expect(verifier).toContain(`'${file}'`));
+    expect(verifier).toMatch(/publishedMarkdownFiles = packed\.files[\s\S]*\.filter\(\(file\) => file\.endsWith\('\.md'\)\)/);
+    expect(verifier).toContain('Published Markdown link is not included in the tarball');
+    expect(verifier).toContain('docs/decisions/');
+    expect(verifier).toContain('RELEASING.md');
     expect(verifier.match(/run\('pnpm', \['run', 'build'\], \{ cwd: packageRoot \}\)/g)).toHaveLength(1);
     expect(verifier.match(/execFileSync\('npm', \['pack'/g)).toHaveLength(1);
 

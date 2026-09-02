@@ -2,9 +2,9 @@
 
 `AIconPicker` 是表单级 Arco 图标选择器，提供官方分类、全局搜索、受控值、清除和键盘导航。
 
-## 宿主要求
+## 接入要求
 
-默认图标预览依赖宿主注册 `@arco-design/web-vue/es/icon`。组件只分发图标名和分类元数据，不打包全部 SVG。
+默认图标预览依赖应用注册 `@arco-design/web-vue/es/icon`。组件只分发图标名和分类元数据，不打包全部 SVG。
 
 ```ts
 import ArcoVueIcon from '@arco-design/web-vue/es/icon';
@@ -12,7 +12,7 @@ import ArcoVueIcon from '@arco-design/web-vue/es/icon';
 app.use(ArcoVueIcon);
 ```
 
-不希望全量注册时，可使用 `icon` 插槽按名称渲染宿主已有的图标组件。
+不希望全量注册时，可使用 `icon` 插槽按名称渲染应用已有的图标组件。
 
 ## Props
 

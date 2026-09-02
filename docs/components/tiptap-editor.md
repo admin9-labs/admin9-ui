@@ -72,7 +72,7 @@
 | `blur`              | 无                 | 编辑区失去焦点               |
 | `media-error`       | `TiptapMediaError` | 素材校验拒绝或编辑器命令失败 |
 
-`TiptapMediaError` 包含 `operation`、`mediaType`、`reason`、`attemptedItems` 和 `rejectedItems`；底层命令抛错时还包含 `cause`。`invalid-selection` 可能伴随部分成功，消费方应以 `rejectedItems` 判断被跳过的素材；`command-failed` 表示本次有效素材未能写入或替换。
+`TiptapMediaError` 包含 `operation`、`mediaType`、`reason`、`attemptedItems` 和 `rejectedItems`；底层命令抛错时还包含 `cause`。`invalid-selection` 可能伴随部分成功，应用应以 `rejectedItems` 判断被跳过的素材；`command-failed` 表示本次有效素材未能写入或替换。
 
 ## 实例方法
 
@@ -86,4 +86,4 @@
 
 全部媒体节点只接受 HTTP(S) 或相对 URL。视频和音频序列化时固定输出 `controls` 和 `preload="metadata"`，不会保留 `autoplay`。类型不匹配、URL 为空或协议不安全的素材不会插入或替换正文。
 
-编辑器会按 Tiptap schema 解析输入，但不代替服务端内容安全策略。消费应用在公开页面渲染保存的 HTML 前，仍需按自身允许标签、属性和 URL 协议执行可信 HTML 清洗。
+编辑器会按 Tiptap schema 解析输入，但不代替服务端内容安全策略。应用在公开页面渲染保存的 HTML 前，仍需按自身允许标签、属性和 URL 协议执行可信 HTML 清洗。

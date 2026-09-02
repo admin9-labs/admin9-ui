@@ -91,10 +91,7 @@ const Admin9UI = {
     reserved.forEach((name) => {
       if (app.component(name)) {
         // eslint-disable-next-line no-console
-        console.warn(
-          `[admin9-ui] Component "${name}" 已被注册，可能与 Arco 原生组件冲突。` +
-            `若需隔离，可改用 A9/Pro 前缀（见 DESIGN.md §3）。`
-        );
+        console.warn(`[admin9-ui] Component "${name}" 已被注册。如需避免全局名称冲突，请按需导入并在使用点设置本地别名。`);
       }
     });
 

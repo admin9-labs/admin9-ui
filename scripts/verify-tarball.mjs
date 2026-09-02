@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, delimiter, dirname, join, resolve } from 'node:path';
+import { basename, delimiter, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ensureEmptyOutputDirectory, resolveOutputDirectory } from './release-utils.mjs';
 
@@ -86,7 +86,9 @@ try {
   const packedFiles = new Set(packed.files.map((file) => file.path));
   const requiredFiles = [
     'package.json',
+    'README.md',
     'CHANGELOG.md',
+    'LICENSE',
     'dist/index.js',
     'dist/index.cjs',
     'dist/index.d.ts',
@@ -94,13 +96,46 @@ try {
     'dist/locale/index.cjs',
     'dist/locale/index.d.ts',
     'dist/style.css',
+    'docs/components/coordinate-picker.md',
+    'docs/components/file-uploader.md',
     'docs/components/filter-form.md',
     'docs/components/file-picker.md',
     'docs/components/icon-picker.md',
+    'docs/components/pro-table.md',
     'docs/components/tiptap-editor.md',
   ];
   requiredFiles.forEach((file) => assert(packedFiles.has(file), `Tarball is missing required file: ${file}`));
-  const forbiddenPrefixes = ['src/', 'tests/', 'scripts/', 'node_modules/', 'dist/acceptance-host/'];
+
+  const publishedMarkdownFiles = packed.files.map((file) => file.path).filter((file) => file.endsWith('.md'));
+  publishedMarkdownFiles.forEach((markdownFile) => {
+    const source = readFileSync(join(packageRoot, markdownFile), 'utf8');
+    Array.from(source.matchAll(/\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g), (match) => match[1])
+      .filter((link) => !/^[a-z][a-z\d+.-]*:/i.test(link) && !link.startsWith('//'))
+      .map((link) => ({ link, localPath: link.split('#', 1)[0].split('?', 1)[0] }))
+      .filter(({ localPath }) => Boolean(localPath))
+      .forEach(({ link, localPath }) => {
+        const target = relative(packageRoot, resolve(packageRoot, dirname(markdownFile), localPath))
+          .split(sep)
+          .join('/');
+        assert(
+          !target.startsWith('../') && packedFiles.has(target),
+          `Published Markdown link is not included in the tarball: ${markdownFile} -> ${link}`
+        );
+      });
+  });
+
+  ['AGENTS.md', 'CONTRIBUTING.md', 'DESIGN.md', 'RELEASING.md'].forEach((file) => {
+    assert(!packedFiles.has(file), `Tarball unexpectedly includes repository-only documentation: ${file}`);
+  });
+  const forbiddenPrefixes = [
+    'src/',
+    'tests/',
+    'scripts/',
+    'node_modules/',
+    'dist/acceptance-host/',
+    'docs/decisions/',
+    'docs/requirements/',
+  ];
   packed.files.forEach((file) => {
     assert(
       !forbiddenPrefixes.some((prefix) => file.path.startsWith(prefix)),

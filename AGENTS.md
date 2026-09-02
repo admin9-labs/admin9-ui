@@ -13,12 +13,14 @@ The Admin9 `Grid`, `GridToolbar`, and `GridTable` family belongs to the applicat
 
 Repository development and CI use Node 24 with pnpm 10.5.2. This is a repository toolchain baseline, not a package-consumer runtime restriction. Do not add a repository-only `packageManager` pin to the published manifest.
 
+Contributor setup and routine checks are documented in `CONTRIBUTING.md`. The release runbook is `RELEASING.md`; keep operational release details out of consumer-facing documentation.
+
 ```bash
 corepack enable
 corepack prepare pnpm@10.5.2 --activate
 pnpm install --frozen-lockfile
 # During development, run only checks relevant to the changed scope.
-pnpm test -- tests/file-picker.spec.ts
+pnpm exec vitest run tests/file-picker.spec.ts
 pnpm run type:check
 pnpm run lint
 pnpm run changelog:check
