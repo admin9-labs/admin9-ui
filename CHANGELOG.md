@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-03
+
 ### Removed
 
 - 移除页面级 `AFileManager`、对应组件文档与仅供其使用的删除、移动、分组管理 service 公共契约。
@@ -20,6 +22,8 @@
 ### Upgrade notes
 
 - 文件管理页面属于消费应用；需要删除、移动或分组管理时，由应用使用 Arco Design Vue 与自身 API、权限和业务字段组合实现。
+
+**Full Changelog**: https://github.com/admin9-labs/admin9-ui/compare/v0.8.0...v0.9.0
 
 ## [0.8.0] - 2026-09-03
 

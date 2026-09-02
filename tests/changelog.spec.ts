@@ -1,10 +1,13 @@
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { extractReleaseNotes, normalizeReleaseNotes, parseChangelog, validateChangelog } from '../scripts/changelog.mjs';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const packageVersion = (JSON.parse(readFileSync(resolve(packageRoot, 'package.json'), 'utf8')) as { version: string }).version;
+const releaseCount = parseChangelog(readFileSync(resolve(packageRoot, 'CHANGELOG.md'), 'utf8')).releases.length;
 
 const validChangelog = `# Changelog
 
@@ -74,7 +77,7 @@ describe('changelog release notes', () => {
       encoding: 'utf8',
     });
     expect(check.status).toBe(0);
-    expect(check.stdout).toMatch(/Validated 10 changelog releases through 0\.8\.0/);
+    expect(check.stdout).toBe(`Validated ${releaseCount} changelog releases through ${packageVersion}.\n`);
 
     const release = spawnSync(process.execPath, ['scripts/check-changelog.mjs', '--release', 'v0.8.0'], {
       cwd: packageRoot,
