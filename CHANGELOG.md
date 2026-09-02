@@ -4,9 +4,13 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-03
+
 ### Added
 
 - 新增公开组件 `AFilterForm`，根据响应式列数和字段数量自动提供单行、多行与首行折叠筛选布局。
+
+**Full Changelog**: https://github.com/admin9-labs/admin9-ui/compare/v0.7.0...v0.8.0
 
 ## [0.7.0] - 2026-08-20
 
