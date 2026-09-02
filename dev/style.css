@@ -159,6 +159,20 @@ input {
   box-shadow: 0 1px 2px rgb(29 33 41 / 4%);
 }
 
+.filter-form-gallery {
+  display: grid;
+  gap: 20px;
+}
+
+.filter-form-gallery h3 {
+  margin: 0 0 20px;
+  color: #1d2129;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 22px;
+  letter-spacing: 0;
+}
+
 .acceptance-section > .arco-alert {
   margin-bottom: 10px;
 }

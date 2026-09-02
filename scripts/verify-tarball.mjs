@@ -94,6 +94,7 @@ try {
     'dist/locale/index.cjs',
     'dist/locale/index.d.ts',
     'dist/style.css',
+    'docs/components/filter-form.md',
     'docs/components/file-manager.md',
     'docs/components/file-picker.md',
     'docs/components/icon-picker.md',

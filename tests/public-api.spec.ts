@@ -6,6 +6,7 @@ import type {
   CoordinateSelection,
   CoordinateValue,
   FilePickerAdapter,
+  AFilterFormProps,
   AFileUploaderProps,
   FileUploadBatchResult,
   ATiptapEditorProps,
@@ -61,6 +62,16 @@ describe('package public API', () => {
     expect(selection).toEqual({ latitude: 27.8945, longitude: 102.2644, source: 'search', title: '邛海' });
   });
 
+  it('exports the filter form prop contract', () => {
+    interface FilterModel {
+      keyword: string;
+    }
+    const model: FilterModel = { keyword: '' };
+    const props: AFilterFormProps = { model, cols: 3, loading: false };
+
+    expect(props).toEqual({ model, cols: 3, loading: false });
+  });
+
   it('exports the ATiptapEditor media contract types', () => {
     const display: TiptapImageDisplay = 'inline';
     const audioWidth: TiptapAudioWidth = 'compact';
@@ -105,6 +116,7 @@ describe('package public API', () => {
         'AFileManager',
         'AFilePicker',
         'AFileUploader',
+        'AFilterForm',
         'AProTable',
         'ATiptapEditor',
         'arcoIconNames',
@@ -134,6 +146,7 @@ describe('package public API', () => {
     expect(app.component('AFileManager')).toBe(publicApi.AFileManager);
     expect(app.component('AFilePicker')).toBe(publicApi.AFilePicker);
     expect(app.component('AFileUploader')).toBe(publicApi.AFileUploader);
+    expect(app.component('AFilterForm')).toBe(publicApi.AFilterForm);
     expect(app.component('ATiptapEditor')).toBe(publicApi.ATiptapEditor);
     expect(app.component('ACoordinatePicker')).toBe(publicApi.ACoordinatePicker);
   });

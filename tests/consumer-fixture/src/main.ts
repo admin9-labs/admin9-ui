@@ -9,12 +9,14 @@ import Admin9UI, {
   AFileManager,
   AFilePicker,
   AFileUploader,
+  AFilterForm,
   AProTable,
   ATiptapEditor,
   arcoIconNames,
   localePrefix as rootLocalePrefix,
   messages as rootMessages,
   type ATiptapEditorProps,
+  type AFilterFormProps,
   type CoordinateSelection,
   type CoordinateValue,
   type Admin9UIOptions,
@@ -79,6 +81,11 @@ const blockWidth: TiptapBlockWidth = '50%';
 const inlineSize: TiptapInlineImageSize = '1.25em';
 const mediaAlign: TiptapMediaAlign = 'center';
 const editorMaxHeight: ATiptapEditorProps['maxHeight'] = 480;
+interface FixtureFilterModel {
+  keyword: string;
+}
+const fixtureFilterModel: FixtureFilterModel = { keyword: '' };
+const filterFormProps: AFilterFormProps = { model: fixtureFilterModel, cols: 3 };
 const coordinateValue: CoordinateValue = { latitude: 27.8945, longitude: 102.2644 };
 const coordinateSelection: CoordinateSelection = { ...coordinateValue, source: 'model' };
 
@@ -99,6 +106,7 @@ const app = createApp({
   render: () =>
     h('main', [
       h(AIconPicker, { modelValue: '', allowClear: true }),
+      h(AFilterForm, filterFormProps, { default: () => h('div', 'Fixture filter') }),
       h(ACoordinatePicker, { modelValue: coordinateValue, apiKey: 'fixture-key', readonly: true }),
       h(AProTable, {
         columns: [{ title: 'Name', dataIndex: 'name' }],

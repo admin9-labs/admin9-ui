@@ -10,6 +10,7 @@ import AIconPicker from './components/icon-picker/index.vue';
 import AProTable from './components/pro-table/index.vue';
 import ATiptapEditor from './components/tiptap-editor/index.vue';
 import ACoordinatePicker from './components/coordinate-picker/index.vue';
+import AFilterForm from './components/filter-form/index.vue';
 
 // 服务接口契约（供 App 实现 adapter 时 import 类型）
 export type {
@@ -71,8 +72,10 @@ export type {
   TencentMapSuggestion,
 } from './components/coordinate-picker/types';
 
+export type { AFilterFormProps } from './components/filter-form/types';
+
 // 组件命名导出（供按需 import）
-export { ACoordinatePicker, AFileManager, AFilePicker, AFileUploader, AIconPicker, AProTable, ATiptapEditor };
+export { ACoordinatePicker, AFileManager, AFilePicker, AFileUploader, AFilterForm, AIconPicker, AProTable, ATiptapEditor };
 
 /**
  * 安装插件。
@@ -90,6 +93,7 @@ const Admin9UI = {
       'AFileManager',
       'AFilePicker',
       'AFileUploader',
+      'AFilterForm',
       'AIconPicker',
       'AProTable',
       'ATiptapEditor',
@@ -108,6 +112,7 @@ const Admin9UI = {
     app.component('AFileManager', AFileManager);
     app.component('AFilePicker', AFilePicker);
     app.component('AFileUploader', AFileUploader);
+    app.component('AFilterForm', AFilterForm);
     app.component('AIconPicker', AIconPicker);
     app.component('AProTable', AProTable);
     app.component('ATiptapEditor', ATiptapEditor);

@@ -46,6 +46,7 @@ import {
   AFileManager,
   AFilePicker,
   AFileUploader,
+  AFilterForm,
   ACoordinatePicker,
   AIconPicker,
   AProTable,
@@ -58,17 +59,18 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 
 ## 公开能力
 
-- 默认导出的 `Admin9UI` 插件：全局注册七个组件，并可注入默认文件 adapter
+- 默认导出的 `Admin9UI` 插件：全局注册八个组件，并可注入默认文件 adapter
 - [`ACoordinatePicker`](./docs/components/coordinate-picker.md)：基于腾讯地图 JS API GL 的表单级坐标选择器
 - [`AFileManager`](./docs/components/file-manager.md)：以文件类型优先、类型内单级分组为信息层级的页面级文件管理组件
 - [`AFilePicker`](./docs/components/file-picker.md)：支持六类文件、后端准确分页与可选上传的表单级轻量选择器
 - [`AFileUploader`](./docs/components/file-uploader.md)：基于单文件 capability 的本地批量上传队列，支持进度、取消、重试、部分成功与结果校验
+- [`AFilterForm`](./docs/components/filter-form.md)：根据字段数与响应式列数自动形成单行、多行或首行折叠布局的列表页筛选表单
 - [`AIconPicker`](./docs/components/icon-picker.md)：支持分类、搜索、键盘导航和表单状态的 Arco 图标选择器
 - `AProTable`：通过 fetcher 注入数据源的页面级表格
 - [`ATiptapEditor`](./docs/components/tiptap-editor.md)：基于 Tiptap，支持内部滚动工作区、悬浮媒体工具栏、独占一行/跟随文字图片、可调尺寸视频与三档播放器宽度的表单级 HTML 富文本编辑器
 - `Admin9UIPluginOptions`、文件 browse/upload/management 能力、兼容的完整 service 类型及相关数据类型
 - `messages`、`localePrefix`、`zhCN`、`enUS` 和 `arcoIconNames`
-- `@admin9-labs/admin9-ui/styles`：七个组件的统一样式入口
+- `@admin9-labs/admin9-ui/styles`：八个组件的统一样式入口
 
 ## 素材组件边界
 

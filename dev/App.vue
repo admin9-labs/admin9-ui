@@ -1,11 +1,12 @@
 <script setup lang="ts">
-  import { computed, ref, watch } from 'vue';
+  import { computed, reactive, ref, watch } from 'vue';
   import type { TableColumnData } from '@arco-design/web-vue';
   import {
     ACoordinatePicker,
     AFileManager,
     AFilePicker,
     AFileUploader,
+    AFilterForm,
     AIconPicker,
     AProTable,
     ATiptapEditor,
@@ -34,6 +35,30 @@
     pageSize: number;
     keyword?: string;
   }
+
+  interface FilterModel {
+    workOrderNo: string;
+    title: string;
+    type?: string;
+    priority?: string;
+    createdAt?: string[];
+    status?: string;
+    assignee?: string;
+    customer?: string;
+    keyword: string;
+  }
+
+  const createFilterModel = (): FilterModel => ({
+    workOrderNo: '',
+    title: '',
+    type: undefined,
+    priority: undefined,
+    createdAt: undefined,
+    status: undefined,
+    assignee: undefined,
+    customer: undefined,
+    keyword: '',
+  });
 
   const stateOptions: { label: string; value: AcceptanceState }[] = [
     { label: '正常', value: 'normal' },
@@ -64,6 +89,9 @@
   ];
 
   const tableState = ref<AcceptanceState>('normal');
+  const singleFilter = reactive(createFilterModel());
+  const multipleFilter = reactive(createFilterModel());
+  const collapsibleFilter = reactive(createFilterModel());
   const tableError = ref(false);
   const selectedRowKeys = ref<(string | number)[]>([]);
   const iconValue = ref('icon-apps');
@@ -168,6 +196,7 @@
       ? `${selection.title} · ${selection.latitude}, ${selection.longitude}`
       : `${selection.latitude}, ${selection.longitude}`;
   };
+  const resetFilter = (model: FilterModel) => Object.assign(model, createFilterModel());
   const recordFileUpload = (item: FileItem) => {
     lastFileManagerEvent.value = `已上传 ${item.name}`;
   };
@@ -207,6 +236,7 @@
     </header>
 
     <nav v-if="!tiptapFocused" class="section-nav" aria-label="组件验收导航">
+      <a href="#filter-form">AFilterForm</a>
       <a href="#pro-table">AProTable</a>
       <a href="#icon-picker">AIconPicker</a>
       <a href="#coordinate-picker">ACoordinatePicker</a>
@@ -217,10 +247,96 @@
     </nav>
 
     <main>
-      <section v-if="!tiptapFocused" id="pro-table" class="acceptance-section" data-testid="pro-table-section">
+      <section v-if="!tiptapFocused" id="filter-form" class="acceptance-section" data-testid="filter-form-section">
         <div class="section-heading">
           <div>
             <span class="section-index">01</span>
+            <h2>AFilterForm</h2>
+          </div>
+        </div>
+
+        <div class="filter-form-gallery">
+          <article class="component-frame" data-testid="single-filter-form">
+            <h3>单行筛选</h3>
+            <AFilterForm :model="singleFilter" @reset="resetFilter(singleFilter)">
+              <a-form-item field="workOrderNo" label="工单编号">
+                <a-input v-model="singleFilter.workOrderNo" placeholder="请输入工单编号" allow-clear />
+              </a-form-item>
+              <a-form-item field="title" label="工单标题">
+                <a-input v-model="singleFilter.title" placeholder="请输入工单标题" allow-clear />
+              </a-form-item>
+              <a-form-item field="type" label="工单类型">
+                <a-select v-model="singleFilter.type" placeholder="全部" allow-clear>
+                  <a-option value="consultation">咨询</a-option>
+                  <a-option value="fault">故障</a-option>
+                </a-select>
+              </a-form-item>
+            </AFilterForm>
+          </article>
+
+          <article class="component-frame" data-testid="multiple-filter-form">
+            <h3>多行筛选</h3>
+            <AFilterForm :model="multipleFilter" @reset="resetFilter(multipleFilter)">
+              <a-form-item field="workOrderNo" label="工单编号">
+                <a-input v-model="multipleFilter.workOrderNo" placeholder="请输入工单编号" allow-clear />
+              </a-form-item>
+              <a-form-item field="title" label="工单标题">
+                <a-input v-model="multipleFilter.title" placeholder="请输入工单标题" allow-clear />
+              </a-form-item>
+              <a-form-item field="type" label="工单类型">
+                <a-select v-model="multipleFilter.type" placeholder="全部" allow-clear />
+              </a-form-item>
+              <a-form-item field="priority" label="优先级">
+                <a-select v-model="multipleFilter.priority" placeholder="全部" allow-clear />
+              </a-form-item>
+              <a-form-item field="createdAt" label="创建时间">
+                <a-range-picker v-model="multipleFilter.createdAt" value-format="YYYY-MM-DD" />
+              </a-form-item>
+              <a-form-item field="status" label="状态">
+                <a-select v-model="multipleFilter.status" placeholder="全部" allow-clear />
+              </a-form-item>
+            </AFilterForm>
+          </article>
+
+          <article class="component-frame" data-testid="collapsible-filter-form">
+            <h3>可折叠筛选</h3>
+            <AFilterForm :model="collapsibleFilter" @reset="resetFilter(collapsibleFilter)">
+              <a-form-item field="workOrderNo" label="工单编号">
+                <a-input v-model="collapsibleFilter.workOrderNo" placeholder="请输入工单编号" allow-clear />
+              </a-form-item>
+              <a-form-item field="title" label="工单标题">
+                <a-input v-model="collapsibleFilter.title" placeholder="请输入工单标题" allow-clear />
+              </a-form-item>
+              <a-form-item field="type" label="工单类型">
+                <a-select v-model="collapsibleFilter.type" placeholder="全部" allow-clear />
+              </a-form-item>
+              <a-form-item field="priority" label="优先级">
+                <a-select v-model="collapsibleFilter.priority" placeholder="全部" allow-clear />
+              </a-form-item>
+              <a-form-item field="createdAt" label="创建时间">
+                <a-range-picker v-model="collapsibleFilter.createdAt" value-format="YYYY-MM-DD" />
+              </a-form-item>
+              <a-form-item field="status" label="状态">
+                <a-select v-model="collapsibleFilter.status" placeholder="全部" allow-clear />
+              </a-form-item>
+              <a-form-item field="assignee" label="处理人">
+                <a-select v-model="collapsibleFilter.assignee" placeholder="全部" allow-clear />
+              </a-form-item>
+              <a-form-item field="customer" label="客户">
+                <a-select v-model="collapsibleFilter.customer" placeholder="全部" allow-clear />
+              </a-form-item>
+              <a-form-item field="keyword" label="关键词">
+                <a-input v-model="collapsibleFilter.keyword" placeholder="请输入问题描述关键词" allow-clear />
+              </a-form-item>
+            </AFilterForm>
+          </article>
+        </div>
+      </section>
+
+      <section v-if="!tiptapFocused" id="pro-table" class="acceptance-section" data-testid="pro-table-section">
+        <div class="section-heading">
+          <div>
+            <span class="section-index">02</span>
             <h2>AProTable</h2>
           </div>
           <a-radio-group v-model="tableState" type="button" size="small" data-testid="table-state-control">
@@ -256,7 +372,7 @@
       <section v-if="!tiptapFocused" id="icon-picker" class="acceptance-section" data-testid="icon-picker-section">
         <div class="section-heading">
           <div>
-            <span class="section-index">02</span>
+            <span class="section-index">03</span>
             <h2>AIconPicker</h2>
           </div>
           <div class="section-controls">
@@ -287,7 +403,7 @@
       <section v-if="!tiptapFocused" id="coordinate-picker" class="acceptance-section" data-testid="coordinate-picker-section">
         <div class="section-heading">
           <div>
-            <span class="section-index">03</span>
+            <span class="section-index">04</span>
             <h2>ACoordinatePicker</h2>
           </div>
           <div class="section-controls">
@@ -330,7 +446,7 @@
       >
         <div class="section-heading">
           <div>
-            <span class="section-index">04</span>
+            <span class="section-index">05</span>
             <h2>ATiptapEditor</h2>
           </div>
           <a-radio-group v-model="editorMode" type="button" size="small" data-testid="editor-mode-control">
@@ -365,7 +481,7 @@
       <section v-if="!tiptapFocused" id="file-uploader" class="acceptance-section" data-testid="file-uploader-section">
         <div class="section-heading">
           <div>
-            <span class="section-index">05</span>
+            <span class="section-index">06</span>
             <h2>AFileUploader</h2>
           </div>
         </div>

@@ -1,4 +1,10 @@
 export default {
+  filterForm: {
+    search: '查询',
+    reset: '重置',
+    expand: '展开',
+    collapse: '收起',
+  },
   fileUploader: {
     upload: '上传文件',
     queue: '上传队列',

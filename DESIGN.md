@@ -44,6 +44,7 @@ admin9-ui/
     │   ├── icon-picker/
     │   ├── file-manager/
     │   ├── file-picker/
+    │   ├── filter-form/
     │   ├── pro-table/
     │   └── tiptap-editor/
     ├── internal/
@@ -63,6 +64,7 @@ admin9-ui/
 | `AFileManager`                             | 页面级文件浏览与管理            | `FileManagerAdapter` 注入   |
 | `AFilePicker`                              | 表单级文件浏览与选择            | `FilePickerAdapter` 注入    |
 | `AFileUploader`                            | 本地批量上传队列与事务状态      | `FileUploadCapability` 注入 |
+| `AFilterForm`                              | 列表页自适应筛选表单            | 无                          |
 | `AIconPicker`                              | Arco 图标搜索与选择             | 无                          |
 | `AProTable`                                | fetcher 驱动的页面级表格        | fetcher prop 注入           |
 | `ATiptapEditor`                            | Tiptap 驱动的 HTML 富文本编辑器 | 可选 `FilePickerAdapter`    |
@@ -222,6 +224,15 @@ Props、Events、Slots 和键盘行为见 [AIconPicker 使用文档](./docs/comp
 - `defineExpose` 的 `refresh()` 仍原样返回 fetcher 链的 Promise，调用方主动调用时必须自行 `await` 并处理拒绝；`clearSelection()` 只通知受控选择清空。
 - 它不包含查询表单、工具栏、导出或具体行操作等应用业务能力。
 - 应用共享的 Grid 家族保持在消费方，不属于本包迁移范围。
+
+### AFilterForm
+
+- `AFilterForm` 使用 Arco Form 与 Grid 组织列表页筛选字段，不包含卡片、标题、分页、请求、路由、权限或业务字段。
+- 默认插槽中的每个顶层有效节点占一列；空白、注释和 Fragment 包装不计数，支持消费方通过 `v-if`、`v-for` 动态组合字段。
+- 当前字段不超过一行时使用单行操作区，不超过两行时直接展示多行；超过两行后默认只显示第一行并提供展开/收起。
+- `cols` 沿用 Arco Grid 的数字或响应式对象语义，默认在 `xs/sm/md/lg/xl/xxl` 下分别使用 `1/1/2/3/3/3` 列。
+- 查询在 Arco Form 校验成功后发出 `search(values)`，失败时展开全部字段以显示错误；重置清除校验状态后发出 `reset()`，模型默认值和重新查询由消费方负责。
+- 折叠状态由组件内部管理，不公开 `mode`、`collapsible`、`collapsedRows` 或折叠状态模型。
 
 ### ATiptapEditor
 

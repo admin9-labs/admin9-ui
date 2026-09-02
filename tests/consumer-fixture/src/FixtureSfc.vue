@@ -1,11 +1,12 @@
 <script setup lang="ts">
-  import { ref } from 'vue';
+  import { reactive, ref } from 'vue';
   import {
     AIconPicker,
     ACoordinatePicker,
     AFileManager,
     AFilePicker,
     AFileUploader,
+    AFilterForm,
     AProTable,
     ATiptapEditor,
     type FileManagerAdapter,
@@ -23,11 +24,16 @@
 
   const fetchRows = async () => ({ list: [], total: 0 });
   const attachments = ref<FileItem[]>([]);
+  const filters = reactive({ keyword: '', status: undefined as string | undefined });
 </script>
 
 <template>
   <section data-testid="host-baseline-sfc">
     <AIconPicker model-value="" />
+    <AFilterForm :model="filters">
+      <a-form-item field="keyword" label="Keyword"><a-input v-model="filters.keyword" /></a-form-item>
+      <a-form-item field="status" label="Status"><a-select v-model="filters.status" /></a-form-item>
+    </AFilterForm>
     <ACoordinatePicker :model-value="{ latitude: 27.8945, longitude: 102.2644 }" api-key="fixture-key" readonly />
     <AProTable :columns="[{ title: 'Name', dataIndex: 'name' }]" :fetcher="fetchRows" />
     <ATiptapEditor

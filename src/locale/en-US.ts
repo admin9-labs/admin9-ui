@@ -1,4 +1,10 @@
 export default {
+  filterForm: {
+    search: 'Search',
+    reset: 'Reset',
+    expand: 'Expand',
+    collapse: 'Collapse',
+  },
   fileUploader: {
     upload: 'Upload files',
     queue: 'Upload queue',
