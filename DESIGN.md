@@ -41,9 +41,11 @@ admin9-ui/
 └── src/
     ├── index.ts
     ├── components/
-    │   ├── icon-picker/
+    │   ├── coordinate-picker/
     │   ├── file-picker/
+    │   ├── file-uploader/
     │   ├── filter-form/
+    │   ├── icon-picker/
     │   ├── pro-table/
     │   └── tiptap-editor/
     ├── internal/
@@ -53,7 +55,7 @@ admin9-ui/
     └── styles/
 ```
 
-包名固定为 `@admin9-labs/admin9-ui`。版本 `0.1.0` 是公开首发版本，当前版本为 `0.8.0`；在 `0.x` 阶段继续遵循语义化版本，但不承诺 1.0 级别的兼容稳定性。
+包名固定为 `@admin9-labs/admin9-ui`。版本 `0.1.0` 是公开首发版本，最新已发布版本为 `0.8.0`；本文以 `main` 当前源码为设计基线，同时包含 `CHANGELOG.md` 中的 `Unreleased` 变更。在 `0.x` 阶段继续遵循语义化版本，但不承诺 1.0 级别的兼容稳定性。
 
 ## 3. 公开能力
 
@@ -169,7 +171,7 @@ export type FilePickerAdapter = FileBrowseCapability & Partial<FileUploadCapabil
 - `fileTypes` 归一化为六种真实类型并去重：单类型直接具体查询，2-5 类的聚合页传准确子集，六类聚合省略集合，空数组零请求；
 - 选择草稿可跨页保留，取消不写回；普通列表刷新只调和草稿，只有确认、外部清空或 props 约束安全校正才改变已提交值；
 - Picker value 必须同时具备唯一非空 ID、允许类型、`ready` 或未提供状态、非空 URL；
-- 上传只在真实类型视图启用，`accept` 仅传给原生选择提示，不参与类型推断或安全校验；
+- 上传始终解析为一个真实 `FileType`；聚合视图使用最近选择的具体类型或允许类型的第一项，且目标分组为 `null`。`accept` 仅传给原生选择提示，不参与类型推断或安全校验；
 - 上传队列、进度、取消和重试复用 `AFileUploader`；上传完成只刷新当前列表，不自动改变 Picker 草稿或已提交值；
 - 复用包内私有 FileItem 展示，但不公开通用 hook/helper，也不提供移动、删除或分组管理。
 
@@ -196,6 +198,8 @@ Props、Events、Slots 和键盘行为见 [AIconPicker 使用文档](./docs/comp
 - `defineExpose` 的 `refresh()` 仍原样返回 fetcher 链的 Promise，调用方主动调用时必须自行 `await` 并处理拒绝；`clearSelection()` 只通知受控选择清空。
 - 它不包含查询表单、工具栏、导出或具体行操作等应用业务能力。
 - 应用共享的 Grid 家族保持在消费方，不属于本包迁移范围。
+
+完整 Props、Events、Slots、实例方法和请求语义见 [AProTable 使用文档](./docs/components/pro-table.md)。
 
 ### AFilterForm
 
@@ -259,7 +263,7 @@ Vue、Arco Design Vue 和 vue-i18n 是 peer dependencies，并在构建中 exter
 发布候选必须完成：
 
 1. `pnpm install --frozen-lockfile` clean install；
-2. typecheck、lint、组件测试和验收宿主 typecheck/build；
+2. CHANGELOG 与当前版本一致性校验，typecheck、lint、组件测试和验收宿主 typecheck/build；
 3. library build 与真实 tarball 内容审计；
 4. 同一个真实 tarball 的 ESM、CJS、类型、styles、locale 和生产构建验证。
 
@@ -269,7 +273,7 @@ Vue、Arco Design Vue 和 vue-i18n 是 peer dependencies，并在构建中 exter
 - `dev/` 是使用 fake service 的最小浏览器验收宿主，只验证组件交互与样式，不承担业务应用职责；
 - `pnpm run verify:tarball` 构建真实 tarball，在临时最小 Vue 工程中安装并验证 ESM、CJS、类型、locale、styles、peer dependencies、消费构建和组件挂载。
 
-提交发布候选前最多在本地执行一次 `pnpm run release:check`。它只组合一次 typecheck、验收 typecheck、lint、测试、验收 build 和 `verify:tarball`；library build 与 `npm pack` 仅由 `verify:tarball` 执行一次。日常开发只运行与改动相关的检查，GitHub Actions 才是 PR、`main` push 和发布的最终质量结论。
+提交发布候选前最多在本地执行一次 `pnpm run release:check`。它只组合一次 CHANGELOG 校验、typecheck、验收 typecheck、lint、测试、验收 build 和 `verify:tarball`；library build 与 `npm pack` 仅由 `verify:tarball` 执行一次。日常开发只运行与改动相关的检查，GitHub Actions 才是 PR、`main` push 和发布的最终质量结论。
 
 正式发布由语义版本 tag 触发 GitHub Actions，且单一 concurrency group 确保同一时刻最多只有一个发布 workflow 正在运行，避免并发修改 npm `latest`。GitHub concurrency 只保留一个 running 和一个 pending，新的 pending 可能替换旧的 pending，因此维护者必须一次只推送一个发布 tag，并等待其 workflow 完成后再推送下一版本。工作流要求 tag 与 package 版本一致、Actions 事件提交等于 checkout HEAD，并通过 Git ancestry 证明 tag 提交已进入远程 `main`。这里不再要求 tag 等于执行时的 `main` HEAD，因此 `main` 前进后仍可安全重跑旧的发布提交；在 npm 发布和 GitHub Release 操作前还会分别重新读取远端 tag，要求其最终 peeled commit 仍严格等于 Actions 事件提交。
 

@@ -4,14 +4,16 @@
 
 本包不提供通用 hooks、工具函数、路由、状态管理或其他宿主应用基础设施。
 
-当前版本为 `0.8.0`。本项目遵循语义化版本；在 `0.x` 阶段，次版本可能包含不兼容调整。
-完整版本记录见 [CHANGELOG.md](./CHANGELOG.md)。
+最新已发布版本为 `0.8.0`。本项目遵循语义化版本；在 `0.x` 阶段，次版本可能包含不兼容调整。
+本文后续公开 API 说明以 `main` 当前源码为准，包含 [Unreleased](./CHANGELOG.md#unreleased) 变更；完整版本记录见 [CHANGELOG.md](./CHANGELOG.md)。
 
 ## 安装
 
 ```bash
 pnpm add @admin9-labs/admin9-ui@0.8.0
 ```
+
+已发布的 `0.8.0` 仍包含 `AFileManager` 及对应管理能力；这些能力在 `main` 的 `Unreleased` 中已移除，将随下一个版本生效。
 
 消费应用可以使用自己的包管理器；这里使用 pnpm 只是示例，不要求消费者采用本仓库的开发工具版本。
 
@@ -64,7 +66,7 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 - [`AFileUploader`](./docs/components/file-uploader.md)：基于单文件 capability 的本地批量上传队列，支持进度、取消、重试、部分成功与结果校验
 - [`AFilterForm`](./docs/components/filter-form.md)：根据字段数与响应式列数自动形成单行、多行或首行折叠布局的列表页筛选表单
 - [`AIconPicker`](./docs/components/icon-picker.md)：支持分类、搜索、键盘导航和表单状态的 Arco 图标选择器
-- `AProTable`：通过 fetcher 注入数据源的页面级表格
+- [`AProTable`](./docs/components/pro-table.md)：通过 fetcher 注入数据源的页面级表格
 - [`ATiptapEditor`](./docs/components/tiptap-editor.md)：基于 Tiptap，支持内部滚动工作区、悬浮媒体工具栏、独占一行/跟随文字图片、可调尺寸视频与三档播放器宽度的表单级 HTML 富文本编辑器
 - `Admin9UIPluginOptions`、文件 browse/upload 能力及相关数据类型
 - `messages`、`localePrefix`、`zhCN`、`enUS` 和 `arcoIconNames`

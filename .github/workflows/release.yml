@@ -44,6 +44,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check changelog
+        run: pnpm run changelog:check
+
       - name: Check library types
         run: pnpm run type:check
 

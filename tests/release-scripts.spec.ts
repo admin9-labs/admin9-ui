@@ -377,6 +377,11 @@ describe('release command ownership', () => {
     expect(releaseWorkflow).toMatch(
       /npm publish "\.\/\$\{\{ steps\.registry\.outputs\.tarball \}\}" --access public --provenance/
     );
+    const changelogGatePosition = releaseWorkflow.indexOf('run: pnpm run changelog:check');
+    const npmPublishPosition = releaseWorkflow.indexOf('npm publish');
+    expect(changelogGatePosition).toBeGreaterThan(-1);
+    expect(releaseWorkflow.match(/pnpm run changelog:check/g)).toHaveLength(1);
+    expect(npmPublishPosition).toBeGreaterThan(changelogGatePosition);
     expect(releaseWorkflow).toMatch(/verify-published-package\.mjs/);
     expect(releaseWorkflow).toMatch(/check-github-release-status\.mjs/);
     expect(releaseWorkflow).toMatch(/check-changelog\.mjs --release "\$GITHUB_REF_NAME" > release-notes\.md/);
