@@ -233,7 +233,11 @@
 
 <style lang="less" scoped>
   .a9-filter-form {
+    box-sizing: border-box;
     width: 100%;
+    padding: 20px;
+    background: var(--color-bg-2);
+    border-radius: 4px;
 
     &__body {
       display: flex;
@@ -292,6 +296,8 @@
 
   @media (width <= 767px) {
     .a9-filter-form {
+      padding: 16px;
+
       &__body {
         display: block;
       }

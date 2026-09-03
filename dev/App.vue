@@ -225,7 +225,7 @@
         </div>
 
         <div class="filter-form-gallery">
-          <article class="component-frame" data-testid="single-filter-form">
+          <article class="filter-form-scenario" data-testid="single-filter-form">
             <h3>单行筛选</h3>
             <AFilterForm :model="singleFilter" @reset="resetFilter(singleFilter)">
               <a-form-item field="workOrderNo" label="工单编号">
@@ -243,7 +243,7 @@
             </AFilterForm>
           </article>
 
-          <article class="component-frame" data-testid="multiple-filter-form">
+          <article class="filter-form-scenario" data-testid="multiple-filter-form">
             <h3>多行筛选</h3>
             <AFilterForm :model="multipleFilter" @reset="resetFilter(multipleFilter)">
               <a-form-item field="workOrderNo" label="工单编号">
@@ -267,7 +267,7 @@
             </AFilterForm>
           </article>
 
-          <article class="component-frame" data-testid="collapsible-filter-form">
+          <article class="filter-form-scenario" data-testid="collapsible-filter-form">
             <h3>可折叠筛选</h3>
             <AFilterForm :model="collapsibleFilter" @reset="resetFilter(collapsibleFilter)">
               <a-form-item field="workOrderNo" label="工单编号">

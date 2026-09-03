@@ -60,7 +60,7 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 - [`ACoordinatePicker`](./docs/components/coordinate-picker.md)：基于腾讯地图 JavaScript API GL 的表单级坐标选择器
 - [`AFilePicker`](./docs/components/file-picker.md)：支持后端分页、跨页选择和可选上传的文件选择器
 - [`AFileUploader`](./docs/components/file-uploader.md)：支持进度、取消、重试和部分成功的本地批量上传队列
-- [`AFilterForm`](./docs/components/filter-form.md)：根据字段数和响应式列数自动调整布局的筛选表单
+- [`AFilterForm`](./docs/components/filter-form.md)：默认提供卡片式背景，并根据字段数和响应式列数自动调整布局的筛选表单
 - [`AIconPicker`](./docs/components/icon-picker.md)：支持分类、搜索和键盘导航的 Arco 图标选择器
 - [`AProTable`](./docs/components/pro-table.md)：通过 `fetcher` 接入数据源的页面级表格
 - [`ATiptapEditor`](./docs/components/tiptap-editor.md)：支持常用格式与图片、视频、音频编辑的 HTML 富文本编辑器

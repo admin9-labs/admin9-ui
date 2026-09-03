@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `AFilterForm` 默认提供 Arco 主题背景、响应式内边距和 `4px` 圆角，可直接作为列表页筛选容器使用。
+
 ## [0.9.0] - 2026-09-03
 
 ### Removed

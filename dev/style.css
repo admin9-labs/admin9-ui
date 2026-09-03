@@ -164,6 +164,10 @@ input {
   gap: 20px;
 }
 
+.filter-form-scenario {
+  min-width: 0;
+}
+
 .filter-form-gallery h3 {
   margin: 0 0 20px;
   color: #1d2129;
