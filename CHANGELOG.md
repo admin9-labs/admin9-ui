@@ -4,9 +4,13 @@
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-09-03
+
 ### Changed
 
 - `AFilterForm` 默认提供 Arco 主题背景、响应式内边距和 `4px` 圆角，可直接作为列表页筛选容器使用。
+
+**Full Changelog**: https://github.com/admin9-labs/admin9-ui/compare/v0.9.0...v0.9.1
 
 ## [0.9.0] - 2026-09-03
 
