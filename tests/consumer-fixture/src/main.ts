@@ -33,9 +33,13 @@ import Admin9UI, {
   type ProTableFetcherParams,
   type ProTableFetcherResult,
   type ProTableFooterSlot,
+  type ProTableDataChange,
+  type ProTablePaginationOptions,
   type ProTablePermission,
+  type ProTableRefreshOptions,
   type ProTableRequestOptions,
   type ProTableRowKey,
+  type ProTableSelectionOptions,
   type FileListParams,
   type TiptapAudioWidth,
   type TiptapBlockWidth,
@@ -115,7 +119,10 @@ const rowFetcher: ProTableFetcher<FixtureRow> = async (params) => ({
 const proTableProps: AProTableProps<FixtureRow> = {
   columns: [{ title: 'Name', dataIndex: 'name' }],
   fetcher: rowFetcher,
+  title: 'Fixture records',
+  paginationOptions: { showJumper: true },
   refreshable: true,
+  selectionOptions: { showCheckedAll: true, onlyCurrent: true },
   surface: true,
   actions: [rowAction],
 };
@@ -126,20 +133,30 @@ const proTableTypes: {
   params: ProTableFetcherParams;
   result: ProTableFetcherResult<FixtureRow>;
   footer: ProTableFooterSlot<FixtureRow>;
+  dataChange: ProTableDataChange<FixtureRow>;
+  pagination: ProTablePaginationOptions;
   permission: ProTablePermission;
+  refresh: ProTableRefreshOptions;
   request: ProTableRequestOptions;
   rowKey: ProTableRowKey;
+  selection: ProTableSelectionOptions;
 } = {
   slots: {
+    'surface-title': () => 'Fixture records',
     'toolbar-left': () => 'Create',
     'toolbar-right': () => 'Export',
+    'before-table': () => 'Summary',
   },
   params: { page: 1, pageSize: 10 },
   result: { list: [], total: 0 },
   footer: { data: [], total: 0 },
+  dataChange: { list: [], total: 0, page: 1, pageSize: 10 },
+  pagination: { showTotal: true, showPageSize: true },
   permission: () => true,
+  refresh: { resetPage: true, clearCurrentData: true },
   request: {},
   rowKey: 1,
+  selection: { showCheckedAll: true, onlyCurrent: true },
 };
 
 if (

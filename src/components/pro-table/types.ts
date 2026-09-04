@@ -38,12 +38,39 @@ export interface ProTableRequestOptions {
   clearCurrentData?: boolean;
 }
 
+export interface ProTableRefreshOptions {
+  resetPage?: boolean;
+  clearCurrentData?: boolean;
+}
+
+export interface ProTableSelectionOptions {
+  showCheckedAll?: boolean;
+  onlyCurrent?: boolean;
+}
+
+export interface ProTablePaginationOptions {
+  showTotal?: boolean;
+  showPageSize?: boolean;
+  showJumper?: boolean;
+  simple?: boolean;
+  pageSizeOptions?: number[];
+}
+
+export interface ProTableDataChange<T = TableData> {
+  list: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface AProTableProps<T = TableData> {
   columns: import('@arco-design/web-vue').TableColumnData[];
   rowKey?: string;
   fetcher: ProTableFetcher<T>;
+  title?: string;
   pageSize?: number;
   pagination?: boolean;
+  paginationOptions?: ProTablePaginationOptions;
   searchable?: boolean;
   refreshable?: boolean;
   surface?: boolean;
@@ -52,6 +79,7 @@ export interface AProTableProps<T = TableData> {
   permission?: ProTablePermission;
   multiple?: boolean;
   selectedRowKeys?: ProTableRowKey[];
+  selectionOptions?: ProTableSelectionOptions;
 }
 
 export interface AProTableEmits<T = TableData> {
@@ -59,11 +87,14 @@ export interface AProTableEmits<T = TableData> {
   (e: 'select', rows: T[]): void;
   (e: 'error', error: unknown): void;
   (e: 'loadingChange', loading: boolean): void;
+  (e: 'dataChange', payload: ProTableDataChange<T>): void;
 }
 
 export interface AProTableSlots<T = TableData> {
+  'surface-title'?(): VNodeChild;
   'toolbar-left'?(): VNodeChild;
   'toolbar-right'?(): VNodeChild;
+  'before-table'?(): VNodeChild;
   actions?(scope: Slot<T>): VNodeChild;
   action?(scope: Slot<T>): VNodeChild;
   footer?(scope: ProTableFooterSlot<T>): VNodeChild;
@@ -73,5 +104,7 @@ export interface AProTableSlots<T = TableData> {
 export interface AProTableExposed {
   doRequest(options?: ProTableRequestOptions): Promise<void>;
   refresh(resetPage?: boolean): Promise<void>;
+  refresh(options?: ProTableRefreshOptions): Promise<void>;
+  invalidate(): void;
   clearSelection(): void;
 }

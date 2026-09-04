@@ -75,9 +75,13 @@ export type {
   ProTableFetcherParams,
   ProTableFetcherResult,
   ProTableFooterSlot,
+  ProTableDataChange,
+  ProTablePaginationOptions,
   ProTablePermission,
+  ProTableRefreshOptions,
   ProTableRequestOptions,
   ProTableRowKey,
+  ProTableSelectionOptions,
 } from './components/pro-table/types';
 
 // 组件命名导出（供按需 import）

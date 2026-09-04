@@ -17,9 +17,13 @@ import type {
   ProTableFetcherParams,
   ProTableFetcherResult,
   ProTableFooterSlot,
+  ProTableDataChange,
+  ProTablePaginationOptions,
   ProTablePermission,
+  ProTableRefreshOptions,
   ProTableRequestOptions,
   ProTableRowKey,
+  ProTableSelectionOptions,
   AFileUploaderProps,
   FileUploadBatchResult,
   ATiptapEditorProps,
@@ -104,18 +108,33 @@ describe('package public API', () => {
       rowIndex: 0,
     };
     const footer: ProTableFooterSlot<Row> = { data: result.list, total: result.total };
+    const dataChange: ProTableDataChange<Row> = { list: result.list, total: result.total, page: 1, pageSize: 10 };
+    const selectionOptions: ProTableSelectionOptions = { showCheckedAll: true, onlyCurrent: true };
+    const paginationOptions: ProTablePaginationOptions = {
+      showTotal: false,
+      showPageSize: false,
+      showJumper: true,
+      simple: true,
+      pageSizeOptions: [10, 20],
+    };
+    const refreshOptions: ProTableRefreshOptions = { resetPage: true, clearCurrentData: true };
     const props: AProTableProps<Row> = {
       columns: [{ dataIndex: 'id' }],
       fetcher,
+      title: 'Records',
       pagination: false,
+      paginationOptions,
       refreshable: true,
+      selectionOptions,
       surface: true,
       actions: [action],
       permission,
     };
     const slots: AProTableSlots<Row> = {
+      'surface-title': () => 'Scoped records',
       'toolbar-left': () => 'Create',
       'toolbar-right': () => 'Export',
+      'before-table': () => 'Summary',
       'actions': ({ record }) => String(record.id),
       'footer': ({ total }) => String(total),
       'popover': () => 'Popover',
@@ -125,24 +144,34 @@ describe('package public API', () => {
     const exposed: AProTableExposed = {
       doRequest: vi.fn().mockResolvedValue(undefined),
       refresh: vi.fn().mockResolvedValue(undefined),
+      invalidate: vi.fn(),
       clearSelection: vi.fn(),
     };
     const emit = vi.fn() as unknown as AProTableEmits<Row>;
     emit('loadingChange', true);
+    emit('dataChange', dataChange);
 
     expect(action.permissions).toEqual(['records.update']);
     expect(slot.record.id).toBe(1);
     expect(footer.total).toBe(1);
+    expect(dataChange.pageSize).toBe(10);
     expect(props.pagination).toBe(false);
+    expect(props.paginationOptions).toBe(paginationOptions);
     expect(props.refreshable).toBe(true);
+    expect(props.selectionOptions).toBe(selectionOptions);
     expect(props.surface).toBe(true);
+    expect(slots['surface-title']?.()).toBe('Scoped records');
     expect(slots['toolbar-left']?.()).toBe('Create');
     expect(slots['toolbar-right']?.()).toBe('Export');
+    expect(slots['before-table']?.()).toBe('Summary');
     expect(slots.actions?.(slot)).toBe('1');
     expect(requestOptions.clearCurrentData).toBe(true);
+    expect(refreshOptions).toEqual({ resetPage: true, clearCurrentData: true });
     expect(rowKey).toBe(1);
     expect(exposed.refresh).toBeTypeOf('function');
+    expect(exposed.invalidate).toBeTypeOf('function');
     expect(emit).toHaveBeenCalledWith('loadingChange', true);
+    expect(emit).toHaveBeenCalledWith('dataChange', dataChange);
   });
 
   it('exports the ATiptapEditor media contract types', () => {

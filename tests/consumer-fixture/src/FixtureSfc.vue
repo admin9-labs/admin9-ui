@@ -26,9 +26,7 @@
   }
 
   const fetchRows = async () => ({ list: [] as FixtureRow[], total: 0 });
-  const rowActions: Action<FixtureRow>[] = [
-    { label: 'Edit', permissions: 'records.update', onClick: () => undefined },
-  ];
+  const rowActions: Action<FixtureRow>[] = [{ label: 'Edit', permissions: 'records.update', onClick: () => undefined }];
   const attachments = ref<FileItem[]>([]);
   const filters = reactive({ keyword: '', status: undefined as string | undefined });
 </script>
@@ -47,12 +45,19 @@
       :actions="rowActions"
       :permission="(permission) => permission === 'records.update'"
       :pagination="false"
+      :pagination-options="{ showTotal: false, showPageSize: false }"
+      :selection-options="{ showCheckedAll: true, onlyCurrent: true }"
+      title="Fixture records"
       refreshable
       surface
+      multiple
+      @data-change="() => undefined"
       @loading-change="() => undefined"
     >
+      <template #surface-title>Fixture records slot</template>
       <template #toolbar-left><a-button>Create</a-button></template>
       <template #toolbar-right><a-button>Export</a-button></template>
+      <template #before-table><span>Fixture summary</span></template>
       <template #footer="{ total }">{{ total }}</template>
       <template #popover><span data-testid="fixture-table-popover" /></template>
     </AProTable>

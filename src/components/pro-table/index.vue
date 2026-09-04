@@ -6,10 +6,13 @@
   import type {
     Action,
     AProTableEmits,
+    ProTablePaginationOptions,
     ProTableFetcher,
     ProTablePermission,
+    ProTableRefreshOptions,
     ProTableRequestOptions,
     ProTableRowKey,
+    ProTableSelectionOptions,
   } from './types';
 
   /**
@@ -34,14 +37,18 @@
       rowKey?: string;
       /** 数据获取函数，注入式（库不调具体后端） */
       fetcher: ProTableFetcher<T>;
+      /** 可选表面标题；surface-title 插槽优先 */
+      title?: string;
       pageSize?: number;
       /** 是否启用分页 */
       pagination?: boolean;
+      /** 允许消费方配置的分页展示选项 */
+      paginationOptions?: ProTablePaginationOptions;
       /** 是否显示搜索框 */
       searchable?: boolean;
       /** 是否显示内置刷新按钮；未传时跟随 searchable */
       refreshable?: boolean;
-      /** 是否提供无标题数据工作台表面 */
+      /** 是否提供数据工作台表面 */
       surface?: boolean;
       /** 是否显式追加 action 列 */
       showAction?: boolean;
@@ -53,6 +60,8 @@
       multiple?: boolean;
       /** 选中行 key 数组（v-model:selectedRowKeys） */
       selectedRowKeys?: ProTableRowKey[];
+      /** 允许消费方配置的多选展示和当前页行为 */
+      selectionOptions?: ProTableSelectionOptions;
     }>(),
     {
       rowKey: 'id',
@@ -80,15 +89,28 @@
     current: 1,
     pageSize: props.pageSize,
     total: 0,
-    showTotal: true,
-    showPageSize: true,
   });
-  const tablePagination = computed(() => (props.pagination ? paginationState.value : false));
+  const tablePagination = computed(() => {
+    if (!props.pagination) return false;
+    return {
+      current: paginationState.value.current,
+      pageSize: paginationState.value.pageSize,
+      total: paginationState.value.total,
+      showTotal: props.paginationOptions?.showTotal ?? true,
+      showPageSize: props.paginationOptions?.showPageSize ?? true,
+      showJumper: props.paginationOptions?.showJumper,
+      simple: props.paginationOptions?.simple,
+      pageSizeOptions: props.paginationOptions?.pageSizeOptions,
+    };
+  });
   const showRefresh = computed(() => props.refreshable ?? props.searchable);
+  const hasSurfaceTitle = computed(() => Boolean(slots['surface-title']) || Boolean(props.title));
   const hasToolbarLeft = computed(() => Boolean(slots['toolbar-left']));
   const hasToolbarRight = computed(() => props.searchable || showRefresh.value || Boolean(slots['toolbar-right']));
   const hasToolbar = computed(() => hasToolbarLeft.value || hasToolbarRight.value);
+  const hasBeforeTable = computed(() => Boolean(slots['before-table']));
   let latestRequest = 0;
+  let invalidatedThrough = 0;
 
   /** action 列内部标识，避免调用方已自带 action 列时重复追加 */
   const ACTION_COLUMN_KEY = 'a9-pro-table-action';
@@ -124,25 +146,47 @@
     ];
   });
 
-  const rowSelection = computed(() =>
-    props.multiple
-      ? {
-          selectedRowKeys: props.selectedRowKeys,
-          onChange: (keys: (string | number)[]) => {
-            emit('update:selectedRowKeys', keys);
-            const rows = data.value.filter((row) =>
-              keys.includes((row as Record<string, unknown>)[props.rowKey] as string | number)
-            );
-            emit('select', rows);
-          },
-        }
-      : undefined
-  );
+  const isSameSelection = (left: ProTableRowKey[], right: ProTableRowKey[]) =>
+    left.length === right.length && left.every((key, index) => key === right[index]);
+  const getRowKey = (row: T) => (row as Record<string, unknown>)[props.rowKey] as ProTableRowKey;
+  const emitSelection = (keys: ProTableRowKey[]) => {
+    const nextKeys = [...keys];
+    if (isSameSelection(props.selectedRowKeys, nextKeys)) return;
+    emit('update:selectedRowKeys', nextKeys);
+    const selectedKeys = new Set(nextKeys);
+    emit(
+      'select',
+      data.value.filter((row) => selectedKeys.has(getRowKey(row)))
+    );
+  };
+  const clearOnlyCurrentSelection = () => {
+    if (props.multiple && props.selectionOptions?.onlyCurrent) emitSelection([]);
+  };
+  const reconcileOnlyCurrentSelection = () => {
+    if (!props.multiple || !props.selectionOptions?.onlyCurrent) return;
+    const currentKeys = new Set(data.value.map(getRowKey));
+    emitSelection(props.selectedRowKeys.filter((key) => currentKeys.has(key)));
+  };
+  const rowSelection = computed(() => {
+    if (!props.multiple) return undefined;
+    return {
+      selectedRowKeys: props.selectedRowKeys,
+      showCheckedAll: props.selectionOptions?.showCheckedAll,
+      onlyCurrent: props.selectionOptions?.onlyCurrent,
+      onChange: (keys: ProTableRowKey[]) => emitSelection(keys),
+    };
+  });
 
   const updateLoading = (value: boolean) => {
     if (loading.value === value) return;
     setLoading(value);
     emit('loadingChange', value);
+  };
+
+  const invalidate = () => {
+    latestRequest += 1;
+    invalidatedThrough = latestRequest;
+    updateLoading(false);
   };
 
   const doRequest = async ({ clearCurrentData = false }: ProTableRequestOptions = {}): Promise<void> => {
@@ -168,7 +212,10 @@
       }
       data.value = list;
       paginationState.value.total = total;
+      reconcileOnlyCurrentSelection();
+      emit('dataChange', { list, total, page, pageSize: paginationState.value.pageSize });
     } catch (error) {
+      if (request <= invalidatedThrough) return;
       if (request === latestRequest) emit('error', error);
       throw error;
     } finally {
@@ -183,38 +230,48 @@
 
   const onPageChange = (page: number) => {
     if (!props.pagination) return;
+    clearOnlyCurrentSelection();
     paginationState.value.current = page;
     fetchDataFromUi();
   };
 
   const onPageSizeChange = (size: number) => {
     if (!props.pagination) return;
+    clearOnlyCurrentSelection();
     paginationState.value.current = 1;
     paginationState.value.pageSize = size;
     fetchDataFromUi();
   };
 
   const handleSearch = () => {
+    clearOnlyCurrentSelection();
     paginationState.value.current = 1;
     fetchDataFromUi();
   };
 
-  /** 重新拉取数据；显式传 true 时先回到第一页。 */
-  const refresh = (resetPage = false) => {
-    if (resetPage) paginationState.value.current = 1;
-    return doRequest();
+  /** 重新拉取数据；兼容 boolean，并支持一次应用重置页码和清空当前数据。 */
+  const refresh = (options: boolean | ProTableRefreshOptions = false) => {
+    const { resetPage = false, clearCurrentData = false } = typeof options === 'boolean' ? { resetPage: options } : options;
+    if (resetPage) {
+      clearOnlyCurrentSelection();
+      paginationState.value.current = 1;
+    }
+    return doRequest({ clearCurrentData });
   };
 
   /** 清空多选（受控：通知父组件清空 selectedRowKeys） */
-  const clearSelection = () => emit('update:selectedRowKeys', []);
+  const clearSelection = () => emitSelection([]);
 
   watch(() => props.fetcher, fetchDataFromUi, { immediate: true });
 
-  defineExpose({ doRequest, refresh, clearSelection });
+  defineExpose({ doRequest, refresh, invalidate, clearSelection });
 </script>
 
 <template>
   <div class="a9-pro-table" :class="{ 'a9-pro-table--surface': surface }">
+    <h2 v-if="hasSurfaceTitle" class="a9-pro-table__title">
+      <slot name="surface-title">{{ title }}</slot>
+    </h2>
     <div v-if="hasToolbar" class="a9-pro-table__toolbar">
       <div v-if="hasToolbarLeft" class="a9-pro-table__toolbar-left">
         <slot name="toolbar-left" />
@@ -242,6 +299,7 @@
         <slot name="toolbar-right" />
       </div>
     </div>
+    <div v-if="hasBeforeTable" class="a9-pro-table__before-table"><slot name="before-table" /></div>
     <a-table
       v-bind="$attrs"
       :columns="mergedColumns"
@@ -272,7 +330,17 @@
       </template>
       <template
         v-for="key in Object.keys(slots).filter(
-          (name) => !['action', 'actions', 'footer', 'popover', 'toolbar-left', 'toolbar-right'].includes(name)
+          (name) =>
+            ![
+              'surface-title',
+              'toolbar-left',
+              'toolbar-right',
+              'before-table',
+              'action',
+              'actions',
+              'footer',
+              'popover',
+            ].includes(name)
         )"
         :key="key"
         #[key]="scoped"
@@ -295,6 +363,25 @@
       padding: 20px;
       background: var(--color-bg-2);
       border-radius: 4px;
+    }
+
+    &__title {
+      margin: 0 0 12px;
+      color: var(--color-text-1);
+      font-weight: 600;
+      font-size: 16px;
+      line-height: 24px;
+      letter-spacing: 0;
+    }
+
+    &__before-table {
+      margin-bottom: 12px;
+    }
+
+    &__title:empty,
+    &__before-table:empty {
+      display: none;
+      margin: 0;
     }
 
     &__toolbar {

@@ -16,6 +16,7 @@
     type CoordinateSelection,
     type CoordinateValue,
     type Action,
+    type ProTableDataChange,
   } from '../src';
   import { type AcceptanceState } from './fake-acceptance-utils';
   import createFakeFilePickerService from './fake-file-picker-service';
@@ -86,6 +87,7 @@
   const collapsibleFilter = reactive(createFilterModel());
   const tableError = ref(false);
   const tableLoading = ref(false);
+  const tableDataSummary = ref('等待有效数据');
   const selectedRowKeys = ref<(string | number)[]>([]);
   const tableActions: Action<TableRow>[] = [
     {
@@ -97,6 +99,9 @@
     },
   ];
   const tablePermission = (permission: string) => permission === 'table.select';
+  const recordTableData = ({ page, pageSize, total }: ProTableDataChange<TableRow>) => {
+    tableDataSummary.value = `第 ${page} 页 · 每页 ${pageSize} 条 · 共 ${total} 条`;
+  };
   const iconValue = ref('icon-apps');
   const iconMode = ref<'normal' | 'readonly' | 'disabled'>('normal');
   const coordinateValue = ref<CoordinateValue>({ latitude: 27.894504, longitude: 102.264449 });
@@ -335,12 +340,17 @@
           :actions="tableActions"
           :permission="tablePermission"
           :page-size="4"
+          :pagination-options="{ pageSizeOptions: [4, 10, 20] }"
+          :selection-options="{ showCheckedAll: true, onlyCurrent: true }"
           :scroll="{ x: 760 }"
+          title="发布检查"
           searchable
           surface
           multiple
           @loading-change="tableLoading = $event"
+          @data-change="recordTableData"
         >
+          <template #surface-title>组件发布检查</template>
           <template #toolbar-left>
             <a-button type="primary" data-testid="pro-table-create">
               <template #icon><icon-plus /></template>
@@ -357,6 +367,9 @@
                 <template #icon><icon-download /></template>
               </a-button>
             </a-tooltip>
+          </template>
+          <template #before-table>
+            <a-alert type="info" data-testid="pro-table-before-table">{{ tableDataSummary }}</a-alert>
           </template>
           <template #status="{ record }">
             <a-tag :color="statusColor(record.status)">{{ statusText(record.status) }}</a-tag>

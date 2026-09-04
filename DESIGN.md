@@ -90,7 +90,7 @@ app.use(Admin9UI, {
 - [AFileUploader](./docs/components/file-uploader.md) 负责本地文件队列、进度、取消、重试和部分成功，不提供网络文件或扫码上传。
 - [AFilterForm](./docs/components/filter-form.md) 默认提供可直接放入列表页的卡片式表面，负责响应式筛选布局与表单事件，不管理标题、分页、请求和业务默认值。
 - [AIconPicker](./docs/components/icon-picker.md) 分发图标名和分类元数据，不将全部 SVG 实现打入包。
-- [AProTable](./docs/components/pro-table.md) 收敛 fetcher、加载状态、分页和轻量工具栏布局，不拥有查询表单、导出或其他业务命令。
+- [AProTable](./docs/components/pro-table.md) 收敛 fetcher、请求失效、加载状态、分页、受控多选和轻量表面布局；不接受外部 data/loading/current/total 接管，也不拥有查询表单、导出或其他业务命令。
 - [ATiptapEditor](./docs/components/tiptap-editor.md) 负责编辑器 schema、交互和安全序列化，不提供业务模板、协同编辑或服务端 HTML 清洗。
 
 这些边界用于判断新能力是否属于组件库：只有能够跨应用复用、且确实补充 Arco Design Vue 通用场景的组件能力才进入公共 API。

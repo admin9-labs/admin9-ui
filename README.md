@@ -62,7 +62,7 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 - [`AFileUploader`](./docs/components/file-uploader.md)：支持进度、取消、重试和部分成功的本地批量上传队列
 - [`AFilterForm`](./docs/components/filter-form.md)：默认提供卡片式背景，并根据字段数和响应式列数自动调整布局的筛选表单
 - [`AIconPicker`](./docs/components/icon-picker.md)：支持分类、搜索和键盘导航的 Arco 图标选择器
-- [`AProTable`](./docs/components/pro-table.md)：通过 `fetcher` 接入数据源，并支持轻量工具栏布局和权限过滤行操作的页面级表格
+- [`AProTable`](./docs/components/pro-table.md)：通过 `fetcher` 接入数据源，并支持可选标题、前置内容、轻量工具栏与受控多选的页面级表格
 - [`ATiptapEditor`](./docs/components/tiptap-editor.md)：支持常用格式与图片、视频、音频编辑的 HTML 富文本编辑器
 
 包同时导出组件相关类型、`Admin9UIPluginOptions`、文件浏览与上传能力类型、locale 资源和 `arcoIconNames`。
