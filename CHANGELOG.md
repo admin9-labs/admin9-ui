@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-05
+
+### Added
+
+- `AProTable` 新增按需渲染的轻量左右工具栏、独立 `refreshable` 控制、可选无标题数据工作台表面，以及 `toolbar-left`、`toolbar-right` 公共插槽。
+
+### Changed
+
+- 关键词搜索仍默认附带内置刷新按钮；消费方可以显式关闭刷新，并继续通过插槽拥有新增、导入、导出和批量操作等业务命令。
+
+**Full Changelog**: https://github.com/admin9-labs/admin9-ui/compare/v0.10.1...v0.11.0
+
 ## [0.10.1] - 2026-09-05
 
 ### Fixed
