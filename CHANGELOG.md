@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-05
+
 ### Added
 
 - `AProTable` 新增泛型 `Action`、`Slot` 类型、权限过滤的配置式行操作，以及 `actions`、`footer` 和全局 `popover` 插槽。
@@ -11,6 +13,8 @@
 ### Changed
 
 - `AProTable` 刷新时默认保留当前数据；调用方可通过 `doRequest({ clearCurrentData: true })` 显式清空后再请求。
+
+**Full Changelog**: https://github.com/admin9-labs/admin9-ui/compare/v0.9.1...v0.10.0
 
 ## [0.9.1] - 2026-09-03
 
