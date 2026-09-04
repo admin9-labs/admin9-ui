@@ -1,6 +1,6 @@
 # AProTable
 
-`AProTable` 是后端无关的页面级表格。它通过 `fetcher` 统一数据请求、加载状态和分页，可选提供关键词搜索、受控多选与权限过滤的行操作列。组件不包含具体 API、查询表单、工具栏或导出。
+`AProTable` 是后端无关的页面级表格。它通过 `fetcher` 统一数据请求、加载状态和分页，可选提供关键词搜索、刷新、轻量工具栏布局、受控多选与权限过滤的行操作列。组件不包含具体 API、复杂筛选或新增、导入、导出、批量操作等业务命令；这些命令由消费方通过工具栏插槽实现。
 
 ## 基础示例
 
@@ -10,6 +10,7 @@
   import type { TableColumnData } from '@arco-design/web-vue';
   import { AProTable, type Action } from '@admin9-labs/admin9-ui';
   import { queryRows } from './api';
+  import { createRecord, exportRows } from './commands';
 
   interface TableRow {
     id: number;
@@ -56,10 +57,17 @@
     :actions="actions"
     :permission="hasPermission"
     searchable
+    surface
     multiple
     @error="reportError"
     @loading-change="tableLoading = $event"
   >
+    <template #toolbar-left>
+      <a-button type="primary" @click="createRecord">新增</a-button>
+    </template>
+    <template #toolbar-right>
+      <a-button @click="exportRows">导出</a-button>
+    </template>
     <template #status="{ record }">
       <a-tag>{{ record.status }}</a-tag>
     </template>
@@ -74,6 +82,10 @@
 
 `fetcher` 接收 `{ page, pageSize, keyword? }`，其中页码从 `1` 开始；它必须返回 `Promise<{ list: TableData[]; total: number }>`。组件只调用该函数，不感知请求 URL、认证或响应信封。
 
+工具栏固定按 `toolbar-left`、搜索框、内置刷新按钮、`toolbar-right` 的顺序排列；没有任何工具内容时不渲染工具栏。搜索会回到第 1 页后请求，刷新保留当前页。复杂筛选继续放在组件外部，例如使用 `AFilterForm` 管理筛选条件后将其闭包注入 `fetcher`。
+
+`surface` 默认为 `false`，适合嵌入消费方已有容器；传 `surface` 时使用 Arco 主题背景、`20px` 内边距和 `4px` 圆角呈现无标题数据工作台，不会嵌套 `a-card`。工具栏在窄屏自动换行，搜索框占满可用行宽；表格横向滚动仍由消费方通过 Arco `scroll` 属性控制。
+
 `Action<T>` 包含 `label`、`onClick(record)` 和可选的 `permissions`。权限数组采用任一匹配语义；未声明权限的操作始终显示，声明权限的操作仅在 `permission` 判断函数通过时显示。未提供判断函数时，带权限要求的操作默认隐藏。
 
 请求结果的 `total` 使当前页超出最后有效页时，组件会回退到最后有效页并自动重新请求；两次请求共享同一个 loading 周期。设置 `:pagination="false"` 时不显示分页并固定请求第一页。
@@ -87,7 +99,9 @@
 | `rowKey`          | `string`                                                    | `'id'`  | 行唯一标识字段                                             |
 | `pageSize`        | `number`                                                    | `10`    | 初始分页容量                                               |
 | `pagination`      | `boolean`                                                   | `true`  | 传 `false` 时关闭分页并固定请求第一页                      |
-| `searchable`      | `boolean`                                                   | `false` | 是否显示关键词搜索和刷新区                                 |
+| `searchable`      | `boolean`                                                   | `false` | 是否显示关键词搜索                                         |
+| `refreshable`     | `boolean`                                                   | 见说明  | 是否显示内置刷新按钮；未传时跟随 `searchable`，可显式关闭  |
+| `surface`         | `boolean`                                                   | `false` | 是否启用无标题数据工作台表面                               |
 | `showAction`      | `boolean`                                                   | `false` | 是否显式追加操作列；传入操作配置或操作插槽时也会自动追加   |
 | `actions`         | `Action<T>[]`                                               | `[]`    | 配置式行操作                                               |
 | `permission`      | `(permission: string) => boolean`                           | -       | 单项权限判断函数                                           |
@@ -111,12 +125,14 @@
 
 内部 `a-table` 会透传应用提供的普通具名插槽及其作用域参数。操作列依次渲染 `actions` prop、`actions` 插槽和兼容保留的 `action` 插槽；如果 `columns` 已包含 `slotName: 'action'` 或内部操作列标识，组件不会重复追加。
 
-| 插槽       | 作用域                                  | 说明                                           |
-| ---------- | --------------------------------------- | ---------------------------------------------- |
-| `actions`  | `Slot<T>`                               | 追加行操作，位于配置式操作之后                 |
-| `action`   | `Slot<T>`                               | 旧版行操作插槽，保留向后兼容                   |
-| `footer`   | `{ data: T[]; total: number }`          | 表格下方内容                                   |
-| `popover`  | -                                       | 全局内容，只渲染一次，不随行重复               |
+| 插槽            | 作用域                         | 说明                                           |
+| --------------- | ------------------------------ | ---------------------------------------------- |
+| `toolbar-left`  | -                              | 新增、导入、保存、批量操作等消费方业务命令     |
+| `toolbar-right` | -                              | 导出、列设置等消费方自定义工具                 |
+| `actions`       | `Slot<T>`                      | 追加行操作，位于配置式操作之后                 |
+| `action`        | `Slot<T>`                      | 旧版行操作插槽，保留向后兼容                   |
+| `footer`        | `{ data: T[]; total: number }` | 表格下方内容                                   |
+| `popover`       | -                              | 全局内容，只渲染一次，不随行重复               |
 
 `Slot<T>` 表示 Arco 操作列插槽作用域，包含 `record`、`column` 和 `rowIndex`。
 

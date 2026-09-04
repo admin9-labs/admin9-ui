@@ -81,14 +81,26 @@ const InputSearchStub = defineComponent({
 });
 
 const ButtonStub = defineComponent({
-  setup(_, { attrs, slots }) {
-    return () => h('button', attrs, [slots.icon?.(), slots.default?.()]);
+  props: { loading: Boolean, shape: String },
+  setup(props, { attrs, slots }) {
+    return () =>
+      h('button', { ...attrs, 'data-loading': String(props.loading), 'data-shape': props.shape }, [
+        slots.icon?.(),
+        slots.default?.(),
+      ]);
   },
 });
 
 const TransparentStub = defineComponent({
   setup(_, { slots }) {
     return () => h('span', slots.default?.());
+  },
+});
+
+const TooltipStub = defineComponent({
+  props: { content: String },
+  setup(props, { slots }) {
+    return () => h('span', { 'data-tooltip': props.content }, slots.default?.());
   },
 });
 
@@ -150,6 +162,7 @@ function mountTable(
   app.component('AInputSearch', InputSearchStub);
   app.component('AButton', ButtonStub);
   app.component('ASpace', TransparentStub);
+  app.component('ATooltip', TooltipStub);
   app.component('IconRefresh', TransparentStub);
   mountedApps.push(app);
   app.mount('#app');
@@ -165,6 +178,77 @@ describe('AProTable public contract', () => {
 
   afterEach(() => {
     mountedApps.splice(0).forEach((app) => app.unmount());
+  });
+
+  it('does not render an empty toolbar or surface styling by default', async () => {
+    mountTable(vi.fn().mockResolvedValue({ list: [], total: 0 }));
+    await flush();
+
+    expect(document.querySelector('.a9-pro-table__toolbar')).toBeNull();
+    expect(document.querySelector('.a9-pro-table')?.classList.contains('a9-pro-table--surface')).toBe(false);
+  });
+
+  it('renders toolbar-left, search, refresh, and toolbar-right in public order on a surface', async () => {
+    mountTable(
+      vi.fn().mockResolvedValue({ list: [], total: 0 }),
+      { searchable: true, surface: true },
+      {
+        'toolbar-left': () => h('button', { 'data-testid': 'toolbar-left' }, 'Create'),
+        'toolbar-right': () => h('button', { 'data-testid': 'toolbar-right' }, 'Export'),
+      }
+    );
+    await flush();
+
+    const root = document.querySelector('.a9-pro-table');
+    const toolbar = root?.querySelector('.a9-pro-table__toolbar');
+    const ordered = [
+      toolbar?.querySelector('[data-testid="toolbar-left"]'),
+      toolbar?.querySelector('[data-testid="table-search"]'),
+      toolbar?.querySelector('.a9-pro-table__refresh'),
+      toolbar?.querySelector('[data-testid="toolbar-right"]'),
+    ];
+
+    expect(root?.classList.contains('a9-pro-table--surface')).toBe(true);
+    expect(ordered.every(Boolean)).toBe(true);
+    ordered.slice(0, -1).forEach((element, index) => {
+      expect(element?.compareDocumentPosition(ordered[index + 1] as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+    expect(toolbar?.querySelector('.a9-pro-table__refresh')?.getAttribute('aria-label')).toBe('Refresh');
+    expect(toolbar?.querySelector('[data-tooltip="Refresh"]')).not.toBeNull();
+    expect(toolbar?.querySelector('.a9-pro-table__refresh')?.getAttribute('data-shape')).toBe('circle');
+  });
+
+  it('supports a loading refresh button without search and keeps the current page', async () => {
+    const refreshRequest = deferred<{ list: Record<string, unknown>[]; total: number }>();
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce({ list: [{ id: 1 }], total: 100 })
+      .mockResolvedValueOnce({ list: [{ id: 3 }], total: 100 })
+      .mockReturnValueOnce(refreshRequest.promise);
+    mountTable(fetcher, { refreshable: true });
+    await flush();
+
+    expect(document.querySelector('[data-testid="table-search"]')).toBeNull();
+    document.querySelector<HTMLButtonElement>('[data-testid="page-change"]')?.click();
+    await flush();
+    const refreshButton = document.querySelector<HTMLButtonElement>('.a9-pro-table__refresh');
+    refreshButton?.click();
+    await nextTick();
+
+    expect(fetcher).toHaveBeenLastCalledWith({ page: 3, pageSize: 10, keyword: undefined });
+    expect(refreshButton?.getAttribute('data-loading')).toBe('true');
+
+    refreshRequest.resolve({ list: [{ id: 4 }], total: 100 });
+    await flush();
+    expect(refreshButton?.getAttribute('data-loading')).toBe('false');
+  });
+
+  it('keeps searchable refresh compatibility and allows refreshable=false to disable it', async () => {
+    mountTable(vi.fn().mockResolvedValue({ list: [], total: 0 }), { searchable: true, refreshable: false });
+    await flush();
+
+    expect(document.querySelector('[data-testid="table-search"]')).not.toBeNull();
+    expect(document.querySelector('.a9-pro-table__refresh')).toBeNull();
   });
 
   it('passes fetch inputs, table attrs, action columns, and scoped slots without backend assumptions', async () => {
@@ -424,8 +508,7 @@ describe('AProTable public contract', () => {
     await flush();
     document.querySelector<HTMLButtonElement>('[data-testid="page-size-change"]')?.click();
     await flush();
-    const refreshButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('.a9-pro-table__search > button'));
-    refreshButtons[0]?.click();
+    document.querySelector<HTMLButtonElement>('.a9-pro-table__refresh')?.click();
     await flush();
 
     expect(fetcher).toHaveBeenCalledTimes(errors.length);

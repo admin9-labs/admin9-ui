@@ -108,13 +108,17 @@ describe('package public API', () => {
       columns: [{ dataIndex: 'id' }],
       fetcher,
       pagination: false,
+      refreshable: true,
+      surface: true,
       actions: [action],
       permission,
     };
     const slots: AProTableSlots<Row> = {
-      actions: ({ record }) => String(record.id),
-      footer: ({ total }) => String(total),
-      popover: () => 'Popover',
+      'toolbar-left': () => 'Create',
+      'toolbar-right': () => 'Export',
+      'actions': ({ record }) => String(record.id),
+      'footer': ({ total }) => String(total),
+      'popover': () => 'Popover',
     };
     const requestOptions: ProTableRequestOptions = { clearCurrentData: true };
     const rowKey: ProTableRowKey = 1;
@@ -130,6 +134,10 @@ describe('package public API', () => {
     expect(slot.record.id).toBe(1);
     expect(footer.total).toBe(1);
     expect(props.pagination).toBe(false);
+    expect(props.refreshable).toBe(true);
+    expect(props.surface).toBe(true);
+    expect(slots['toolbar-left']?.()).toBe('Create');
+    expect(slots['toolbar-right']?.()).toBe('Export');
     expect(slots.actions?.(slot)).toBe('1');
     expect(requestOptions.clearCurrentData).toBe(true);
     expect(rowKey).toBe(1);

@@ -47,8 +47,12 @@
       :actions="rowActions"
       :permission="(permission) => permission === 'records.update'"
       :pagination="false"
+      refreshable
+      surface
       @loading-change="() => undefined"
     >
+      <template #toolbar-left><a-button>Create</a-button></template>
+      <template #toolbar-right><a-button>Export</a-button></template>
       <template #footer="{ total }">{{ total }}</template>
       <template #popover><span data-testid="fixture-table-popover" /></template>
     </AProTable>

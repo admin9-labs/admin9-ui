@@ -327,26 +327,42 @@
         </div>
 
         <a-alert v-if="tableError" type="error" data-testid="table-error-state">模拟 fetcher 已拒绝请求</a-alert>
-        <div class="component-frame">
-          <AProTable
-            :key="tableState"
-            v-model:selected-row-keys="selectedRowKeys"
-            :columns="columns"
-            :fetcher="tableFetcher"
-            :actions="tableActions"
-            :permission="tablePermission"
-            :page-size="4"
-            :scroll="{ x: 760 }"
-            searchable
-            multiple
-            @loading-change="tableLoading = $event"
-          >
-            <template #status="{ record }">
-              <a-tag :color="statusColor(record.status)">{{ statusText(record.status) }}</a-tag>
-            </template>
-            <template #footer="{ total }"> 当前查询共 {{ total }} 条 · {{ tableLoading ? '加载中' : '加载完成' }} </template>
-          </AProTable>
-        </div>
+        <AProTable
+          :key="tableState"
+          v-model:selected-row-keys="selectedRowKeys"
+          :columns="columns"
+          :fetcher="tableFetcher"
+          :actions="tableActions"
+          :permission="tablePermission"
+          :page-size="4"
+          :scroll="{ x: 760 }"
+          searchable
+          surface
+          multiple
+          @loading-change="tableLoading = $event"
+        >
+          <template #toolbar-left>
+            <a-button type="primary" data-testid="pro-table-create">
+              <template #icon><icon-plus /></template>
+              新增
+            </a-button>
+            <a-button data-testid="pro-table-import">
+              <template #icon><icon-upload /></template>
+              导入
+            </a-button>
+          </template>
+          <template #toolbar-right>
+            <a-tooltip content="导出">
+              <a-button shape="circle" aria-label="导出" data-testid="pro-table-export">
+                <template #icon><icon-download /></template>
+              </a-button>
+            </a-tooltip>
+          </template>
+          <template #status="{ record }">
+            <a-tag :color="statusColor(record.status)">{{ statusText(record.status) }}</a-tag>
+          </template>
+          <template #footer="{ total }"> 当前查询共 {{ total }} 条 · {{ tableLoading ? '加载中' : '加载完成' }} </template>
+        </AProTable>
       </section>
 
       <section v-if="!tiptapFocused" id="icon-picker" class="acceptance-section" data-testid="icon-picker-section">

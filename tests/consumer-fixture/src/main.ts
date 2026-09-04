@@ -115,6 +115,8 @@ const rowFetcher: ProTableFetcher<FixtureRow> = async (params) => ({
 const proTableProps: AProTableProps<FixtureRow> = {
   columns: [{ title: 'Name', dataIndex: 'name' }],
   fetcher: rowFetcher,
+  refreshable: true,
+  surface: true,
   actions: [rowAction],
 };
 const proTableTypes: {
@@ -128,7 +130,10 @@ const proTableTypes: {
   request: ProTableRequestOptions;
   rowKey: ProTableRowKey;
 } = {
-  slots: {},
+  slots: {
+    'toolbar-left': () => 'Create',
+    'toolbar-right': () => 'Export',
+  },
   params: { page: 1, pageSize: 10 },
   result: { list: [], total: 0 },
   footer: { data: [], total: 0 },

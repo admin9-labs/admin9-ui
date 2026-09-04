@@ -45,6 +45,8 @@ export interface AProTableProps<T = TableData> {
   pageSize?: number;
   pagination?: boolean;
   searchable?: boolean;
+  refreshable?: boolean;
+  surface?: boolean;
   showAction?: boolean;
   actions?: Action<T>[];
   permission?: ProTablePermission;
@@ -60,6 +62,8 @@ export interface AProTableEmits<T = TableData> {
 }
 
 export interface AProTableSlots<T = TableData> {
+  'toolbar-left'?(): VNodeChild;
+  'toolbar-right'?(): VNodeChild;
   actions?(scope: Slot<T>): VNodeChild;
   action?(scope: Slot<T>): VNodeChild;
   footer?(scope: ProTableFooterSlot<T>): VNodeChild;

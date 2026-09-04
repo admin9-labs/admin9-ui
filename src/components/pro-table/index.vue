@@ -19,7 +19,7 @@
    *
    * AProTable 用 fetcher 注入自管请求，rowKey 可配，action 列支持配置式操作与插槽扩展。
    *
-   * 精简原则：只收敛 fetcher+分页+loading，不做 query 表单/工具栏/批量操作/导出那套重的。
+   * 精简原则：收敛 fetcher、分页、loading 与轻量工具栏布局，不拥有 query 表单、业务命令或导出能力。
    * 后端能力一律通过 fetcher 注入，库不调任何后端。
    */
   defineOptions({
@@ -39,6 +39,10 @@
       pagination?: boolean;
       /** 是否显示搜索框 */
       searchable?: boolean;
+      /** 是否显示内置刷新按钮；未传时跟随 searchable */
+      refreshable?: boolean;
+      /** 是否提供无标题数据工作台表面 */
+      surface?: boolean;
       /** 是否显式追加 action 列 */
       showAction?: boolean;
       /** 配置式行操作，按声明顺序渲染在 actions/action 插槽之前 */
@@ -55,6 +59,8 @@
       pageSize: 10,
       pagination: true,
       searchable: false,
+      refreshable: undefined,
+      surface: false,
       showAction: false,
       actions: () => [],
       multiple: false,
@@ -78,6 +84,10 @@
     showPageSize: true,
   });
   const tablePagination = computed(() => (props.pagination ? paginationState.value : false));
+  const showRefresh = computed(() => props.refreshable ?? props.searchable);
+  const hasToolbarLeft = computed(() => Boolean(slots['toolbar-left']));
+  const hasToolbarRight = computed(() => props.searchable || showRefresh.value || Boolean(slots['toolbar-right']));
+  const hasToolbar = computed(() => hasToolbarLeft.value || hasToolbarRight.value);
   let latestRequest = 0;
 
   /** action 列内部标识，避免调用方已自带 action 列时重复追加 */
@@ -204,18 +214,33 @@
 </script>
 
 <template>
-  <div class="a9-pro-table">
-    <div v-if="searchable" class="a9-pro-table__search">
-      <a-input-search
-        v-model="keyword"
-        :placeholder="t('admin9Ui.proTable.searchPlaceholder')"
-        allow-clear
-        @search="handleSearch"
-      />
-      <a-button @click="fetchDataFromUi">
-        <template #icon><icon-refresh /></template>
-        {{ t('admin9Ui.proTable.refresh') }}
-      </a-button>
+  <div class="a9-pro-table" :class="{ 'a9-pro-table--surface': surface }">
+    <div v-if="hasToolbar" class="a9-pro-table__toolbar">
+      <div v-if="hasToolbarLeft" class="a9-pro-table__toolbar-left">
+        <slot name="toolbar-left" />
+      </div>
+      <div v-if="hasToolbarRight" class="a9-pro-table__toolbar-right">
+        <a-input-search
+          v-if="searchable"
+          v-model="keyword"
+          class="a9-pro-table__search"
+          :placeholder="t('admin9Ui.proTable.searchPlaceholder')"
+          allow-clear
+          @search="handleSearch"
+        />
+        <a-tooltip v-if="showRefresh" :content="t('admin9Ui.proTable.refresh')">
+          <a-button
+            class="a9-pro-table__refresh"
+            shape="circle"
+            :loading="loading"
+            :aria-label="t('admin9Ui.proTable.refresh')"
+            @click="fetchDataFromUi"
+          >
+            <template #icon><icon-refresh /></template>
+          </a-button>
+        </a-tooltip>
+        <slot name="toolbar-right" />
+      </div>
     </div>
     <a-table
       v-bind="$attrs"
@@ -246,7 +271,9 @@
         </a-space>
       </template>
       <template
-        v-for="key in Object.keys(slots).filter((name) => !['action', 'actions', 'footer', 'popover'].includes(name))"
+        v-for="key in Object.keys(slots).filter(
+          (name) => !['action', 'actions', 'footer', 'popover', 'toolbar-left', 'toolbar-right'].includes(name)
+        )"
         :key="key"
         #[key]="scoped"
       >
@@ -260,10 +287,77 @@
 
 <style lang="less" scoped>
   .a9-pro-table {
-    &__search {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+
+    &--surface {
+      padding: 20px;
+      background: var(--color-bg-2);
+      border-radius: 4px;
+    }
+
+    &__toolbar {
       display: flex;
-      gap: 8px;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      min-width: 0;
       margin-bottom: 12px;
+    }
+
+    &__toolbar-left,
+    &__toolbar-right {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      min-width: 0;
+    }
+
+    &__toolbar-left {
+      flex: 1 1 auto;
+    }
+
+    &__toolbar-right {
+      flex: 0 1 auto;
+      justify-content: flex-end;
+      margin-left: auto;
+    }
+
+    &__search {
+      flex: 0 1 240px;
+      width: 240px;
+      max-width: 100%;
+    }
+
+    &__refresh {
+      flex: 0 0 32px;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+    }
+
+    @media (width <= 575px) {
+      &__toolbar {
+        align-items: stretch;
+      }
+
+      &__toolbar-left,
+      &__toolbar-right {
+        flex: 1 1 100%;
+        width: 100%;
+      }
+
+      &__toolbar-right {
+        margin-left: 0;
+      }
+
+      &__search {
+        flex: 1 1 100%;
+        width: 100%;
+      }
     }
   }
 </style>
