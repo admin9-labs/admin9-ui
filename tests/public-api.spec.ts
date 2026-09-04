@@ -7,6 +7,8 @@ import type {
   CoordinateValue,
   FilePickerAdapter,
   AFilterFormProps,
+  Action,
+  Slot,
   AFileUploaderProps,
   FileUploadBatchResult,
   ATiptapEditorProps,
@@ -70,6 +72,25 @@ describe('package public API', () => {
     const props: AFilterFormProps = { model, cols: 3, loading: false };
 
     expect(props).toEqual({ model, cols: 3, loading: false });
+  });
+
+  it('exports the pro table action and slot contracts', () => {
+    interface Row {
+      id: number;
+    }
+    const action: Action<Row> = {
+      label: 'Edit',
+      permissions: ['records.update'],
+      onClick: vi.fn(),
+    };
+    const slot: Slot<Row> = {
+      record: { id: 1 },
+      column: { dataIndex: 'actions' },
+      rowIndex: 0,
+    };
+
+    expect(action.permissions).toEqual(['records.update']);
+    expect(slot.record.id).toBe(1);
   });
 
   it('exports the ATiptapEditor media contract types', () => {

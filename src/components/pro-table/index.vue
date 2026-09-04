@@ -1,16 +1,16 @@
-<script setup lang="ts">
-  import { computed, ref, watch, useSlots } from 'vue';
+<script setup lang="ts" generic="T extends object = Record<string, unknown>">
+  import { computed, ref, shallowRef, watch, useSlots } from 'vue';
   import { useI18n } from 'vue-i18n';
-  import { type TableColumnData, type TableData } from '@arco-design/web-vue';
+  import { type TableColumnData } from '@arco-design/web-vue';
   import { useLoading } from '../../hooks';
+  import type { Action, ProTableFetcherParams, ProTableFetcherResult, ProTableRequestOptions } from './types';
 
   /**
    * AProTable —— 页面级业务表格（对外注册）。
    *
    * 定位（见 DESIGN.md §4）：页面级表格，收敛 fetcher + 分页 + loading + 可选 action 列。
    *
-   * AProTable 用 fetcher 注入自管请求，rowKey 可配，action 列可配且内容完全由
-   * #action 插槽自定义（无内置编辑/删除）。
+   * AProTable 用 fetcher 注入自管请求，rowKey 可配，action 列支持配置式操作与插槽扩展。
    *
    * 精简原则：只收敛 fetcher+分页+loading，不做 query 表单/工具栏/批量操作/导出那套重的。
    * 后端能力一律通过 fetcher 注入，库不调任何后端。
@@ -20,33 +20,22 @@
     inheritAttrs: false,
   });
 
-  /** fetcher 入参 */
-  export interface ProTableFetcherParams {
-    /** 1-based 页码 */
-    page: number;
-    pageSize: number;
-    /** 搜索关键词，无则 undefined */
-    keyword?: string;
-  }
-
-  /** fetcher 返回 */
-  export interface ProTableFetcherResult<T = TableData> {
-    list: T[];
-    total: number;
-  }
-
   const props = withDefaults(
     defineProps<{
       columns: TableColumnData[];
       /** 行 key 字段名，默认 'id'（不硬编码，由调用方决定） */
       rowKey?: string;
       /** 数据获取函数，注入式（库不调具体后端） */
-      fetcher: (params: ProTableFetcherParams) => Promise<ProTableFetcherResult>;
+      fetcher: (params: ProTableFetcherParams) => Promise<ProTableFetcherResult<T>>;
       pageSize?: number;
       /** 是否显示搜索框 */
       searchable?: boolean;
-      /** 是否追加 action 列（内容由 #action 插槽自定义，无内置编辑/删除） */
+      /** 是否显式追加 action 列 */
       showAction?: boolean;
+      /** 配置式行操作，按声明顺序渲染在 actions/action 插槽之前 */
+      actions?: Action<T>[];
+      /** 单项权限判断；权限数组中任一权限通过即可显示操作 */
+      permission?: (permission: string) => boolean;
       /** 多选模式（开启后通过 v-model:selectedRowKeys 受控） */
       multiple?: boolean;
       /** 选中行 key 数组（v-model:selectedRowKeys） */
@@ -57,6 +46,7 @@
       pageSize: 10,
       searchable: false,
       showAction: false,
+      actions: () => [],
       multiple: false,
       selectedRowKeys: () => [],
     }
@@ -64,7 +54,7 @@
 
   const emit = defineEmits<{
     (e: 'update:selectedRowKeys', keys: (string | number)[]): void;
-    (e: 'select', rows: TableData[]): void;
+    (e: 'select', rows: T[]): void;
     (e: 'error', error: unknown): void;
   }>();
 
@@ -73,7 +63,7 @@
   const slots = useSlots();
 
   const keyword = ref('');
-  const data = ref<TableData[]>([]);
+  const data = shallowRef<T[]>([]);
   const pagination = ref({
     current: 1,
     pageSize: props.pageSize,
@@ -86,9 +76,22 @@
   /** action 列内部标识，避免调用方已自带 action 列时重复追加 */
   const ACTION_COLUMN_KEY = 'a9-pro-table-action';
 
-  /** 最终列：showAction=true 时追加一列，内容由 #action 插槽决定 */
+  const canUseAction = (action: Action<T>) => {
+    if (!action.permissions || (Array.isArray(action.permissions) && action.permissions.length === 0)) return true;
+    const { permission } = props;
+    if (!permission) return false;
+    const permissions = Array.isArray(action.permissions) ? action.permissions : [action.permissions];
+    return permissions.some(permission);
+  };
+
+  const visibleActions = computed(() => props.actions.filter(canUseAction));
+  const hasActionContent = computed(
+    () => props.showAction || visibleActions.value.length > 0 || Boolean(slots.actions) || Boolean(slots.action)
+  );
+
+  /** 最终列：有配置式操作或操作插槽时自动追加，并保留 showAction 显式控制。 */
   const mergedColumns = computed<TableColumnData[]>(() => {
-    if (!props.showAction) return props.columns;
+    if (!hasActionContent.value) return props.columns;
     const hasAction = props.columns.some((c) => c.slotName === 'action' || c.dataIndex === ACTION_COLUMN_KEY);
     if (hasAction) return props.columns;
     return [
@@ -110,16 +113,19 @@
           selectedRowKeys: props.selectedRowKeys,
           onChange: (keys: (string | number)[]) => {
             emit('update:selectedRowKeys', keys);
-            const rows = data.value.filter((row: TableData) => keys.includes(row[props.rowKey] as string | number));
+            const rows = data.value.filter((row) =>
+              keys.includes((row as Record<string, unknown>)[props.rowKey] as string | number)
+            );
             emit('select', rows);
           },
         }
       : undefined
   );
 
-  const fetchData = async () => {
+  const doRequest = async ({ clearCurrentData = false }: ProTableRequestOptions = {}) => {
     const request = latestRequest + 1;
     latestRequest = request;
+    if (clearCurrentData) data.value = [];
     setLoading(true);
     try {
       const { list, total } = await props.fetcher({
@@ -140,7 +146,7 @@
 
   /** UI 事件不暴露 Promise；失败已通过 error 事件通知调用方。 */
   const fetchDataFromUi = () => {
-    fetchData().catch(() => undefined);
+    doRequest().catch(() => undefined);
   };
 
   const onPageChange = (page: number) => {
@@ -160,14 +166,14 @@
   };
 
   /** 重新拉取当前页数据 */
-  const refresh = () => fetchData();
+  const refresh = () => doRequest();
 
   /** 清空多选（受控：通知父组件清空 selectedRowKeys） */
   const clearSelection = () => emit('update:selectedRowKeys', []);
 
   watch(() => props.fetcher, fetchDataFromUi, { immediate: true });
 
-  defineExpose({ refresh, clearSelection });
+  defineExpose({ doRequest, refresh, clearSelection });
 </script>
 
 <template>
@@ -196,10 +202,32 @@
       @page-change="onPageChange"
       @page-size-change="onPageSizeChange"
     >
-      <template v-for="key in Object.keys(slots)" :key="key" #[key]="scoped">
+      <template #action="scoped">
+        <a-space>
+          <a-button
+            v-for="(action, index) in visibleActions"
+            :key="index"
+            class="a9-pro-table__action"
+            type="text"
+            size="small"
+            @click="action.onClick(scoped.record)"
+          >
+            {{ action.label }}
+          </a-button>
+          <slot name="actions" v-bind="scoped" />
+          <slot name="action" v-bind="scoped" />
+        </a-space>
+      </template>
+      <template
+        v-for="key in Object.keys(slots).filter((name) => !['action', 'actions', 'footer', 'popover'].includes(name))"
+        :key="key"
+        #[key]="scoped"
+      >
         <slot :name="key" v-bind="scoped" />
       </template>
     </a-table>
+    <slot name="footer" :data="data" :total="pagination.total" />
+    <slot name="popover" />
   </div>
 </template>
 

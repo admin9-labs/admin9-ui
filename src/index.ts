@@ -64,6 +64,14 @@ export type {
 
 export type { AFilterFormProps } from './components/filter-form/types';
 
+export type {
+  Action,
+  Slot,
+  ProTableFetcherParams,
+  ProTableFetcherResult,
+  ProTableRequestOptions,
+} from './components/pro-table/types';
+
 // 组件命名导出（供按需 import）
 export { ACoordinatePicker, AFilePicker, AFileUploader, AFilterForm, AIconPicker, AProTable, ATiptapEditor };
 

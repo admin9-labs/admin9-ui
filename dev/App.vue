@@ -15,6 +15,7 @@
     type FileType,
     type CoordinateSelection,
     type CoordinateValue,
+    type Action,
   } from '../src';
   import { type AcceptanceState } from './fake-acceptance-utils';
   import createFakeFilePickerService from './fake-file-picker-service';
@@ -79,13 +80,22 @@
     { title: '状态', dataIndex: 'status', slotName: 'status', width: 100 },
     { title: '更新时间', dataIndex: 'updatedAt', width: 168 },
   ];
-
   const tableState = ref<AcceptanceState>('normal');
   const singleFilter = reactive(createFilterModel());
   const multipleFilter = reactive(createFilterModel());
   const collapsibleFilter = reactive(createFilterModel());
   const tableError = ref(false);
   const selectedRowKeys = ref<(string | number)[]>([]);
+  const tableActions: Action<TableRow>[] = [
+    {
+      label: '定位',
+      permissions: 'table.select',
+      onClick: (record) => {
+        selectedRowKeys.value = [record.id];
+      },
+    },
+  ];
+  const tablePermission = (permission: string) => permission === 'table.select';
   const iconValue = ref('icon-apps');
   const iconMode = ref<'normal' | 'readonly' | 'disabled'>('normal');
   const coordinateValue = ref<CoordinateValue>({ latitude: 27.894504, longitude: 102.264449 });
@@ -322,18 +332,17 @@
             v-model:selected-row-keys="selectedRowKeys"
             :columns="columns"
             :fetcher="tableFetcher"
+            :actions="tableActions"
+            :permission="tablePermission"
             :page-size="4"
             :scroll="{ x: 760 }"
             searchable
-            show-action
             multiple
           >
             <template #status="{ record }">
               <a-tag :color="statusColor(record.status)">{{ statusText(record.status) }}</a-tag>
             </template>
-            <template #action="{ record }">
-              <a-button type="text" size="small" @click="selectedRowKeys = [record.id]">定位</a-button>
-            </template>
+            <template #footer="{ total }">当前查询共 {{ total }} 条</template>
           </AProTable>
         </div>
       </section>

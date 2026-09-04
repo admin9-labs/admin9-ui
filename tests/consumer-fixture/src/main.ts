@@ -16,6 +16,7 @@ import Admin9UI, {
   messages as rootMessages,
   type ATiptapEditorProps,
   type AFilterFormProps,
+  type Action,
   type CoordinateSelection,
   type CoordinateValue,
   type Admin9UIOptions,
@@ -30,6 +31,7 @@ import Admin9UI, {
   type TiptapImageDisplay,
   type TiptapInlineImageSize,
   type TiptapMediaAlign,
+  type Slot,
 } from '@admin9-labs/admin9-ui';
 import { enUS, localePrefix, messages, zhCN } from '@admin9-labs/admin9-ui/locale';
 import '@arco-design/web-vue/dist/arco.css';
@@ -85,6 +87,16 @@ const fixtureFilterModel: FixtureFilterModel = { keyword: '' };
 const filterFormProps: AFilterFormProps = { model: fixtureFilterModel, cols: 3 };
 const coordinateValue: CoordinateValue = { latitude: 27.8945, longitude: 102.2644 };
 const coordinateSelection: CoordinateSelection = { ...coordinateValue, source: 'model' };
+interface FixtureRow {
+  id: number;
+  name: string;
+}
+const rowAction: Action<FixtureRow> = { label: 'Open', onClick: () => undefined };
+const rowSlot: Slot<FixtureRow> = {
+  record: { id: 1, name: 'Fixture row' },
+  column: { dataIndex: 'actions' },
+  rowIndex: 0,
+};
 
 if (
   localePrefix !== 'admin9Ui' ||
@@ -97,6 +109,7 @@ if (
 }
 if (coordinateSelection.source !== 'model') throw new Error('Coordinate selection type is inconsistent.');
 if (emptyUploadResult.failed.length !== 0) throw new Error('File uploader result type is inconsistent.');
+if (rowSlot.record.id !== 1) throw new Error('Pro table slot type is inconsistent.');
 
 const i18n = createI18n({ legacy: false, locale: 'en-US', messages });
 const app = createApp({
@@ -108,6 +121,7 @@ const app = createApp({
       h(AProTable, {
         columns: [{ title: 'Name', dataIndex: 'name' }],
         fetcher: async () => ({ list: [{ id: 1, name: 'Fixture row' }], total: 1 }),
+        actions: [rowAction],
       }),
       h(ATiptapEditor, {
         modelValue:

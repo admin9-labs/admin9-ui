@@ -11,6 +11,7 @@
     type FilePickerAdapter,
     type FileUploadCapability,
     type FileItem,
+    type Action,
   } from '@admin9-labs/admin9-ui';
 
   defineProps<{
@@ -19,7 +20,15 @@
     fileUploaderService: FileUploadCapability;
   }>();
 
-  const fetchRows = async () => ({ list: [], total: 0 });
+  interface FixtureRow {
+    id: number;
+    name: string;
+  }
+
+  const fetchRows = async () => ({ list: [] as FixtureRow[], total: 0 });
+  const rowActions: Action<FixtureRow>[] = [
+    { label: 'Edit', permissions: 'records.update', onClick: () => undefined },
+  ];
   const attachments = ref<FileItem[]>([]);
   const filters = reactive({ keyword: '', status: undefined as string | undefined });
 </script>
@@ -32,7 +41,15 @@
       <a-form-item field="status" label="Status"><a-select v-model="filters.status" /></a-form-item>
     </AFilterForm>
     <ACoordinatePicker :model-value="{ latitude: 27.8945, longitude: 102.2644 }" api-key="fixture-key" readonly />
-    <AProTable :columns="[{ title: 'Name', dataIndex: 'name' }]" :fetcher="fetchRows" />
+    <AProTable
+      :columns="[{ title: 'Name', dataIndex: 'name' }]"
+      :fetcher="fetchRows"
+      :actions="rowActions"
+      :permission="(permission) => permission === 'records.update'"
+    >
+      <template #footer="{ total }">{{ total }}</template>
+      <template #popover><span data-testid="fixture-table-popover" /></template>
+    </AProTable>
     <ATiptapEditor
       model-value="<p>Fixture <img src='/fixture-inline.png' alt='Inline fixture' data-display='inline' data-size='1em'> content</p><audio src='/fixture-sfc.mp3' data-width='compact' data-align='right'></audio>"
       :service="service"
