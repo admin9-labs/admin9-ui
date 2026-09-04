@@ -4,6 +4,19 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-05
+
+### Added
+
+- `AProTable` 新增可选 `title`、`surface-title` 与 `before-table` 内容区域，以及最终有效结果的 `data-change` 事件。
+- 新增白名单化的 `selectionOptions`、`paginationOptions`，并提供 `invalidate()` 主动失效请求和对象形式的 `refresh()` 参数。
+
+### Changed
+
+- 当前页多选模式会在页面条件变化前清选，并在最终数据接受后修正失效 key；请求失效不会清空现有数据、分页或选择。
+
+**Full Changelog**: https://github.com/admin9-labs/admin9-ui/compare/v0.11.0...v0.12.0
+
 ## [0.11.0] - 2026-09-05
 
 ### Added
