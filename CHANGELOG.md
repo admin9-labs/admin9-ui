@@ -4,9 +4,13 @@
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-09-05
+
 ### Fixed
 
 - 补齐 `AProTable` 的无分页模式、可选重置页码刷新、`loading-change` 事件和页码越界回退，并从包根入口导出完整公共类型。
+
+**Full Changelog**: https://github.com/admin9-labs/admin9-ui/compare/v0.10.0...v0.10.1
 
 ## [0.10.0] - 2026-09-05
 
