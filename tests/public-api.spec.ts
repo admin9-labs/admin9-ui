@@ -9,6 +9,17 @@ import type {
   AFilterFormProps,
   Action,
   Slot,
+  AProTableEmits,
+  AProTableExposed,
+  AProTableProps,
+  AProTableSlots,
+  ProTableFetcher,
+  ProTableFetcherParams,
+  ProTableFetcherResult,
+  ProTableFooterSlot,
+  ProTablePermission,
+  ProTableRequestOptions,
+  ProTableRowKey,
   AFileUploaderProps,
   FileUploadBatchResult,
   ATiptapEditorProps,
@@ -74,10 +85,14 @@ describe('package public API', () => {
     expect(props).toEqual({ model, cols: 3, loading: false });
   });
 
-  it('exports the pro table action and slot contracts', () => {
+  it('exports the complete pro table contract', async () => {
     interface Row {
       id: number;
     }
+    const fetcher: ProTableFetcher<Row> = vi.fn().mockResolvedValue({ list: [{ id: 1 }], total: 1 });
+    const params: ProTableFetcherParams = { page: 1, pageSize: 10 };
+    const result: ProTableFetcherResult<Row> = await fetcher(params);
+    const permission: ProTablePermission = (name) => name === 'records.update';
     const action: Action<Row> = {
       label: 'Edit',
       permissions: ['records.update'],
@@ -88,9 +103,38 @@ describe('package public API', () => {
       column: { dataIndex: 'actions' },
       rowIndex: 0,
     };
+    const footer: ProTableFooterSlot<Row> = { data: result.list, total: result.total };
+    const props: AProTableProps<Row> = {
+      columns: [{ dataIndex: 'id' }],
+      fetcher,
+      pagination: false,
+      actions: [action],
+      permission,
+    };
+    const slots: AProTableSlots<Row> = {
+      actions: ({ record }) => String(record.id),
+      footer: ({ total }) => String(total),
+      popover: () => 'Popover',
+    };
+    const requestOptions: ProTableRequestOptions = { clearCurrentData: true };
+    const rowKey: ProTableRowKey = 1;
+    const exposed: AProTableExposed = {
+      doRequest: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn().mockResolvedValue(undefined),
+      clearSelection: vi.fn(),
+    };
+    const emit = vi.fn() as unknown as AProTableEmits<Row>;
+    emit('loadingChange', true);
 
     expect(action.permissions).toEqual(['records.update']);
     expect(slot.record.id).toBe(1);
+    expect(footer.total).toBe(1);
+    expect(props.pagination).toBe(false);
+    expect(slots.actions?.(slot)).toBe('1');
+    expect(requestOptions.clearCurrentData).toBe(true);
+    expect(rowKey).toBe(1);
+    expect(exposed.refresh).toBeTypeOf('function');
+    expect(emit).toHaveBeenCalledWith('loadingChange', true);
   });
 
   it('exports the ATiptapEditor media contract types', () => {

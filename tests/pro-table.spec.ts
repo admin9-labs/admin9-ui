@@ -22,7 +22,7 @@ const TableStub = defineComponent({
     columns: { type: Array, default: () => [] },
     data: { type: Array, default: () => [] },
     loading: Boolean,
-    pagination: { type: Object, default: () => ({}) },
+    pagination: { type: [Object, Boolean], default: () => ({}) },
     rowKey: String,
     rowSelection: { type: Object, default: undefined },
   },
@@ -40,6 +40,8 @@ const TableStub = defineComponent({
           'data-selected-keys': JSON.stringify(
             (props.rowSelection as { selectedRowKeys?: (string | number)[] } | undefined)?.selectedRowKeys ?? []
           ),
+          'data-pagination': String(props.pagination !== false),
+          'data-current': String((props.pagination as { current?: number } | false).current ?? ''),
           'data-forwarded': attrs['data-contract'],
         },
         [
@@ -92,7 +94,7 @@ const TransparentStub = defineComponent({
 
 interface ProTableExposed extends ComponentPublicInstance {
   doRequest: (options?: { clearCurrentData?: boolean }) => Promise<void>;
-  refresh: () => Promise<void>;
+  refresh: (resetPage?: boolean) => Promise<void>;
   clearSelection: () => void;
 }
 
@@ -168,9 +170,16 @@ describe('AProTable public contract', () => {
   it('passes fetch inputs, table attrs, action columns, and scoped slots without backend assumptions', async () => {
     const request = deferred<{ list: Record<string, unknown>[]; total: number }>();
     const fetcher = vi.fn().mockReturnValue(request.promise);
+    const onLoadingChange = vi.fn();
     mountTable(
       fetcher,
-      { 'rowKey': 'key', 'pageSize': 25, 'showAction': true, 'data-contract': 'forwarded' },
+      {
+        'rowKey': 'key',
+        'pageSize': 25,
+        'showAction': true,
+        'data-contract': 'forwarded',
+        onLoadingChange,
+      },
       { action: ({ record }) => h('span', { 'data-testid': 'row-action' }, `Open ${record.label}`) }
     );
 
@@ -181,12 +190,66 @@ describe('AProTable public contract', () => {
     expect(table?.getAttribute('data-row-key')).toBe('key');
     expect(table?.getAttribute('data-column-count')).toBe('2');
     expect(table?.getAttribute('data-forwarded')).toBe('forwarded');
+    expect(onLoadingChange).toHaveBeenCalledWith(true);
 
     request.resolve({ list: [{ key: 1, label: 'First' }], total: 1 });
     await flush();
 
     expect(table?.getAttribute('data-loading')).toBe('false');
     expect(document.querySelector('[data-testid="row-action"]')?.textContent).toBe('Open First');
+    expect(onLoadingChange.mock.calls.map(([loading]) => loading)).toEqual([true, false]);
+  });
+
+  it('disables table pagination and ignores pagination events when pagination is false', async () => {
+    const fetcher = vi.fn().mockResolvedValue({ list: [{ id: 1, label: 'First' }], total: 40 });
+    const mounted = mountTable(fetcher, { pagination: false, pageSize: 25 });
+    await flush();
+
+    expect(document.querySelector('[data-testid="table"]')?.getAttribute('data-pagination')).toBe('false');
+    expect(fetcher).toHaveBeenCalledWith({ page: 1, pageSize: 25, keyword: undefined });
+
+    document.querySelector<HTMLButtonElement>('[data-testid="page-change"]')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="page-size-change"]')?.click();
+    await flush();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+
+    await mounted.component()?.refresh(true);
+    expect(fetcher).toHaveBeenLastCalledWith({ page: 1, pageSize: 25, keyword: undefined });
+  });
+
+  it('keeps the current page on refresh by default and resets it when requested', async () => {
+    const fetcher = vi.fn().mockResolvedValue({ list: [{ id: 1, label: 'First' }], total: 100 });
+    const mounted = mountTable(fetcher, { pageSize: 20 });
+    await flush();
+
+    document.querySelector<HTMLButtonElement>('[data-testid="page-change"]')?.click();
+    await flush();
+    await mounted.component()?.refresh();
+    expect(fetcher).toHaveBeenLastCalledWith({ page: 3, pageSize: 20, keyword: undefined });
+
+    await mounted.component()?.refresh(true);
+    expect(fetcher).toHaveBeenLastCalledWith({ page: 1, pageSize: 20, keyword: undefined });
+  });
+
+  it('falls back to the last valid page without dropping loading state', async () => {
+    const onLoadingChange = vi.fn();
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce({ list: [{ id: 1, label: 'Page 1' }], total: 30 })
+      .mockResolvedValueOnce({ list: [], total: 15 })
+      .mockResolvedValueOnce({ list: [{ id: 2, label: 'Page 2' }], total: 15 });
+    mountTable(fetcher, { pageSize: 10, onLoadingChange });
+    await flush();
+    onLoadingChange.mockClear();
+
+    document.querySelector<HTMLButtonElement>('[data-testid="page-change"]')?.click();
+    await flush();
+    await flush();
+
+    expect(fetcher.mock.calls.slice(1).map(([params]) => params.page)).toEqual([3, 2]);
+    expect(document.querySelector('[data-testid="table"]')?.getAttribute('data-current')).toBe('2');
+    expect(document.querySelector('[data-testid="table"]')?.getAttribute('data-first-label')).toBe('Page 2');
+    expect(onLoadingChange.mock.calls.map(([loading]) => loading)).toEqual([true, false]);
   });
 
   it('renders permitted configured actions before actions and legacy action slots', async () => {
@@ -280,7 +343,7 @@ describe('AProTable public contract', () => {
         { key: 1, label: 'First' },
         { key: 2, label: 'Second' },
       ],
-      total: 2,
+      total: 100,
     });
     const onSelected = vi.fn();
     const onSelect = vi.fn();
@@ -321,8 +384,10 @@ describe('AProTable public contract', () => {
     const fetcher = vi.fn().mockResolvedValueOnce({ list: [], total: 0 }).mockRejectedValueOnce(new Error('request_failed'));
     const onSelected = vi.fn();
     const onError = vi.fn();
-    const mounted = mountTable(fetcher, { 'onUpdate:selectedRowKeys': onSelected, onError });
+    const onLoadingChange = vi.fn();
+    const mounted = mountTable(fetcher, { 'onUpdate:selectedRowKeys': onSelected, onError, onLoadingChange });
     await flush();
+    onLoadingChange.mockClear();
 
     expect(document.querySelector('[data-testid="empty"]')).not.toBeNull();
     mounted.component()?.clearSelection();
@@ -336,6 +401,7 @@ describe('AProTable public contract', () => {
     expect(document.querySelector('[data-testid="table"]')?.getAttribute('data-loading')).toBe('false');
     expect(onError).toHaveBeenCalledOnce();
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'request_failed' }));
+    expect(onLoadingChange.mock.calls.map(([loading]) => loading)).toEqual([true, false]);
   });
 
   it('emits UI request failures without leaving rejected promises unhandled', async () => {
@@ -382,7 +448,7 @@ describe('AProTable public contract', () => {
     expect(document.querySelector('[data-testid="table"]')?.getAttribute('data-loading')).toBe('true');
     expect(document.querySelector('[data-testid="table"]')?.getAttribute('data-first-label')).toBe('');
 
-    second.resolve({ list: [{ id: 2, label: 'Current' }], total: 1 });
+    second.resolve({ list: [{ id: 2, label: 'Current' }], total: 100 });
     await flush();
     expect(document.querySelector('[data-testid="table"]')?.getAttribute('data-loading')).toBe('false');
     expect(document.querySelector('[data-testid="table"]')?.getAttribute('data-first-label')).toBe('Current');
@@ -404,7 +470,7 @@ describe('AProTable public contract', () => {
     expect(onError).not.toHaveBeenCalled();
     expect(document.querySelector('[data-testid="table"]')?.getAttribute('data-loading')).toBe('true');
 
-    second.resolve({ list: [{ id: 2, label: 'Current' }], total: 1 });
+    second.resolve({ list: [{ id: 2, label: 'Current' }], total: 100 });
     await flush();
     expect(document.querySelector('[data-testid="table"]')?.getAttribute('data-loading')).toBe('false');
   });

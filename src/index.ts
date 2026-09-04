@@ -67,9 +67,17 @@ export type { AFilterFormProps } from './components/filter-form/types';
 export type {
   Action,
   Slot,
+  AProTableEmits,
+  AProTableExposed,
+  AProTableProps,
+  AProTableSlots,
+  ProTableFetcher,
   ProTableFetcherParams,
   ProTableFetcherResult,
+  ProTableFooterSlot,
+  ProTablePermission,
   ProTableRequestOptions,
+  ProTableRowKey,
 } from './components/pro-table/types';
 
 // 组件命名导出（供按需 import）

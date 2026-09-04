@@ -46,6 +46,8 @@
       :fetcher="fetchRows"
       :actions="rowActions"
       :permission="(permission) => permission === 'records.update'"
+      :pagination="false"
+      @loading-change="() => undefined"
     >
       <template #footer="{ total }">{{ total }}</template>
       <template #popover><span data-testid="fixture-table-popover" /></template>

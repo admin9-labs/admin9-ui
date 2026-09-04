@@ -85,6 +85,7 @@
   const multipleFilter = reactive(createFilterModel());
   const collapsibleFilter = reactive(createFilterModel());
   const tableError = ref(false);
+  const tableLoading = ref(false);
   const selectedRowKeys = ref<(string | number)[]>([]);
   const tableActions: Action<TableRow>[] = [
     {
@@ -338,11 +339,12 @@
             :scroll="{ x: 760 }"
             searchable
             multiple
+            @loading-change="tableLoading = $event"
           >
             <template #status="{ record }">
               <a-tag :color="statusColor(record.status)">{{ statusText(record.status) }}</a-tag>
             </template>
-            <template #footer="{ total }">当前查询共 {{ total }} 条</template>
+            <template #footer="{ total }"> 当前查询共 {{ total }} 条 · {{ tableLoading ? '加载中' : '加载完成' }} </template>
           </AProTable>
         </div>
       </section>

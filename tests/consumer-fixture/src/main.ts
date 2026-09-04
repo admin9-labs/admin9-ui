@@ -17,6 +17,10 @@ import Admin9UI, {
   type ATiptapEditorProps,
   type AFilterFormProps,
   type Action,
+  type AProTableEmits,
+  type AProTableExposed,
+  type AProTableProps,
+  type AProTableSlots,
   type CoordinateSelection,
   type CoordinateValue,
   type Admin9UIOptions,
@@ -25,6 +29,13 @@ import Admin9UI, {
   type FilePickerAdapter,
   type FileUploadBatchResult,
   type FileUploadCapability,
+  type ProTableFetcher,
+  type ProTableFetcherParams,
+  type ProTableFetcherResult,
+  type ProTableFooterSlot,
+  type ProTablePermission,
+  type ProTableRequestOptions,
+  type ProTableRowKey,
   type FileListParams,
   type TiptapAudioWidth,
   type TiptapBlockWidth,
@@ -97,6 +108,34 @@ const rowSlot: Slot<FixtureRow> = {
   column: { dataIndex: 'actions' },
   rowIndex: 0,
 };
+const rowFetcher: ProTableFetcher<FixtureRow> = async (params) => ({
+  list: [{ id: params.page, name: 'Fixture row' }],
+  total: 1,
+});
+const proTableProps: AProTableProps<FixtureRow> = {
+  columns: [{ title: 'Name', dataIndex: 'name' }],
+  fetcher: rowFetcher,
+  actions: [rowAction],
+};
+const proTableTypes: {
+  emits?: AProTableEmits<FixtureRow>;
+  exposed?: AProTableExposed;
+  slots: AProTableSlots<FixtureRow>;
+  params: ProTableFetcherParams;
+  result: ProTableFetcherResult<FixtureRow>;
+  footer: ProTableFooterSlot<FixtureRow>;
+  permission: ProTablePermission;
+  request: ProTableRequestOptions;
+  rowKey: ProTableRowKey;
+} = {
+  slots: {},
+  params: { page: 1, pageSize: 10 },
+  result: { list: [], total: 0 },
+  footer: { data: [], total: 0 },
+  permission: () => true,
+  request: {},
+  rowKey: 1,
+};
 
 if (
   localePrefix !== 'admin9Ui' ||
@@ -110,6 +149,7 @@ if (
 if (coordinateSelection.source !== 'model') throw new Error('Coordinate selection type is inconsistent.');
 if (emptyUploadResult.failed.length !== 0) throw new Error('File uploader result type is inconsistent.');
 if (rowSlot.record.id !== 1) throw new Error('Pro table slot type is inconsistent.');
+if (proTableTypes.params.page !== 1) throw new Error('Pro table root types are inconsistent.');
 
 const i18n = createI18n({ legacy: false, locale: 'en-US', messages });
 const app = createApp({
@@ -118,11 +158,7 @@ const app = createApp({
       h(AIconPicker, { modelValue: '', allowClear: true }),
       h(AFilterForm, filterFormProps, { default: () => h('div', 'Fixture filter') }),
       h(ACoordinatePicker, { modelValue: coordinateValue, apiKey: 'fixture-key', readonly: true }),
-      h(AProTable, {
-        columns: [{ title: 'Name', dataIndex: 'name' }],
-        fetcher: async () => ({ list: [{ id: 1, name: 'Fixture row' }], total: 1 }),
-        actions: [rowAction],
-      }),
+      h(AProTable, proTableProps),
       h(ATiptapEditor, {
         modelValue:
           `<p>Fixture <img src="/fixture-inline.png" alt="Inline" data-display="inline" data-size="${inlineSize}"> content</p>` +

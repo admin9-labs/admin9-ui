@@ -1,9 +1,16 @@
 <script setup lang="ts" generic="T extends object = Record<string, unknown>">
   import { computed, ref, shallowRef, watch, useSlots } from 'vue';
   import { useI18n } from 'vue-i18n';
-  import { type TableColumnData } from '@arco-design/web-vue';
+  import type { TableColumnData } from '@arco-design/web-vue';
   import { useLoading } from '../../hooks';
-  import type { Action, ProTableFetcherParams, ProTableFetcherResult, ProTableRequestOptions } from './types';
+  import type {
+    Action,
+    AProTableEmits,
+    ProTableFetcher,
+    ProTablePermission,
+    ProTableRequestOptions,
+    ProTableRowKey,
+  } from './types';
 
   /**
    * AProTable —— 页面级业务表格（对外注册）。
@@ -26,8 +33,10 @@
       /** 行 key 字段名，默认 'id'（不硬编码，由调用方决定） */
       rowKey?: string;
       /** 数据获取函数，注入式（库不调具体后端） */
-      fetcher: (params: ProTableFetcherParams) => Promise<ProTableFetcherResult<T>>;
+      fetcher: ProTableFetcher<T>;
       pageSize?: number;
+      /** 是否启用分页 */
+      pagination?: boolean;
       /** 是否显示搜索框 */
       searchable?: boolean;
       /** 是否显式追加 action 列 */
@@ -35,15 +44,16 @@
       /** 配置式行操作，按声明顺序渲染在 actions/action 插槽之前 */
       actions?: Action<T>[];
       /** 单项权限判断；权限数组中任一权限通过即可显示操作 */
-      permission?: (permission: string) => boolean;
+      permission?: ProTablePermission;
       /** 多选模式（开启后通过 v-model:selectedRowKeys 受控） */
       multiple?: boolean;
       /** 选中行 key 数组（v-model:selectedRowKeys） */
-      selectedRowKeys?: (string | number)[];
+      selectedRowKeys?: ProTableRowKey[];
     }>(),
     {
       rowKey: 'id',
       pageSize: 10,
+      pagination: true,
       searchable: false,
       showAction: false,
       actions: () => [],
@@ -52,11 +62,7 @@
     }
   );
 
-  const emit = defineEmits<{
-    (e: 'update:selectedRowKeys', keys: (string | number)[]): void;
-    (e: 'select', rows: T[]): void;
-    (e: 'error', error: unknown): void;
-  }>();
+  const emit = defineEmits<AProTableEmits<T>>();
 
   const { t } = useI18n();
   const { loading, setLoading } = useLoading();
@@ -64,13 +70,14 @@
 
   const keyword = ref('');
   const data = shallowRef<T[]>([]);
-  const pagination = ref({
+  const paginationState = ref({
     current: 1,
     pageSize: props.pageSize,
     total: 0,
     showTotal: true,
     showPageSize: true,
   });
+  const tablePagination = computed(() => (props.pagination ? paginationState.value : false));
   let latestRequest = 0;
 
   /** action 列内部标识，避免调用方已自带 action 列时重复追加 */
@@ -122,25 +129,40 @@
       : undefined
   );
 
-  const doRequest = async ({ clearCurrentData = false }: ProTableRequestOptions = {}) => {
+  const updateLoading = (value: boolean) => {
+    if (loading.value === value) return;
+    setLoading(value);
+    emit('loadingChange', value);
+  };
+
+  const doRequest = async ({ clearCurrentData = false }: ProTableRequestOptions = {}): Promise<void> => {
     const request = latestRequest + 1;
     latestRequest = request;
     if (clearCurrentData) data.value = [];
-    setLoading(true);
+    updateLoading(true);
     try {
+      const page = props.pagination ? paginationState.value.current : 1;
       const { list, total } = await props.fetcher({
-        page: pagination.value.current,
-        pageSize: pagination.value.pageSize,
+        page,
+        pageSize: paginationState.value.pageSize,
         keyword: keyword.value || undefined,
       });
       if (request !== latestRequest) return;
+      if (props.pagination && page > 1) {
+        const lastPage = Math.max(1, Math.ceil(total / paginationState.value.pageSize));
+        if (page > lastPage) {
+          paginationState.value.current = lastPage;
+          await doRequest();
+          return;
+        }
+      }
       data.value = list;
-      pagination.value.total = total;
+      paginationState.value.total = total;
     } catch (error) {
       if (request === latestRequest) emit('error', error);
       throw error;
     } finally {
-      if (request === latestRequest) setLoading(false);
+      if (request === latestRequest) updateLoading(false);
     }
   };
 
@@ -150,23 +172,28 @@
   };
 
   const onPageChange = (page: number) => {
-    pagination.value.current = page;
+    if (!props.pagination) return;
+    paginationState.value.current = page;
     fetchDataFromUi();
   };
 
   const onPageSizeChange = (size: number) => {
-    pagination.value.current = 1;
-    pagination.value.pageSize = size;
+    if (!props.pagination) return;
+    paginationState.value.current = 1;
+    paginationState.value.pageSize = size;
     fetchDataFromUi();
   };
 
   const handleSearch = () => {
-    pagination.value.current = 1;
+    paginationState.value.current = 1;
     fetchDataFromUi();
   };
 
-  /** 重新拉取当前页数据 */
-  const refresh = () => doRequest();
+  /** 重新拉取数据；显式传 true 时先回到第一页。 */
+  const refresh = (resetPage = false) => {
+    if (resetPage) paginationState.value.current = 1;
+    return doRequest();
+  };
 
   /** 清空多选（受控：通知父组件清空 selectedRowKeys） */
   const clearSelection = () => emit('update:selectedRowKeys', []);
@@ -195,7 +222,7 @@
       :columns="mergedColumns"
       :data="data"
       :loading="loading"
-      :pagination="pagination"
+      :pagination="tablePagination"
       :row-key="rowKey"
       :row-selection="rowSelection"
       :bordered="false"
@@ -226,7 +253,7 @@
         <slot :name="key" v-bind="scoped" />
       </template>
     </a-table>
-    <slot name="footer" :data="data" :total="pagination.total" />
+    <slot name="footer" :data="data" :total="paginationState.total" />
     <slot name="popover" />
   </div>
 </template>
