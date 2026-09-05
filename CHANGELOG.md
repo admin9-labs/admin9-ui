@@ -4,9 +4,13 @@
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-09-05
+
 ### Added
 
 - `AProTable` 新增 `refreshHandler` 复合刷新入口；内置刷新按钮可在统一 loading 与防重复点击状态下刷新附属数据，并通过 context `refresh()` 按需刷新表格。
+
+**Full Changelog**: https://github.com/admin9-labs/admin9-ui/compare/v0.12.0...v0.13.0
 
 ## [0.12.0] - 2026-09-05
 
