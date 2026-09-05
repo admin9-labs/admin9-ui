@@ -20,6 +20,8 @@ import type {
   ProTableDataChange,
   ProTablePaginationOptions,
   ProTablePermission,
+  ProTableRefreshContext,
+  ProTableRefreshHandler,
   ProTableRefreshOptions,
   ProTableRequestOptions,
   ProTableRowKey,
@@ -118,6 +120,7 @@ describe('package public API', () => {
       pageSizeOptions: [10, 20],
     };
     const refreshOptions: ProTableRefreshOptions = { resetPage: true, clearCurrentData: true };
+    const refreshHandler: ProTableRefreshHandler = ({ refresh }: ProTableRefreshContext) => refresh(refreshOptions);
     const props: AProTableProps<Row> = {
       columns: [{ dataIndex: 'id' }],
       fetcher,
@@ -125,6 +128,7 @@ describe('package public API', () => {
       pagination: false,
       paginationOptions,
       refreshable: true,
+      refreshHandler,
       selectionOptions,
       surface: true,
       actions: [action],
@@ -158,6 +162,7 @@ describe('package public API', () => {
     expect(props.pagination).toBe(false);
     expect(props.paginationOptions).toBe(paginationOptions);
     expect(props.refreshable).toBe(true);
+    expect(props.refreshHandler).toBe(refreshHandler);
     expect(props.selectionOptions).toBe(selectionOptions);
     expect(props.surface).toBe(true);
     expect(slots['surface-title']?.()).toBe('Scoped records');

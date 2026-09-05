@@ -78,6 +78,8 @@ export type {
   ProTableDataChange,
   ProTablePaginationOptions,
   ProTablePermission,
+  ProTableRefreshContext,
+  ProTableRefreshHandler,
   ProTableRefreshOptions,
   ProTableRequestOptions,
   ProTableRowKey,

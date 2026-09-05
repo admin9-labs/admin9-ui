@@ -12,6 +12,7 @@
     type FileUploadCapability,
     type FileItem,
     type Action,
+    type ProTableRefreshHandler,
   } from '@admin9-labs/admin9-ui';
 
   defineProps<{
@@ -26,6 +27,7 @@
   }
 
   const fetchRows = async () => ({ list: [] as FixtureRow[], total: 0 });
+  const refreshRows: ProTableRefreshHandler = ({ refresh }) => refresh();
   const rowActions: Action<FixtureRow>[] = [{ label: 'Edit', permissions: 'records.update', onClick: () => undefined }];
   const attachments = ref<FileItem[]>([]);
   const filters = reactive({ keyword: '', status: undefined as string | undefined });
@@ -47,6 +49,7 @@
       :pagination="false"
       :pagination-options="{ showTotal: false, showPageSize: false }"
       :selection-options="{ showCheckedAll: true, onlyCurrent: true }"
+      :refresh-handler="refreshRows"
       title="Fixture records"
       refreshable
       surface

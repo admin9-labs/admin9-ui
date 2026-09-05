@@ -36,6 +36,8 @@ import Admin9UI, {
   type ProTableDataChange,
   type ProTablePaginationOptions,
   type ProTablePermission,
+  type ProTableRefreshContext,
+  type ProTableRefreshHandler,
   type ProTableRefreshOptions,
   type ProTableRequestOptions,
   type ProTableRowKey,
@@ -116,12 +118,14 @@ const rowFetcher: ProTableFetcher<FixtureRow> = async (params) => ({
   list: [{ id: params.page, name: 'Fixture row' }],
   total: 1,
 });
+const refreshTable: ProTableRefreshHandler = ({ refresh }: ProTableRefreshContext) => refresh();
 const proTableProps: AProTableProps<FixtureRow> = {
   columns: [{ title: 'Name', dataIndex: 'name' }],
   fetcher: rowFetcher,
   title: 'Fixture records',
   paginationOptions: { showJumper: true },
   refreshable: true,
+  refreshHandler: refreshTable,
   selectionOptions: { showCheckedAll: true, onlyCurrent: true },
   surface: true,
   actions: [rowAction],
@@ -136,6 +140,8 @@ const proTableTypes: {
   dataChange: ProTableDataChange<FixtureRow>;
   pagination: ProTablePaginationOptions;
   permission: ProTablePermission;
+  refreshContext?: ProTableRefreshContext;
+  refreshHandler: ProTableRefreshHandler;
   refresh: ProTableRefreshOptions;
   request: ProTableRequestOptions;
   rowKey: ProTableRowKey;
@@ -153,6 +159,7 @@ const proTableTypes: {
   dataChange: { list: [], total: 0, page: 1, pageSize: 10 },
   pagination: { showTotal: true, showPageSize: true },
   permission: () => true,
+  refreshHandler: refreshTable,
   refresh: { resetPage: true, clearCurrentData: true },
   request: {},
   rowKey: 1,

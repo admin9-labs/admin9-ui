@@ -328,6 +328,102 @@ describe('AProTable public contract', () => {
     expect(refreshButton?.getAttribute('data-loading')).toBe('false');
   });
 
+  it('calls a custom refresh handler once without automatically fetching table data', async () => {
+    const handlerRequest = deferred<void>();
+    const fetcher = vi.fn().mockResolvedValue({ list: [], total: 0 });
+    const refreshHandler = vi.fn().mockReturnValue(handlerRequest.promise);
+    mountTable(fetcher, { refreshable: true, refreshHandler });
+    await flush();
+
+    const refreshButton = document.querySelector<HTMLButtonElement>('.a9-pro-table__refresh');
+    refreshButton?.click();
+    refreshButton?.click();
+    await nextTick();
+
+    expect(refreshHandler).toHaveBeenCalledTimes(1);
+    expect(refreshHandler).toHaveBeenCalledWith({ refresh: expect.any(Function) });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(refreshButton?.getAttribute('data-loading')).toBe('true');
+    expect(refreshButton?.disabled).toBe(true);
+
+    handlerRequest.resolve();
+    await flush();
+    expect(refreshButton?.getAttribute('data-loading')).toBe('false');
+    expect(refreshButton?.disabled).toBe(false);
+  });
+
+  it('lets a custom handler refresh the table with options without re-entering the handler', async () => {
+    const refreshRequest = deferred<{ list: Record<string, unknown>[]; total: number }>();
+    const handlerTail = deferred<void>();
+    const onLoadingChange = vi.fn();
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce({ list: [{ id: 1, label: 'Page 1' }], total: 100 })
+      .mockResolvedValueOnce({ list: [{ id: 3, label: 'Page 3' }], total: 100 })
+      .mockReturnValueOnce(refreshRequest.promise);
+    const refreshHandler = vi.fn(
+      async ({
+        refresh,
+      }: {
+        refresh: (options?: boolean | { resetPage?: boolean; clearCurrentData?: boolean }) => Promise<void>;
+      }) => {
+        await refresh({ resetPage: true, clearCurrentData: true });
+        await handlerTail.promise;
+      }
+    );
+    mountTable(fetcher, { refreshable: true, refreshHandler, onLoadingChange });
+    await flush();
+
+    document.querySelector<HTMLButtonElement>('[data-testid="page-change"]')?.click();
+    await flush();
+    onLoadingChange.mockClear();
+    const refreshButton = document.querySelector<HTMLButtonElement>('.a9-pro-table__refresh');
+    refreshButton?.click();
+    await nextTick();
+
+    expect(refreshHandler).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher).toHaveBeenLastCalledWith({ page: 1, pageSize: 10, keyword: undefined });
+    expect(document.querySelector('[data-testid="table"]')?.getAttribute('data-first-label')).toBe('');
+    expect(refreshButton?.getAttribute('data-loading')).toBe('true');
+
+    refreshRequest.resolve({ list: [{ id: 4, label: 'Refreshed' }], total: 1 });
+    await flush();
+    expect(refreshHandler).toHaveBeenCalledTimes(1);
+    expect(refreshButton?.getAttribute('data-loading')).toBe('true');
+    expect(onLoadingChange.mock.calls.map(([value]) => value)).toEqual([true]);
+
+    handlerTail.resolve();
+    await flush();
+    expect(refreshButton?.getAttribute('data-loading')).toBe('false');
+    expect(onLoadingChange.mock.calls.map(([value]) => value)).toEqual([true, false]);
+  });
+
+  it('restores loading after a custom handler fails without emitting a fetcher error', async () => {
+    const handlerRequest = deferred<void>();
+    const onError = vi.fn();
+    const onLoadingChange = vi.fn();
+    mountTable(vi.fn().mockResolvedValue({ list: [], total: 0 }), {
+      refreshable: true,
+      refreshHandler: () => handlerRequest.promise,
+      onError,
+      onLoadingChange,
+    });
+    await flush();
+    onLoadingChange.mockClear();
+
+    const refreshButton = document.querySelector<HTMLButtonElement>('.a9-pro-table__refresh');
+    refreshButton?.click();
+    await nextTick();
+    expect(refreshButton?.getAttribute('data-loading')).toBe('true');
+
+    handlerRequest.reject(new Error('auxiliary refresh failed'));
+    await flush();
+    expect(refreshButton?.getAttribute('data-loading')).toBe('false');
+    expect(onLoadingChange.mock.calls.map(([value]) => value)).toEqual([true, false]);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it('keeps searchable refresh compatibility and allows refreshable=false to disable it', async () => {
     mountTable(vi.fn().mockResolvedValue({ list: [], total: 0 }), { searchable: true, refreshable: false });
     await flush();

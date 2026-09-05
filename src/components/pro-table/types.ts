@@ -43,6 +43,12 @@ export interface ProTableRefreshOptions {
   clearCurrentData?: boolean;
 }
 
+export interface ProTableRefreshContext {
+  refresh(options?: boolean | ProTableRefreshOptions): Promise<void>;
+}
+
+export type ProTableRefreshHandler = (context: ProTableRefreshContext) => void | Promise<void>;
+
 export interface ProTableSelectionOptions {
   showCheckedAll?: boolean;
   onlyCurrent?: boolean;
@@ -73,6 +79,7 @@ export interface AProTableProps<T = TableData> {
   paginationOptions?: ProTablePaginationOptions;
   searchable?: boolean;
   refreshable?: boolean;
+  refreshHandler?: ProTableRefreshHandler;
   surface?: boolean;
   showAction?: boolean;
   actions?: Action<T>[];

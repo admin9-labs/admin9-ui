@@ -94,6 +94,27 @@
 
 工具栏固定按 `toolbar-left`、搜索框、内置刷新按钮、`toolbar-right` 的顺序排列；没有任何工具内容时不渲染工具栏。搜索会回到第 1 页后请求，普通刷新保留当前页。复杂筛选继续放在组件外部，例如使用 `AFilterForm` 管理筛选条件后将其闭包注入 `fetcher`。
 
+## 复合刷新
+
+需要同时刷新权限目录、分组、标签等附属数据时，继续启用组件内置按钮，并通过 `refreshHandler` 注入复合行为：
+
+```vue
+<script setup lang="ts">
+  import type { ProTableRefreshHandler } from '@admin9-labs/admin9-ui';
+
+  const refreshAll: ProTableRefreshHandler = async ({ refresh }) => {
+    await refreshAuxiliaryCatalogs();
+    await refresh();
+  };
+</script>
+
+<template>
+  <AProTable refreshable :columns="columns" :fetcher="fetchRows" :refresh-handler="refreshAll" />
+</template>
+```
+
+未传 `refreshHandler` 时，按钮直接刷新表格。传入后，按钮只调用该处理器，不会自动追加表格请求；处理器收到的 `refresh()` 直接执行表格刷新且不会再次进入处理器，并完整保留 boolean 与对象形式的刷新参数。按钮的 loading 覆盖整个处理器 Promise 并阻止重复点击。处理器异常由消费方负责业务提示，组件只保证恢复 loading，不会把它作为 fetcher `error` 事件再次发出。
+
 `surface` 默认为 `false`，适合嵌入消费方已有容器；传 `surface` 时使用 Arco 主题背景、`20px` 内边距和 `4px` 圆角呈现数据工作台，不会嵌套 `a-card`。标题、工具栏和前置内容存在时，各自与下一块保持 `12px` 间距。工具栏在窄屏自动换行，搜索框占满可用行宽；表格横向滚动仍由消费方通过 Arco `scroll` 属性控制。
 
 `Action<T>` 包含 `label`、`onClick(record)` 和可选的 `permissions`。权限数组采用任一匹配语义；未声明权限的操作始终显示，声明权限的操作仅在 `permission` 判断函数通过时显示。未提供判断函数时，带权限要求的操作默认隐藏。
@@ -119,6 +140,7 @@
 | `paginationOptions` | `ProTablePaginationOptions`                         | -       | 分页展示白名单配置                                        |
 | `searchable`        | `boolean`                                           | `false` | 是否显示关键词搜索                                        |
 | `refreshable`       | `boolean`                                           | 见说明  | 是否显示内置刷新按钮；未传时跟随 `searchable`，可显式关闭 |
+| `refreshHandler`    | `ProTableRefreshHandler`                            | -       | 内置按钮的可选复合刷新行为                                |
 | `surface`           | `boolean`                                           | `false` | 是否启用数据工作台表面                                    |
 | `showAction`        | `boolean`                                           | `false` | 是否显式追加操作列；传入操作配置或操作插槽时也会自动追加  |
 | `actions`           | `Action<T>[]`                                       | `[]`    | 配置式行操作                                              |
@@ -168,8 +190,8 @@
 - `invalidate(): void`：失效当前及更早请求并立即结束 loading，保留数据、分页和选择；被失效 Promise 静默完成，之后可以正常刷新。
 - `clearSelection(): void`：keys 实际变化时同时发出空的 `update:selectedRowKeys` 和 `select`，不直接接管受控 prop。
 
-`doRequest()` 和 `refresh()` 的有效请求失败时 Promise 保持 rejected，调用方必须 `await` 并处理错误。组件内部的初始加载、搜索、刷新按钮和分页请求则通过 `error` 事件通知失败。普通新请求替代的旧 Promise 保持原有行为；只有显式 `invalidate()` 覆盖的旧成功或失败会静默完成。
+`doRequest()` 和 `refresh()` 的有效请求失败时 Promise 保持 rejected，调用方必须 `await` 并处理错误。组件内部的初始加载、搜索、默认刷新按钮和分页请求则通过 `error` 事件通知失败。`refreshHandler` 自身的错误不会触发 `error`；若处理器调用 `refresh()` 后 fetcher 失败，该请求仍遵循原有 fetcher 错误契约。普通新请求替代的旧 Promise 保持原有行为；只有显式 `invalidate()` 覆盖的旧成功或失败会静默完成。
 
 ## 公共类型
 
-包根入口导出 `Action`、`Slot`、`AProTableProps`、`AProTableEmits`、`AProTableSlots`、`AProTableExposed`、`ProTableFetcher`、`ProTableFetcherParams`、`ProTableFetcherResult`、`ProTableFooterSlot`、`ProTableDataChange`、`ProTablePaginationOptions`、`ProTablePermission`、`ProTableRefreshOptions`、`ProTableRequestOptions`、`ProTableRowKey` 和 `ProTableSelectionOptions`。
+包根入口导出 `Action`、`Slot`、`AProTableProps`、`AProTableEmits`、`AProTableSlots`、`AProTableExposed`、`ProTableFetcher`、`ProTableFetcherParams`、`ProTableFetcherResult`、`ProTableFooterSlot`、`ProTableDataChange`、`ProTablePaginationOptions`、`ProTablePermission`、`ProTableRefreshContext`、`ProTableRefreshHandler`、`ProTableRefreshOptions`、`ProTableRequestOptions`、`ProTableRowKey` 和 `ProTableSelectionOptions`。

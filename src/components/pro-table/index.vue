@@ -9,6 +9,7 @@
     ProTablePaginationOptions,
     ProTableFetcher,
     ProTablePermission,
+    ProTableRefreshHandler,
     ProTableRefreshOptions,
     ProTableRequestOptions,
     ProTableRowKey,
@@ -48,6 +49,8 @@
       searchable?: boolean;
       /** 是否显示内置刷新按钮；未传时跟随 searchable */
       refreshable?: boolean;
+      /** 内置刷新按钮的可选复合刷新处理器 */
+      refreshHandler?: ProTableRefreshHandler;
       /** 是否提供数据工作台表面 */
       surface?: boolean;
       /** 是否显式追加 action 列 */
@@ -111,6 +114,8 @@
   const hasBeforeTable = computed(() => Boolean(slots['before-table']));
   let latestRequest = 0;
   let invalidatedThrough = 0;
+  let requestLoading = false;
+  let refreshHandlerLoading = false;
 
   /** action 列内部标识，避免调用方已自带 action 列时重复追加 */
   const ACTION_COLUMN_KEY = 'a9-pro-table-action';
@@ -183,17 +188,27 @@
     emit('loadingChange', value);
   };
 
+  const syncLoading = () => updateLoading(requestLoading || refreshHandlerLoading);
+  const updateRequestLoading = (value: boolean) => {
+    requestLoading = value;
+    syncLoading();
+  };
+  const updateRefreshHandlerLoading = (value: boolean) => {
+    refreshHandlerLoading = value;
+    syncLoading();
+  };
+
   const invalidate = () => {
     latestRequest += 1;
     invalidatedThrough = latestRequest;
-    updateLoading(false);
+    updateRequestLoading(false);
   };
 
   const doRequest = async ({ clearCurrentData = false }: ProTableRequestOptions = {}): Promise<void> => {
     const request = latestRequest + 1;
     latestRequest = request;
     if (clearCurrentData) data.value = [];
-    updateLoading(true);
+    updateRequestLoading(true);
     try {
       const page = props.pagination ? paginationState.value.current : 1;
       const { list, total } = await props.fetcher({
@@ -219,7 +234,7 @@
       if (request === latestRequest) emit('error', error);
       throw error;
     } finally {
-      if (request === latestRequest) updateLoading(false);
+      if (request === latestRequest) updateRequestLoading(false);
     }
   };
 
@@ -259,6 +274,23 @@
     return doRequest({ clearCurrentData });
   };
 
+  const handleRefreshClick = async () => {
+    if (loading.value) return;
+    if (!props.refreshHandler) {
+      fetchDataFromUi();
+      return;
+    }
+
+    updateRefreshHandlerLoading(true);
+    try {
+      await props.refreshHandler({ refresh });
+    } catch {
+      // Business errors from custom refresh handlers remain the consumer's responsibility.
+    } finally {
+      updateRefreshHandlerLoading(false);
+    }
+  };
+
   /** 清空多选（受控：通知父组件清空 selectedRowKeys） */
   const clearSelection = () => emitSelection([]);
 
@@ -290,8 +322,9 @@
             class="a9-pro-table__refresh"
             shape="circle"
             :loading="loading"
+            :disabled="loading"
             :aria-label="t('admin9Ui.proTable.refresh')"
-            @click="fetchDataFromUi"
+            @click="handleRefreshClick"
           >
             <template #icon><icon-refresh /></template>
           </a-button>
