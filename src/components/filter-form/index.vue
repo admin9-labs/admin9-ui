@@ -178,6 +178,7 @@
             'ref': formRef,
             'model': props.model,
             'layout': 'horizontal',
+            'labelAlign': 'left',
             'autoLabelWidth': true,
             'class': ['a9-filter-form', attrs.class],
             'data-layout': layout,

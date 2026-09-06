@@ -95,7 +95,11 @@ const mountFilterForm = (options: MountOptions = {}) => {
                 Fragment,
                 null,
                 Array.from({ length: count.value }, (_, index) =>
-                  h('div', { 'data-testid': `field-${index + 1}`, 'key': index }, `Field ${index + 1}`)
+                  h(
+                    FormItem,
+                    { key: index, label: `Field ${index + 1}` },
+                    { default: () => h('div', { 'data-testid': `field-${index + 1}` }, `Field ${index + 1}`) }
+                  )
                 )
               ),
           }
@@ -150,6 +154,13 @@ describe('AFilterForm public contract', () => {
     expect(document.querySelector('.a9-filter-form')?.getAttribute('data-layout')).toBe(layout);
     expect(document.querySelector('.a9-filter-form__toggle')).toBeNull();
     expect(visibleFieldCount()).toBe(count);
+  });
+
+  it('left-aligns field labels', async () => {
+    mountFilterForm({ count: 1 });
+    await flush();
+
+    expect(document.querySelector('.arco-form-item-label-col')?.classList.contains('arco-form-item-label-col-left')).toBe(true);
   });
 
   it('enables collapse after two rows and collapses fields to the first row', async () => {
