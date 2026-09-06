@@ -4,9 +4,13 @@
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-09-06
+
 ### Changed
 
 - `AFilterForm` 字段标题默认左对齐，统一多列筛选场景下的标签起点。
+
+**Full Changelog**: https://github.com/admin9-labs/admin9-ui/compare/v0.13.0...v0.13.1
 
 ## [0.13.0] - 2026-09-05
 
