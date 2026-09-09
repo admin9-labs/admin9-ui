@@ -101,7 +101,7 @@ interface FixtureFilterModel {
   keyword: string;
 }
 const fixtureFilterModel: FixtureFilterModel = { keyword: '' };
-const filterFormProps: AFilterFormProps = { model: fixtureFilterModel, cols: 3 };
+const filterFormProps: AFilterFormProps = { model: fixtureFilterModel, cols: 3, fieldFlex: { keyword: 2 } };
 const coordinateValue: CoordinateValue = { latitude: 27.8945, longitude: 102.2644 };
 const coordinateSelection: CoordinateSelection = { ...coordinateValue, source: 'model' };
 interface FixtureRow {

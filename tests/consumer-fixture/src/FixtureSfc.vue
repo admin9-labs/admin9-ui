@@ -36,7 +36,7 @@
 <template>
   <section data-testid="host-baseline-sfc">
     <AIconPicker model-value="" />
-    <AFilterForm :model="filters">
+    <AFilterForm :model="filters" :field-flex="{ keyword: 2, status: 1 }">
       <a-form-item field="keyword" label="Keyword"><a-input v-model="filters.keyword" /></a-form-item>
       <a-form-item field="status" label="Status"><a-select v-model="filters.status" /></a-form-item>
     </AFilterForm>

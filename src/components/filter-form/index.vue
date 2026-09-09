@@ -15,11 +15,12 @@
     type PropType,
     type VNode,
   } from 'vue';
-  import { Button, Form, Grid, GridItem, type FormInstance, type ResponsiveValue } from '@arco-design/web-vue';
+  import { Button, Form, type FormInstance, type ResponsiveValue } from '@arco-design/web-vue';
   import { useI18n } from 'vue-i18n';
 
   const COLLAPSE_THRESHOLD_ROWS = 2;
   const COLLAPSED_VISIBLE_ROWS = 1;
+  const FIELD_COLUMN_GAP = 24;
   const DEFAULT_COLS: ResponsiveValue = { xs: 1, sm: 1, md: 2, lg: 3, xl: 3, xxl: 3 };
   const BREAKPOINTS: [keyof ResponsiveValue, number][] = [
     ['xxl', 1600],
@@ -57,6 +58,10 @@
       cols: {
         type: [Number, Object] as PropType<number | ResponsiveValue>,
         default: () => ({ ...DEFAULT_COLS }),
+      },
+      fieldFlex: {
+        type: Object as PropType<Record<string, number>>,
+        default: () => ({}),
       },
       loading: {
         type: Boolean,
@@ -113,6 +118,15 @@
       return () => {
         const fieldNodes = flattenSlotNodes(slots.default?.() ?? []);
         const rowCount = Math.ceil(fieldNodes.length / activeCols.value);
+        const fieldWeights = fieldNodes.map((node) => {
+          const field = node.props?.field;
+          const weight = typeof field === 'string' ? props.fieldFlex[field] : undefined;
+          return typeof weight === 'number' && Number.isFinite(weight) && weight > 0 ? weight : 1;
+        });
+        const rowWeights = Array.from({ length: rowCount }, (_, row) => {
+          const weights = fieldWeights.slice(row * activeCols.value, (row + 1) * activeCols.value);
+          return weights.reduce((total, weight) => total + weight, activeCols.value - weights.length);
+        });
         const overflow = rowCount > COLLAPSE_THRESHOLD_ROWS;
         currentOverflow = overflow;
         if (!overflow && !collapsed.value) scheduleCollapseReset();
@@ -179,7 +193,9 @@
             'model': props.model,
             'layout': 'horizontal',
             'labelAlign': 'left',
-            'autoLabelWidth': true,
+            'autoLabelWidth': viewportWidth.value <= 767,
+            'labelColProps': { flex: 'none' },
+            'wrapperColProps': { flex: '1' },
             'class': ['a9-filter-form', attrs.class],
             'data-layout': layout,
             'data-field-count': String(fieldNodes.length),
@@ -191,28 +207,26 @@
             default: () =>
               h('div', { class: 'a9-filter-form__body' }, [
                 h(
-                  Grid,
+                  'div',
                   {
                     class: 'a9-filter-form__fields',
-                    cols: props.cols,
-                    collapsed: overflow && collapsed.value,
-                    collapsedRows: COLLAPSED_VISIBLE_ROWS,
-                    colGap: 24,
-                    rowGap: 16,
+                    style: { columnGap: `${FIELD_COLUMN_GAP}px` },
                   },
-                  {
-                    default: () =>
-                      fieldNodes.map((node, index) =>
-                        h(
-                          GridItem,
-                          {
-                            key: node.key ?? index,
-                            class: 'a9-filter-form__field',
-                          },
-                          { default: () => node }
-                        )
-                      ),
-                  }
+                  fieldNodes.map((node, index) => {
+                    const ratio = fieldWeights[index] / rowWeights[Math.floor(index / activeCols.value)];
+                    return h(
+                      'div',
+                      {
+                        key: node.key ?? index,
+                        class: 'a9-filter-form__field',
+                        style: {
+                          flexBasis: `calc(${ratio * 100}% - ${(activeCols.value - 1) * FIELD_COLUMN_GAP * ratio}px)`,
+                          display: overflow && collapsed.value && index >= activeCols.value ? 'none' : undefined,
+                        },
+                      },
+                      [node]
+                    );
+                  })
                 ),
                 h(
                   'div',
@@ -248,16 +262,25 @@
     }
 
     &__fields {
-      flex: 1 1 auto;
+      display: flex;
+      flex: 1;
+      flex-wrap: wrap;
+      row-gap: 16px;
       min-width: 0;
     }
 
     &__field {
+      flex: 0 0 auto;
       min-width: 0;
 
       :deep(.arco-form-item) {
+        flex-wrap: nowrap;
         width: 100%;
         margin-bottom: 0;
+      }
+
+      :deep(.arco-form-item-label-col) {
+        padding-right: 12px;
       }
 
       :deep(.arco-form-item-wrapper-col) {

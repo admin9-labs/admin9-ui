@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-09-10
+
+### Added
+
+- `AFilterForm` 新增 `fieldFlex`，按字段名设置同行宽度权重；`cols` 继续控制每行字段数量，不完整行保留默认权重的空位。
+
+### Changed
+
+- `AFilterForm` 的 label 保持左对齐：桌面按自身内容占宽，`767px` 及以下的小屏统一 label 宽度以对齐控件；label 区域与控件固定间隔 `12px`。
+
+**Full Changelog**: https://github.com/admin9-labs/admin9-ui/compare/v0.13.1...v0.14.0
+
 ## [0.13.1] - 2026-09-06
 
 ### Changed

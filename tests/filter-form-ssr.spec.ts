@@ -20,8 +20,8 @@ const renderInitialMarkup = async () => {
     render: () =>
       h(
         AFilterForm,
-        { model: { first: '', second: '', third: '' } },
-        { default: () => [h('div', 'First'), h('div', 'Second'), h('div', 'Third')] }
+        { model: { first: '', second: '', third: '' }, fieldFlex: { first: 2 } },
+        { default: () => [h('div', { field: 'first' }, 'First'), h('div', 'Second'), h('div', 'Third')] }
       ),
   });
   app.use(
@@ -51,6 +51,7 @@ describe('AFilterForm SSR contract', () => {
 
     try {
       const mobileClientMarkup = await renderInitialMarkup();
+      expect(mobileClientMarkup).toBe(serverMarkup);
       expect(serverMarkup).toContain('data-layout="single"');
       expect(mobileClientMarkup).toContain('data-layout="single"');
       expect(serverMarkup.includes('Expand')).toBe(mobileClientMarkup.includes('Expand'));

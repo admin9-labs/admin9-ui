@@ -1,6 +1,19 @@
 /* eslint-disable vue/one-component-per-file */
-import { Fragment, createApp, defineComponent, h, nextTick, reactive, ref, type App, type Component } from 'vue';
-import { FormItem, Input } from '@arco-design/web-vue';
+import {
+  Comment,
+  Fragment,
+  Text,
+  createApp,
+  defineComponent,
+  h,
+  nextTick,
+  reactive,
+  ref,
+  type App,
+  type Component,
+  type VNode,
+} from 'vue';
+import { FormItem, Input, type ResponsiveValue } from '@arco-design/web-vue';
 import { createI18n } from 'vue-i18n';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AFilterForm from '../src/components/filter-form/index.vue';
@@ -68,12 +81,16 @@ const flush = async () => {
 
 interface MountOptions {
   count?: number;
-  cols?: number;
+  cols?: number | ResponsiveValue;
+  fieldFlex?: Record<string, number>;
+  nodes?: () => VNode[];
   loading?: boolean;
 }
 
 const mountFilterForm = (options: MountOptions = {}) => {
   const count = ref(options.count ?? 3);
+  const cols = ref(options.cols);
+  const fieldFlex = ref(options.fieldFlex);
   const model = reactive<Record<string, unknown>>({ keyword: 'kept' });
   const onSearch = vi.fn();
   const onReset = vi.fn();
@@ -84,7 +101,8 @@ const mountFilterForm = (options: MountOptions = {}) => {
           AFilterForm,
           {
             model,
-            ...(options.cols === undefined ? {} : { cols: options.cols }),
+            ...(cols.value === undefined ? {} : { cols: cols.value }),
+            fieldFlex: fieldFlex.value,
             loading: options.loading,
             onSearch,
             onReset,
@@ -94,13 +112,14 @@ const mountFilterForm = (options: MountOptions = {}) => {
               h(
                 Fragment,
                 null,
-                Array.from({ length: count.value }, (_, index) =>
-                  h(
-                    FormItem,
-                    { key: index, label: `Field ${index + 1}` },
-                    { default: () => h('div', { 'data-testid': `field-${index + 1}` }, `Field ${index + 1}`) }
+                options.nodes?.() ??
+                  Array.from({ length: count.value }, (_, index) =>
+                    h(
+                      FormItem,
+                      { key: index, field: `field-${index + 1}`, label: `Field ${index + 1}` },
+                      { default: () => h(Input, { 'data-testid': `field-${index + 1}` }) }
+                    )
                   )
-                )
               ),
           }
         );
@@ -123,12 +142,27 @@ const mountFilterForm = (options: MountOptions = {}) => {
   ['IconSearch', 'IconRefresh', 'IconDown', 'IconUp'].forEach((name) => app.component(name, IconStub as Component));
   mountedApps.push(app);
   app.mount('#app');
-  return { count, model, onSearch, onReset };
+  return { count, cols, fieldFlex, model, onSearch, onReset };
 };
 
 const visibleFieldCount = () =>
   Array.from(document.querySelectorAll<HTMLElement>('.a9-filter-form__field')).filter((field) => field.style.display !== 'none')
     .length;
+
+// happy-dom has no layout engine; resolve the emitted basis at a known container width.
+// Browser acceptance separately checks actual wrapping and geometry.
+const fieldWidths = (containerWidth = 1008) =>
+  Array.from(document.querySelectorAll<HTMLElement>('.a9-filter-form__field')).map((field) => {
+    const match = field.style.flexBasis.match(/^calc\(([\d.]+)% - ([\d.]+)px\)$/);
+    expect(match).not.toBeNull();
+    return (Number(match?.[1]) * containerWidth) / 100 - Number(match?.[2]);
+  });
+
+const expectWidths = (expected: number[]) => {
+  const actual = fieldWidths();
+  expect(actual).toHaveLength(expected.length);
+  expected.forEach((width, index) => expect(actual[index]).toBeCloseTo(width));
+};
 
 describe('AFilterForm public contract', () => {
   beforeEach(() => {
@@ -160,7 +194,108 @@ describe('AFilterForm public contract', () => {
     mountFilterForm({ count: 1 });
     await flush();
 
-    expect(document.querySelector('.arco-form-item-label-col')?.classList.contains('arco-form-item-label-col-left')).toBe(true);
+    const label = document.querySelector<HTMLElement>('.arco-form-item-label-col');
+    expect(label?.classList.contains('arco-form-item-label-col-left')).toBe(true);
+    expect(label?.style.flex).toBe('0 0 auto');
+    expect(document.querySelector('.arco-form-auto-label-width')).toBeNull();
+    expect(document.querySelector<HTMLElement>('.arco-form-item-wrapper-col')?.style.flex).toBe('1 1 0%');
+  });
+
+  it('shares label widths on mobile and restores natural widths above the mobile breakpoint', async () => {
+    setViewport(390);
+    mountFilterForm({ count: 2 });
+    await flush();
+    const form = document.querySelector('.a9-filter-form');
+    const input = form?.querySelector('input');
+    expect(form?.classList.contains('arco-form-auto-label-width')).toBe(true);
+
+    setViewport(768);
+    await flush();
+    expect(form?.classList.contains('arco-form-auto-label-width')).toBe(false);
+    expect(form?.querySelector<HTMLElement>('.arco-form-item-label-col')?.style.flex).toBe('0 0 auto');
+
+    setViewport(767);
+    await flush();
+    expect(form?.classList.contains('arco-form-auto-label-width')).toBe(true);
+    expect(form?.querySelector('input')).toBe(input);
+  });
+
+  it.each([2, 3, 4])('preserves equal columns and empty positions for %i unweighted fields', async (count) => {
+    mountFilterForm({ count, cols: 3 });
+    await flush();
+    expectWidths(Array.from({ length: count }, () => 320));
+  });
+
+  it.each([
+    [2, 2, { 'field-1': 2 }, [656, 328]],
+    [3, 3, { 'field-1': 3, 'field-2': 4, 'field-3': 5 }, [240, 320, 400]],
+    [2, 2, { 'field-1': 0.5, 'field-2': 0.25 }, [656, 328]],
+    [2, 3, { 'field-1': 2 }, [480, 240]],
+    [5, 3, { 'field-1': 3, 'field-2': 4, 'field-3': 5, 'field-4': 2 }, [240, 320, 400, 480, 240]],
+  ])('distributes %i fields across %i columns by row weight', async (count, cols, fieldFlex, widths) => {
+    mountFilterForm({ count, cols, fieldFlex });
+    await flush();
+    expectWidths(widths);
+  });
+
+  it.each([0, -1, NaN, Infinity, -Infinity, '2'])('defaults invalid weight %s to one', async (weight) => {
+    mountFilterForm({ count: 2, cols: 2, fieldFlex: { 'field-1': weight as number, 'absent': 9 } });
+    await flush();
+    expectWidths([492, 492]);
+  });
+
+  it('matches exact top-level field names, ignores wrappers, and reacts to conditional slots', async () => {
+    const showFirst = ref(true);
+    mountFilterForm({
+      cols: 3,
+      fieldFlex: { 'query.title': 2, 'title': 9, 'nested': 9 },
+      nodes: () => [
+        h(Text, null, '  '),
+        showFirst.value ? h(FormItem, { key: 'title', field: 'query.title', label: 'Title' }) : h(Comment),
+        h(Fragment, null, [h('div', { key: 'wrapper' }, [h(FormItem, { field: 'nested' })])]),
+        h(FormItem, { key: 'unnamed', label: 'Unnamed' }),
+      ],
+    });
+    await flush();
+    expectWidths([480, 240, 240]);
+    showFirst.value = false;
+    await flush();
+    expectWidths([320, 320]);
+    expect(document.querySelector('.a9-filter-form')?.getAttribute('data-field-count')).toBe('2');
+  });
+
+  it('keeps controls mounted through weight changes, responsive regrouping, and collapse', async () => {
+    const { fieldFlex, cols } = mountFilterForm({ count: 7, fieldFlex: { 'field-1': 2 } });
+    await flush();
+    const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('.a9-filter-form input'));
+    const first = inputs[0];
+    first.value = 'kept while regrouping';
+    first.dispatchEvent(new Event('input', { bubbles: true }));
+    first.focus();
+    await flush();
+
+    fieldFlex.value = { 'field-1': 3 };
+    await flush();
+    expect(fieldWidths()[0]).toBeCloseTo(576);
+    setViewport(800);
+    await flush();
+    expect(fieldWidths()[0]).toBeCloseTo(738);
+    expect(document.activeElement).toBe(first);
+    setViewport(390);
+    await flush();
+    expectWidths(Array.from({ length: 7 }, () => 1008));
+    cols.value = 2;
+    await flush();
+    expect(visibleFieldCount()).toBe(2);
+    document.querySelector<HTMLButtonElement>('.a9-filter-form__toggle')?.click();
+    await flush();
+    expect(visibleFieldCount()).toBe(7);
+    document.querySelector<HTMLButtonElement>('.a9-filter-form__toggle')?.click();
+    await flush();
+    expect(visibleFieldCount()).toBe(2);
+    const currentInputs = Array.from(document.querySelectorAll('.a9-filter-form input'));
+    inputs.forEach((input, index) => expect(currentInputs[index]).toBe(input));
+    expect(first.value).toBe('kept while regrouping');
   });
 
   it('enables collapse after two rows and collapses fields to the first row', async () => {

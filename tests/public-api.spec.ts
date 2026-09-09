@@ -86,9 +86,9 @@ describe('package public API', () => {
       keyword: string;
     }
     const model: FilterModel = { keyword: '' };
-    const props: AFilterFormProps = { model, cols: 3, loading: false };
+    const props: AFilterFormProps = { model, cols: 3, fieldFlex: { keyword: 2 }, loading: false };
 
-    expect(props).toEqual({ model, cols: 3, loading: false });
+    expect(props).toEqual({ model, cols: 3, fieldFlex: { keyword: 2 }, loading: false });
   });
 
   it('exports the complete pro table contract', async () => {

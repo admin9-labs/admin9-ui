@@ -83,6 +83,10 @@
   ];
   const tableState = ref<AcceptanceState>('normal');
   const singleFilter = reactive(createFilterModel());
+  const weightedFilter = reactive(createFilterModel());
+  const ratioFilter = reactive(createFilterModel());
+  const partialFilter = reactive(createFilterModel());
+  const lastWeightedSearch = ref('尚未查询');
   const multipleFilter = reactive(createFilterModel());
   const collapsibleFilter = reactive(createFilterModel());
   const tableError = ref(false);
@@ -241,6 +245,59 @@
         </div>
 
         <div class="filter-form-gallery">
+          <article class="filter-form-scenario" data-testid="weighted-filter-form">
+            <h3>标题与类型 · 2:1</h3>
+            <AFilterForm
+              :model="weightedFilter"
+              :cols="{ xs: 1, sm: 1, md: 2 }"
+              :field-flex="{ title: 2, type: 1 }"
+              @search="lastWeightedSearch = JSON.stringify($event)"
+              @reset="resetFilter(weightedFilter)"
+            >
+              <a-form-item field="title" label="标题">
+                <a-input v-model="weightedFilter.title" placeholder="请输入标题" allow-clear />
+              </a-form-item>
+              <a-form-item field="type" label="内容类型">
+                <a-select v-model="weightedFilter.type" placeholder="全部" allow-clear>
+                  <a-option value="article">文章</a-option>
+                  <a-option value="video">视频</a-option>
+                </a-select>
+              </a-form-item>
+            </AFilterForm>
+            <p data-testid="weighted-filter-result">查询结果：{{ lastWeightedSearch }}</p>
+          </article>
+
+          <article class="filter-form-scenario" data-testid="ratio-filter-form">
+            <h3>三个字段 · 3:4:5</h3>
+            <AFilterForm
+              :model="ratioFilter"
+              :field-flex="{ workOrderNo: 3, title: 4, type: 5 }"
+              @reset="resetFilter(ratioFilter)"
+            >
+              <a-form-item field="workOrderNo" label="客户工单编号">
+                <a-input v-model="ratioFilter.workOrderNo" allow-clear />
+              </a-form-item>
+              <a-form-item field="title" label="标题">
+                <a-input v-model="ratioFilter.title" allow-clear />
+              </a-form-item>
+              <a-form-item field="type" label="内容类型">
+                <a-select v-model="ratioFilter.type" placeholder="全部" allow-clear />
+              </a-form-item>
+            </AFilterForm>
+          </article>
+
+          <article class="filter-form-scenario" data-testid="partial-filter-form">
+            <h3>不满一行 · 保留空位</h3>
+            <AFilterForm :model="partialFilter" :field-flex="{ title: 2 }" @reset="resetFilter(partialFilter)">
+              <a-form-item field="title" label="标题">
+                <a-input v-model="partialFilter.title" allow-clear />
+              </a-form-item>
+              <a-form-item field="type" label="内容类型">
+                <a-select v-model="partialFilter.type" placeholder="全部" allow-clear />
+              </a-form-item>
+            </AFilterForm>
+          </article>
+
           <article class="filter-form-scenario" data-testid="single-filter-form">
             <h3>单行筛选</h3>
             <AFilterForm :model="singleFilter" @reset="resetFilter(singleFilter)">
@@ -285,7 +342,11 @@
 
           <article class="filter-form-scenario" data-testid="collapsible-filter-form">
             <h3>可折叠筛选</h3>
-            <AFilterForm :model="collapsibleFilter" @reset="resetFilter(collapsibleFilter)">
+            <AFilterForm
+              :model="collapsibleFilter"
+              :field-flex="{ title: 2, createdAt: 2, keyword: 2 }"
+              @reset="resetFilter(collapsibleFilter)"
+            >
               <a-form-item field="workOrderNo" label="工单编号">
                 <a-input v-model="collapsibleFilter.workOrderNo" placeholder="请输入工单编号" allow-clear />
               </a-form-item>
