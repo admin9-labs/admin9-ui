@@ -4,6 +4,7 @@ import { Message } from '@arco-design/web-vue';
 import type { Editor } from '@tiptap/core';
 import { GapCursor } from '@tiptap/pm/gapcursor';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { columnResizingPluginKey } from '@tiptap/pm/tables';
 import { createI18n } from 'vue-i18n';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ATiptapEditor from '../src/components/tiptap-editor/index.vue';
@@ -256,6 +257,7 @@ function installStubs(app: App) {
     'IconImage',
     'IconVideoCamera',
     'IconSound',
+    'IconApps',
     'IconAlignLeft',
     'IconAlignCenter',
     'IconAlignRight',
@@ -329,6 +331,99 @@ describe('ATiptapEditor public contract', () => {
     expect(instance.getHTML()).toBe('');
     expect(onUpdate).toHaveBeenLastCalledWith('');
     expect(onChange).toHaveBeenLastCalledWith('');
+  });
+
+  it('parses, edits, and serializes table HTML', async () => {
+    const instance = mountEditor({
+      modelValue:
+        '<table><tbody><tr><th colspan="2"><p>Header</p></th></tr><tr><td><p>One</p></td><td><p>Two</p></td></tr></tbody></table>',
+    });
+    await flush();
+
+    const table = document.querySelector('table');
+    expect(table).not.toBeNull();
+    expect(table?.querySelector('th')?.getAttribute('colspan')).toBe('2');
+    expect(instance.getHTML()).toContain('<table');
+    expect(instance.getHTML()).toContain('<th colspan="2"');
+
+    const internalEditor = getInternalEditor(instance);
+    expect(internalEditor.chain().focus().addRowAfter().run()).toBe(true);
+    await flush();
+    expect(document.querySelectorAll('table tr')).toHaveLength(3);
+    expect(instance.getHTML()).toContain('<table');
+  });
+
+  it.each(['readonly', 'disabled'] as const)('keeps column resizing available after initial %s is lifted', async (mode) => {
+    const locked = ref(true);
+    const editorRef = ref<TiptapEditorInstance>();
+    const Root = defineComponent({
+      setup: () => () =>
+        h(ATiptapEditor, {
+          ref: editorRef,
+          modelValue: '<table><tr><td>A</td><td>B</td></tr></table>',
+          [mode]: locked.value,
+        }),
+    });
+    const app = createApp(Root);
+    app.use(createI18n({ legacy: false, locale: 'en-US', messages }));
+    installStubs(app);
+    mountedApps.push(app);
+    app.mount('#app');
+    await flush();
+    if (!editorRef.value) throw new Error('Editor did not mount');
+    const internalEditor = getInternalEditor(editorRef.value);
+    const original = internalEditor.getHTML();
+    expect(internalEditor.isEditable).toBe(false);
+    expect(columnResizingPluginKey.getState(internalEditor.state)).toBeDefined();
+    locked.value = false;
+    await flush();
+    expect(internalEditor.isEditable).toBe(true);
+    expect(columnResizingPluginKey.getState(internalEditor.state)).toBeDefined();
+    locked.value = true;
+    await flush();
+    expect(internalEditor.isEditable).toBe(false);
+    expect(internalEditor.getHTML()).toBe(original);
+  });
+
+  it('previews a rectangle and inserts the selected dimensions without a header', async () => {
+    mountEditor();
+    await flush();
+
+    const tableButton = document.querySelector<HTMLButtonElement>('button[aria-label="Table"]');
+    tableButton?.click();
+    await flush();
+    expect(document.querySelectorAll('[data-table-size]')).toHaveLength(80);
+    const cell = document.querySelector<HTMLButtonElement>('[data-table-size="2-4"]');
+    cell?.dispatchEvent(new MouseEvent('mouseenter'));
+    await flush();
+    expect(document.querySelector('.a9-tiptap-editor__table-size')?.textContent).toBe('2 rows × 4 columns');
+    expect(document.querySelectorAll('.a9-tiptap-editor__table-cell.is-selected')).toHaveLength(8);
+    cell?.click();
+    await waitForEditorStateRender();
+
+    expect(document.querySelectorAll('table tr')).toHaveLength(2);
+    expect(document.querySelectorAll('table td')).toHaveLength(8);
+    expect(document.querySelectorAll('table th')).toHaveLength(0);
+    expect(document.body.textContent).toContain('Insert row below');
+    expect(document.body.textContent).toContain('Delete table');
+  });
+
+  it('moves the single picker tab stop with arrow keys and cancels with Escape', async () => {
+    mountEditor();
+    await flush();
+    document.querySelector<HTMLButtonElement>('button[aria-label="Table"]')?.click();
+    await flush();
+    const first = document.querySelector<HTMLButtonElement>('[data-table-size="1-1"]');
+    first?.focus();
+    first?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+    await flush();
+    expect(document.activeElement?.getAttribute('data-table-size')).toBe('1-2');
+    expect(document.querySelectorAll('[data-table-size][tabindex="0"]')).toHaveLength(1);
+    document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await flush();
+    expect(document.querySelector('.a9-tiptap-editor__table-picker')).toBeNull();
+    expect(document.querySelector('table')).toBeNull();
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Table');
   });
 
   it('removes a leading empty paragraph before block media when the cursor is already in it and supports undo', async () => {

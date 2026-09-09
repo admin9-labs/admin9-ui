@@ -4,11 +4,13 @@
   import { Extension, type Editor } from '@tiptap/core';
   import CharacterCount from '@tiptap/extension-character-count';
   import Placeholder from '@tiptap/extension-placeholder';
+  import { Table, TableKit } from '@tiptap/extension-table';
   import TextAlign from '@tiptap/extension-text-align';
   import StarterKit from '@tiptap/starter-kit';
   import { GapCursor } from '@tiptap/pm/gapcursor';
   import { Fragment } from '@tiptap/pm/model';
   import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transaction } from '@tiptap/pm/state';
+  import { columnResizing, tableEditing } from '@tiptap/pm/tables';
   import { EditorContent, useEditor } from '@tiptap/vue-3';
   import { useI18n } from 'vue-i18n';
   import admin9UIOptionsKey from '../../internal/options';
@@ -57,6 +59,14 @@
   const resolvedFileService = computed(() => props.service ?? globalOptions?.fileService);
   const isEditable = computed(() => !props.disabled && !props.readonly);
   const linkPopupVisible = ref(false);
+  const tablePopupVisible = ref(false);
+  const tableRows = ref(1);
+  const tableColumns = ref(1);
+  const tableTriggerRef = ref<{ $el: HTMLButtonElement }>();
+  const tablePickerRef = ref<HTMLElement>();
+  const tableSizeLabel = computed(() =>
+    t('admin9Ui.tiptapEditor.tableSize', { rows: tableRows.value, columns: tableColumns.value })
+  );
   const altPopupVisible = ref(false);
   const imagePickerTooltipVisible = ref(false);
   const videoPickerTooltipVisible = ref(false);
@@ -209,6 +219,26 @@
     currentEditor.view.dispatch(currentEditor.state.tr.setSelection(nextSelection));
   }
 
+  // Keep resizing registered across readonly/disabled transitions. Its handlers
+  // already guard view.editable before changing the document.
+  const DynamicEditableTable = Table.extend({
+    addProseMirrorPlugins() {
+      return [
+        columnResizing({
+          handleWidth: this.options.handleWidth,
+          cellMinWidth: this.options.cellMinWidth,
+          defaultCellMinWidth: this.options.cellMinWidth,
+          View: this.options.View,
+          lastColumnResizable: this.options.lastColumnResizable,
+        }),
+        tableEditing({ allowTableNodeSelection: this.options.allowTableNodeSelection }),
+      ];
+    },
+    addNodeView() {
+      return null;
+    },
+  });
+
   const editor = useEditor({
     content: props.modelValue,
     editable: isEditable.value,
@@ -238,6 +268,8 @@
         types: ['heading', 'paragraph'],
         alignments: ['left', 'center', 'right'],
       }),
+      TableKit.configure({ table: false }),
+      DynamicEditableTable.configure({ cellMinWidth: 120, resizable: true }),
       CharacterCount,
       DynamicCharacterLimit,
       RemoveLeadingEmptyParagraphBeforeMedia,
@@ -414,6 +446,63 @@
       editor.value.chain().focus().toggleHeading({ level }).run();
     }
   };
+
+  const runTableAction = (value: string | number | Record<string, unknown> | undefined) => {
+    if (!editor.value || !isEditable.value || typeof value !== 'string') return;
+
+    const chain = editor.value.chain().focus();
+    if (value === 'add-row-before') chain.addRowBefore().run();
+    else if (value === 'add-row-after') chain.addRowAfter().run();
+    else if (value === 'delete-row') chain.deleteRow().run();
+    else if (value === 'add-column-before') chain.addColumnBefore().run();
+    else if (value === 'add-column-after') chain.addColumnAfter().run();
+    else if (value === 'delete-column') chain.deleteColumn().run();
+    else if (value === 'toggle-header-row') chain.toggleHeaderRow().run();
+    else if (value === 'delete-table') chain.deleteTable().run();
+  };
+
+  const previewTable = (rows: number, columns: number) => {
+    tableRows.value = rows;
+    tableColumns.value = columns;
+  };
+  const focusTablePicker = async () => {
+    tablePopupVisible.value = true;
+    await nextTick();
+    tablePickerRef.value?.querySelector<HTMLButtonElement>('[tabindex="0"]')?.focus();
+  };
+  const insertTable = (rows: number, cols: number) => {
+    if (!editor.value || !isEditable.value) return;
+    tablePopupVisible.value = false;
+    editor.value.chain().focus().insertTable({ rows, cols, withHeaderRow: false }).run();
+  };
+  const onTablePickerKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      tablePopupVisible.value = false;
+      tableTriggerRef.value?.$el.focus();
+      return;
+    }
+    const offsets: Record<string, [number, number]> = {
+      ArrowUp: [-1, 0],
+      ArrowDown: [1, 0],
+      ArrowLeft: [0, -1],
+      ArrowRight: [0, 1],
+    };
+    const offset = offsets[event.key];
+    if (!offset) return;
+    event.preventDefault();
+    event.stopPropagation();
+    previewTable(
+      Math.max(1, Math.min(8, tableRows.value + offset[0])),
+      Math.max(1, Math.min(10, tableColumns.value + offset[1]))
+    );
+    const picker = event.currentTarget as HTMLElement;
+    picker.querySelector<HTMLButtonElement>(`[data-table-size="${tableRows.value}-${tableColumns.value}"]`)?.focus();
+  };
+  watch(tablePopupVisible, (visible) => {
+    if (visible) previewTable(1, 1);
+  });
 
   const prepareLink = () => {
     linkHref.value = String(editor.value?.getAttributes('link').href ?? '');
@@ -696,6 +785,7 @@
     }
   );
   watch(isEditable, (value) => {
+    if (!value) tablePopupVisible.value = false;
     const currentEditor = editor.value;
     currentEditor?.setEditable(value);
     if (!value && currentEditor) clearNodeSelection(currentEditor);
@@ -959,6 +1049,84 @@
           </template>
         </AFilePicker>
       </a-tooltip>
+
+      <a-popover
+        v-if="!editor?.isActive('table')"
+        v-model:popup-visible="tablePopupVisible"
+        trigger="click"
+        position="bottom"
+        :disabled="disabled"
+      >
+        <a-button
+          ref="tableTriggerRef"
+          size="small"
+          type="text"
+          :disabled="disabled"
+          :aria-label="t('admin9Ui.tiptapEditor.table')"
+          :aria-expanded="tablePopupVisible"
+          aria-haspopup="dialog"
+          @mousedown.prevent
+          @keydown.down.prevent="focusTablePicker"
+          @keydown.enter.prevent="focusTablePicker"
+          @keydown.space.prevent="focusTablePicker"
+        >
+          <template #icon><icon-apps /></template>
+        </a-button>
+        <template #content>
+          <div
+            ref="tablePickerRef"
+            class="a9-tiptap-editor__table-picker"
+            role="dialog"
+            :aria-label="t('admin9Ui.tiptapEditor.table')"
+            @keydown="onTablePickerKeydown"
+          >
+            <div class="a9-tiptap-editor__table-size" aria-live="polite">{{ tableSizeLabel }}</div>
+            <div class="a9-tiptap-editor__table-grid">
+              <template v-for="row in 8" :key="row">
+                <button
+                  v-for="column in 10"
+                  :key="column"
+                  type="button"
+                  class="a9-tiptap-editor__table-cell"
+                  :class="{ 'is-selected': row <= tableRows && column <= tableColumns }"
+                  :tabindex="row === tableRows && column === tableColumns ? 0 : -1"
+                  :aria-label="t('admin9Ui.tiptapEditor.tableSize', { rows: row, columns: column })"
+                  :data-table-size="`${row}-${column}`"
+                  @mouseenter="previewTable(row, column)"
+                  @focus="previewTable(row, column)"
+                  @mousedown.prevent
+                  @click="insertTable(row, column)"
+                />
+              </template>
+            </div>
+          </div>
+        </template>
+      </a-popover>
+      <a-dropdown v-else trigger="click" @select="runTableAction">
+        <a-tooltip :content="t('admin9Ui.tiptapEditor.table')">
+          <a-button
+            size="small"
+            :type="editor?.isActive('table') ? 'primary' : 'text'"
+            :disabled="disabled"
+            :aria-label="t('admin9Ui.tiptapEditor.table')"
+            :aria-pressed="editor?.isActive('table')"
+          >
+            <template #icon><icon-apps /></template>
+          </a-button>
+        </a-tooltip>
+        <template #content>
+          <template v-if="editor?.isActive('table')">
+            <a-doption value="add-row-before">{{ t('admin9Ui.tiptapEditor.addRowBefore') }}</a-doption>
+            <a-doption value="add-row-after">{{ t('admin9Ui.tiptapEditor.addRowAfter') }}</a-doption>
+            <a-doption value="delete-row">{{ t('admin9Ui.tiptapEditor.deleteRow') }}</a-doption>
+            <a-doption value="add-column-before">{{ t('admin9Ui.tiptapEditor.addColumnBefore') }}</a-doption>
+            <a-doption value="add-column-after">{{ t('admin9Ui.tiptapEditor.addColumnAfter') }}</a-doption>
+            <a-doption value="delete-column">{{ t('admin9Ui.tiptapEditor.deleteColumn') }}</a-doption>
+            <a-doption value="toggle-header-row">{{ t('admin9Ui.tiptapEditor.toggleHeaderRow') }}</a-doption>
+            <a-doption value="delete-table">{{ t('admin9Ui.tiptapEditor.deleteTable') }}</a-doption>
+          </template>
+        </template>
+      </a-dropdown>
 
       <span class="a9-tiptap-editor__divider" aria-hidden="true" />
 
@@ -1435,6 +1603,41 @@
     width: min(320px, calc(100vw - 48px));
   }
 
+  .a9-tiptap-editor__table-picker {
+    width: min(276px, calc(100vw - 64px));
+  }
+
+  .a9-tiptap-editor__table-size {
+    margin-bottom: 10px;
+    color: var(--color-text-2);
+    font-size: 13px;
+  }
+
+  .a9-tiptap-editor__table-grid {
+    display: grid;
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .a9-tiptap-editor__table-cell {
+    aspect-ratio: 1;
+    padding: 0;
+    background: var(--color-bg-2);
+    border: 1px solid var(--color-border-3);
+    border-radius: 2px;
+    cursor: pointer;
+
+    &.is-selected {
+      background: rgb(var(--primary-1));
+      border-color: rgb(var(--primary-6));
+    }
+
+    &:focus-visible {
+      outline: 2px solid rgb(var(--primary-6));
+      outline-offset: 1px;
+    }
+  }
+
   .a9-tiptap-editor__link-actions {
     display: flex;
     gap: 8px;
@@ -1545,6 +1748,64 @@
         margin: 20px 0;
         border: 0;
         border-top: 1px solid var(--color-border-2);
+      }
+
+      .tableWrapper {
+        margin: 12px 0;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+      }
+
+      table {
+        width: 100%;
+        min-width: 480px;
+        table-layout: fixed;
+        border-collapse: collapse;
+        border-spacing: 0;
+      }
+
+      th,
+      td {
+        position: relative;
+        min-width: 80px;
+        padding: 8px 10px;
+        vertical-align: top;
+        border: 1px solid var(--color-border-2);
+      }
+
+      th {
+        font-weight: 600;
+        text-align: left;
+        background: var(--color-fill-2);
+      }
+
+      th > :last-child,
+      td > :last-child {
+        margin-bottom: 0;
+      }
+
+      .selectedCell::after {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        background: rgba(var(--primary-6), 0.1);
+        content: '';
+        pointer-events: none;
+      }
+
+      .column-resize-handle {
+        position: absolute;
+        top: 0;
+        right: -2px;
+        bottom: -1px;
+        z-index: 3;
+        width: 4px;
+        background: rgb(var(--primary-6));
+        pointer-events: none;
+      }
+
+      &.resize-cursor {
+        cursor: col-resize;
       }
 
       .a9-tiptap-editor__media-node:not(.is-inlineImage) {

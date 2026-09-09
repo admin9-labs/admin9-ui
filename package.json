@@ -108,6 +108,7 @@
     "@tiptap/extension-character-count": "^3.29.2",
     "@tiptap/extension-bubble-menu": "^3.29.2",
     "@tiptap/extension-placeholder": "^3.29.2",
+    "@tiptap/extension-table": "^3.29.2",
     "@tiptap/extension-text-align": "^3.29.2",
     "@tiptap/pm": "^3.29.2",
     "@tiptap/starter-kit": "^3.29.2",
