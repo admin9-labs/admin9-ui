@@ -8,6 +8,7 @@ import { columnResizingPluginKey } from '@tiptap/pm/tables';
 import { createI18n } from 'vue-i18n';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ATiptapEditor from '../src/components/tiptap-editor/index.vue';
+import type { TiptapDocument } from '../src/components/tiptap-editor/types';
 import { messages } from '../src/locale';
 
 vi.mock('../src/components/file-picker/index.vue', async () => {
@@ -217,6 +218,7 @@ interface TiptapEditorInstance extends ComponentPublicInstance {
   focus: () => boolean;
   clear: () => boolean;
   getHTML: () => string;
+  getJSON: () => TiptapDocument;
 }
 
 async function flush() {
@@ -331,6 +333,388 @@ describe('ATiptapEditor public contract', () => {
     expect(instance.getHTML()).toBe('');
     expect(onUpdate).toHaveBeenLastCalledWith('');
     expect(onChange).toHaveBeenLastCalledWith('');
+  });
+
+  it('edits JSON, emits independent snapshots, and clears to a native empty document', async () => {
+    const onUpdate = vi.fn();
+    const onChange = vi.fn();
+    const instance = mountEditor({
+      'valueFormat': 'json',
+      'modelValue': { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hello' }] }] },
+      'onUpdate:modelValue': onUpdate,
+      'onChange': onChange,
+    });
+    await flush();
+    expect(instance.getHTML()).toBe('<p>Hello</p>');
+    expect(onUpdate).not.toHaveBeenCalled();
+    const internalEditor = getInternalEditor(instance);
+    internalEditor.commands.setTextSelection(6);
+    internalEditor.commands.insertContent(' JSON');
+    await flush();
+    expect(instance.getHTML()).toBe('<p>Hello JSON</p>');
+    expect(onUpdate).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onUpdate.mock.calls[0][0]).toEqual(instance.getJSON());
+    expect(onUpdate.mock.calls[0][0]).not.toBe(onChange.mock.calls[0][0]);
+    onUpdate.mock.calls[0][0].content[0].attrs.textAlign = 'right';
+    expect(instance.getJSON().content[0].attrs?.textAlign).toBeNull();
+    expect(onChange.mock.calls[0][0].content[0].attrs.textAlign).toBeNull();
+    instance.clear();
+    await flush();
+    expect(instance.getHTML()).toBe('');
+    expect(onUpdate.mock.lastCall?.[0]).toEqual(internalEditor.getJSON());
+    expect(onUpdate.mock.lastCall?.[0].type).toBe('doc');
+    expect(onUpdate.mock.lastCall?.[0].content[0].type).toBe('paragraph');
+  });
+
+  it.each(['html', 'json'])('initializes omitted %s models without emitting an update', async (valueFormat) => {
+    const onUpdate = vi.fn();
+    const onContentError = vi.fn();
+    const instance = mountEditor({ valueFormat, 'onUpdate:modelValue': onUpdate, onContentError });
+    await flush();
+    expect(instance.getHTML()).toBe('');
+    expect(instance.getJSON().type).toBe('doc');
+    expect(onUpdate).not.toHaveBeenCalled();
+    expect(onContentError).not.toHaveBeenCalled();
+  });
+
+  it('keeps each JSON change snapshot paired with its update when the parent immediately clears the editor', async () => {
+    let cleared = false;
+    let instance: TiptapEditorInstance;
+    const onChange = vi.fn();
+    const onUpdate = vi.fn(() => {
+      if (!cleared) {
+        cleared = true;
+        instance.clear();
+      }
+    });
+    instance = mountEditor({ 'valueFormat': 'json', 'onUpdate:modelValue': onUpdate, onChange });
+    await flush();
+    getInternalEditor(instance).commands.insertContent('Submitted');
+    await flush();
+    expect(instance.getHTML()).toBe('');
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange.mock.calls[0][0]).toEqual(instance.getJSON());
+    expect(onChange.mock.calls[1][0].content[0].content[0].text).toBe('Submitted');
+  });
+
+  it('keeps JSON feedback and reordered equivalent objects from resetting selection or history', async () => {
+    const value = ref<TiptapDocument>({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'First' }] }],
+    });
+    const instanceRef = ref<TiptapEditorInstance>();
+    const onUpdate = vi.fn((nextValue: TiptapDocument) => {
+      value.value = nextValue;
+    });
+    const onChange = vi.fn();
+    const app = createApp(
+      defineComponent({
+        setup: () => () =>
+          h(ATiptapEditor<'json'>, {
+            'ref': instanceRef,
+            'valueFormat': 'json',
+            'modelValue': value.value,
+            'onUpdate:modelValue': onUpdate,
+            onChange,
+          }),
+      })
+    );
+    app.use(createI18n({ legacy: false, locale: 'en-US', messages }));
+    installStubs(app);
+    mountedApps.push(app);
+    app.mount('#app');
+    await flush();
+    const instance = instanceRef.value;
+    if (!instance) throw new Error('ATiptapEditor did not mount');
+    const internalEditor = getInternalEditor(instance);
+    const setContent = vi.spyOn(internalEditor.commands, 'setContent');
+    internalEditor.commands.setTextSelection(3);
+    internalEditor.commands.insertContent('!');
+    await flush();
+    const { selection } = internalEditor.state;
+    const document = internalEditor.state.doc;
+    value.value = JSON.parse(
+      JSON.stringify(
+        value.value,
+        Object.keys({
+          content: 0,
+          attrs: 0,
+          textAlign: 0,
+          text: 0,
+          type: 0,
+          marks: 0,
+        })
+      )
+    );
+    await flush();
+    expect(internalEditor.state.doc).toBe(document);
+    expect(internalEditor.state.selection).toBe(selection);
+    expect(setContent).not.toHaveBeenCalled();
+    expect(onUpdate).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalledOnce();
+    internalEditor.commands.undo();
+    expect(instance.getHTML()).toBe('<p>First</p>');
+    internalEditor.commands.redo();
+    expect(instance.getHTML()).toBe('<p>Fi!rst</p>');
+    await flush();
+    onUpdate.mockClear();
+    onChange.mockClear();
+    value.value = {
+      type: 'doc',
+      content: [{ type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Replacement' }] }],
+    };
+    await flush();
+    expect(instance.getHTML()).toBe('<h2>Replacement</h2>');
+    expect(onUpdate).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('round-trips tables and every media node through JSON without sharing nested attributes', async () => {
+    const instance = mountEditor({
+      modelValue: [
+        '<table><tr><th colspan="2" colwidth="140,160"><p>Header</p></th></tr>',
+        '<tr><td rowspan="2"><p>One</p></td><td><p>Two</p></td></tr><tr><td><p>Three</p></td></tr></table>',
+        '<p><strong>Bold</strong><a href="/article" target="_self" class="article-link" rel="ugc">Article</a><img src="/inline.png" data-display="inline" data-size="1.5em"></p>',
+        '<img src="/block.png" alt="Cover" data-display="block" data-width="63%" data-align="right">',
+        '<video src="/movie.mp4" data-width="75%" data-align="center"></video>',
+        '<audio src="/podcast.mp3" data-width="compact" data-align="right"></audio>',
+      ].join(''),
+    });
+    await flush();
+    const saved = instance.getJSON();
+    const expectedHTML = instance.getHTML();
+    const header = saved.content[0].content?.[0].content?.[0];
+    expect(header?.attrs?.colspan).toBe(2);
+    expect(header?.attrs?.colwidth).toEqual([140, 160]);
+    mountedApps.pop()?.unmount();
+    document.body.innerHTML = '<div id="app"></div>';
+    const reloaded = mountEditor({ valueFormat: 'json', modelValue: saved });
+    await flush();
+    expect(reloaded.getJSON()).toEqual(saved);
+    expect(reloaded.getHTML()).toBe(expectedHTML);
+    if (!header?.attrs?.colwidth) throw new Error('Expected header widths');
+    header.attrs.colwidth[0] = 999;
+    const snapshot = reloaded.getJSON();
+    expect(snapshot.content[0].content?.[0].content?.[0].attrs?.colwidth).toEqual([140, 160]);
+    const snapshotWidths = snapshot.content[0].content?.[0].content?.[0].attrs?.colwidth;
+    if (!snapshotWidths) throw new Error('Expected snapshot widths');
+    snapshotWidths[1] = 888;
+    expect(reloaded.getJSON().content[0].content?.[0].content?.[0].attrs?.colwidth).toEqual([140, 160]);
+    const internalEditor = getInternalEditor(reloaded);
+    internalEditor.commands.setTextSelection(4);
+    internalEditor.commands.insertContent(' edited');
+    expect(reloaded.getHTML()).toContain(' edited');
+    internalEditor.commands.setNodeSelection(findNodePosition(internalEditor, 'blockImage'));
+    internalEditor.commands.updateAttributes('blockImage', { width: '50%' });
+    expect(reloaded.getJSON().content.find((node) => node.type === 'blockImage')?.attrs?.width).toBe('50%');
+  });
+
+  it.each([0, -2, 3])('preserves the native ordered-list start %i through JSON reload and editing', async (start) => {
+    const original = mountEditor({ modelValue: `<ol start="${start}"><li><p>Item</p></li></ol>` });
+    await flush();
+    const saved = original.getJSON();
+    const html = original.getHTML();
+    expect(saved.content[0].attrs?.start).toBe(start);
+    mountedApps.pop()?.unmount();
+    document.body.innerHTML = '<div id="app"></div>';
+    const onUpdate = vi.fn();
+    const reloaded = mountEditor({
+      'valueFormat': 'json',
+      'modelValue': saved,
+      'onUpdate:modelValue': onUpdate,
+    });
+    await flush();
+    expect(reloaded.getJSON()).toEqual(saved);
+    expect(reloaded.getHTML()).toBe(html);
+    const editor = getInternalEditor(reloaded);
+    editor.commands.setTextSelection(3);
+    editor.commands.insertContent('Edited ');
+    await flush();
+    expect(onUpdate.mock.lastCall?.[0].content[0].attrs.start).toBe(start);
+  });
+
+  it('normalizes JSON media, links and table attributes before rendering without mutating input', async () => {
+    const unsafeUrl = ['java', 'script:alert(1)'].join('');
+    const modelValue: TiptapDocument = {
+      type: 'doc',
+      content: [
+        { type: 'blockImage', attrs: { src: unsafeUrl } },
+        {
+          type: 'paragraph',
+          attrs: { textAlign: 'invalid' },
+          content: [
+            { type: 'text', text: 'Unsafe link', marks: [{ type: 'link', attrs: { href: unsafeUrl } }] },
+            { type: 'text', text: 'Safe link', marks: [{ type: 'link', attrs: { href: 'https://example.com' } }] },
+            { type: 'inlineImage', attrs: { src: '/inline.png', size: '99em' } },
+          ],
+        },
+        { type: 'blockImage', attrs: { src: '/block.png', width: '150%', align: 'justify', alt: 123 } },
+        { type: 'video', attrs: { src: '/movie.mp4', width: '150%', align: 'invalid', autoplay: true } },
+        { type: 'audio', attrs: { src: '/audio.mp3', width: '200px', align: 'right' } },
+        {
+          type: 'table',
+          content: [
+            {
+              type: 'tableRow',
+              content: [
+                {
+                  type: 'tableCell',
+                  attrs: {
+                    colspan: -2,
+                    rowspan: 0,
+                    colwidth: [-1],
+                    align: 'invalid',
+                  },
+                  content: [{ type: 'paragraph' }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const original = JSON.stringify(modelValue);
+    const instance = mountEditor({ valueFormat: 'json', modelValue });
+    await flush();
+    expect(JSON.stringify(modelValue)).toBe(original);
+    const nodes = instance.getJSON().content;
+    expect(nodes[0].type).toBe('paragraph');
+    expect(nodes[0].content?.[0].marks).toBeUndefined();
+    expect(nodes[0].content?.[1].marks?.[0].attrs).toMatchObject({
+      href: 'https://example.com',
+      rel: 'noopener noreferrer nofollow',
+    });
+    expect(nodes[0].content?.[2].attrs?.size).toBe('1em');
+    expect(nodes[1].attrs).toMatchObject({ width: 'natural', align: 'left', alt: '' });
+    expect(nodes[2].attrs).toMatchObject({ width: '100%', align: 'left' });
+    expect(nodes[3].attrs).toMatchObject({ width: 'standard', align: 'right' });
+    expect(nodes[4].content?.[0].content?.[0].attrs).toMatchObject({ colspan: 1, rowspan: 1, colwidth: null, align: null });
+    expect(document.querySelector('.a9-tiptap-editor__prose')?.innerHTML).not.toContain(unsafeUrl);
+    expect(JSON.stringify(instance.getJSON())).not.toContain(unsafeUrl);
+    expect(instance.getHTML()).not.toContain('autoplay');
+  });
+
+  it.each([
+    ['html', { type: 'doc', content: [] }, 'format-mismatch'],
+    ['json', '<p>HTML</p>', 'format-mismatch'],
+    ['json', '{"type":"doc","content":[]}', 'format-mismatch'],
+    ['json', [{ type: 'paragraph' }], 'invalid-document'],
+    ['json', { type: 'doc', content: [{ type: 'unknown' }] }, 'invalid-document'],
+    [
+      'json',
+      {
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Bad mark', marks: [{ type: 'unknown' }] }] }],
+      },
+      'invalid-document',
+    ],
+    ['json', { type: 'doc', content: [{ type: 'text', text: 'Invalid nesting' }] }, 'invalid-document'],
+    ['json', null, 'invalid-document'],
+  ])(
+    'reports invalid %s initial content without emitting an empty replacement (%#)',
+    async (valueFormat, modelValue, reason) => {
+      const onContentError = vi.fn();
+      const onUpdate = vi.fn();
+      const instance = mountEditor({ valueFormat, modelValue, onContentError, 'onUpdate:modelValue': onUpdate });
+      await flush();
+      expect(instance.getHTML()).toBe('');
+      expect(onContentError).toHaveBeenCalledOnce();
+      expect(onContentError).toHaveBeenCalledWith(expect.objectContaining({ phase: 'initial', reason }));
+      expect(onUpdate).not.toHaveBeenCalled();
+    }
+  );
+
+  it('preserves the document on invalid JSON updates and accepts a later valid replacement', async () => {
+    const modelValue = ref<unknown>({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Keep me' }] }],
+    });
+    const instanceRef = ref<TiptapEditorInstance>();
+    const onContentError = vi.fn();
+    const onUpdate = vi.fn();
+    const app = createApp(
+      defineComponent({
+        setup: () => () =>
+          h(ATiptapEditor<'json'>, {
+            'ref': instanceRef,
+            'valueFormat': 'json',
+            'modelValue': modelValue.value as TiptapDocument,
+            onContentError,
+            'onUpdate:modelValue': onUpdate,
+          }),
+      })
+    );
+    app.use(createI18n({ legacy: false, locale: 'en-US', messages }));
+    installStubs(app);
+    mountedApps.push(app);
+    app.mount('#app');
+    await flush();
+    const instance = instanceRef.value;
+    if (!instance) throw new Error('ATiptapEditor did not mount');
+    const original = getInternalEditor(instance).state.doc;
+    modelValue.value = { type: 'doc', content: [{ type: 'unknown' }] };
+    await flush();
+    expect(getInternalEditor(instance).state.doc).toBe(original);
+    expect(onContentError).toHaveBeenCalledWith(expect.objectContaining({ phase: 'update', reason: 'invalid-document' }));
+    expect(onUpdate).not.toHaveBeenCalled();
+    modelValue.value = { type: 'doc', content: [] };
+    await flush();
+    expect(instance.getHTML()).toBe('');
+    expect(onUpdate).not.toHaveBeenCalled();
+  });
+
+  it('applies character limits in JSON mode', async () => {
+    const instance = mountEditor({ valueFormat: 'json', maxLength: 5 });
+    await flush();
+    const internalEditor = getInternalEditor(instance);
+    internalEditor.commands.insertContent('12345');
+    internalEditor.commands.insertContent('6');
+    expect(instance.getHTML()).toBe('<p>12345</p>');
+    expect(instance.getJSON().content[0].content?.[0].text).toBe('12345');
+  });
+
+  it.each(['readonly', 'disabled'])('renders JSON in %s mode without enabling editing', async (mode) => {
+    const instance = mountEditor({
+      valueFormat: 'json',
+      [mode]: true,
+      modelValue: {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'Locked document' }] },
+          { type: 'audio', attrs: { src: '/audio.mp3', width: 'compact' } },
+        ],
+      },
+    });
+    await flush();
+    expect(getInternalEditor(instance).isEditable).toBe(false);
+    expect(instance.getJSON().content[1].attrs?.width).toBe('compact');
+    expect(document.querySelector('.a9-tiptap-editor__prose')?.getAttribute('contenteditable')).toBe('false');
+    expect(document.querySelector('audio')?.hasAttribute('controls')).toBe(true);
+    if (mode === 'readonly') expect(document.querySelector('.a9-tiptap-editor__toolbar')).toBeNull();
+    else expect(document.querySelector<HTMLButtonElement>('button[aria-label="Bold"]')?.disabled).toBe(true);
+  });
+
+  it('rejects cyclic JSON and text nodes with hidden child nodes', async () => {
+    const onContentError = vi.fn();
+    const cyclic: TiptapDocument = { type: 'doc', content: [] };
+    cyclic.content.push(cyclic);
+    mountEditor({ valueFormat: 'json', modelValue: cyclic, onContentError });
+    await flush();
+    expect(onContentError).toHaveBeenCalledWith(expect.objectContaining({ reason: 'invalid-document' }));
+    mountedApps.pop()?.unmount();
+    document.body.innerHTML = '<div id="app"></div>';
+    onContentError.mockClear();
+    mountEditor({
+      valueFormat: 'json',
+      onContentError,
+      modelValue: {
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hidden', content: [{ type: 'unknown' }] }] }],
+      },
+    });
+    await flush();
+    expect(onContentError).toHaveBeenCalledWith(expect.objectContaining({ reason: 'invalid-document' }));
   });
 
   it('parses, edits, and serializes table HTML', async () => {

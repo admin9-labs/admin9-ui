@@ -1,5 +1,5 @@
-<script setup lang="ts">
-  import { computed, inject, nextTick, onMounted, ref, watch, type Ref } from 'vue';
+<script setup lang="ts" generic="F extends TiptapValueFormat = 'html'">
+  import { computed, inject, nextTick, onMounted, ref, toRefs, watch, type Ref } from 'vue';
   import { Message } from '@arco-design/web-vue';
   import { Extension, type Editor } from '@tiptap/core';
   import CharacterCount from '@tiptap/extension-character-count';
@@ -14,12 +14,17 @@
   import { EditorContent, useEditor } from '@tiptap/vue-3';
   import { useI18n } from 'vue-i18n';
   import admin9UIOptionsKey from '../../internal/options';
-  import type { FileItem, FileType } from '../../services/types';
+  import type { FileItem, FilePickerAdapter, FileType } from '../../services/types';
   import AFilePicker from '../file-picker/index.vue';
   import MediaBubbleMenu from './media-bubble-menu.vue';
+  import { getDocumentSnapshot, parseTiptapDocument } from './content';
   import { Audio, BlockImage, InlineImage, isSafeMediaUrl, type TiptapMediaNodeName, Video } from './media-node';
   import type {
-    ATiptapEditorProps,
+    TiptapContentError,
+    TiptapDocument,
+    TiptapEditorValue,
+    TiptapValueFormat,
+    TiptapImageDisplay,
     TiptapAudioWidth,
     TiptapBlockWidth,
     TiptapInlineImageSize,
@@ -30,29 +35,66 @@
 
   defineOptions({ name: 'ATiptapEditor' });
 
-  const props = withDefaults(defineProps<ATiptapEditorProps>(), {
-    modelValue: '',
-    placeholder: '',
-    disabled: false,
-    readonly: false,
-    minHeight: 240,
-    maxHeight: 'min(640px, 60dvh)',
-    maxLength: 0,
-    showWordCount: true,
-    service: undefined,
-    canUploadImage: false,
-    canUploadVideo: false,
-    canUploadAudio: false,
-    defaultImageDisplay: 'block',
-  });
+  const props = withDefaults(
+    defineProps<{
+      valueFormat?: F;
+      modelValue?: TiptapEditorValue<F>;
+      placeholder?: string;
+      disabled?: boolean;
+      readonly?: boolean;
+      minHeight?: number | string;
+      maxHeight?: number | string;
+      maxLength?: number;
+      showWordCount?: boolean;
+      service?: FilePickerAdapter;
+      canUploadImage?: boolean;
+      canUploadVideo?: boolean;
+      canUploadAudio?: boolean;
+      defaultImageDisplay?: TiptapImageDisplay;
+    }>(),
+    {
+      placeholder: '',
+      disabled: false,
+      readonly: false,
+      minHeight: 240,
+      maxHeight: 'min(640px, 60dvh)',
+      maxLength: 0,
+      showWordCount: true,
+      service: undefined,
+      canUploadImage: false,
+      canUploadVideo: false,
+      canUploadAudio: false,
+      defaultImageDisplay: 'block',
+    }
+  );
 
   const emit = defineEmits<{
-    (e: 'update:modelValue', value: string): void;
-    (e: 'change', value: string): void;
+    (e: 'update:modelValue', value: TiptapEditorValue<F>): void;
+    (e: 'change', value: TiptapEditorValue<F>): void;
     (e: 'focus'): void;
     (e: 'blur'): void;
     (e: 'mediaError', error: TiptapMediaError): void;
+    (e: 'contentError', error: TiptapContentError): void;
   }>();
+
+  const valueFormat = props.valueFormat ?? 'html';
+  const { readonly, disabled, canUploadImage, canUploadVideo, canUploadAudio, showWordCount, maxLength } = toRefs(props);
+  const readContent = (currentEditor: Editor, value: unknown, phase: TiptapContentError['phase']) => {
+    if (value === undefined) {
+      return valueFormat === 'json' ? parseTiptapDocument({ type: 'doc', content: [] }, currentEditor) : '';
+    }
+    if ((valueFormat === 'html' && typeof value !== 'string') || (valueFormat === 'json' && typeof value === 'string')) {
+      emit('contentError', { phase, reason: 'format-mismatch' });
+      return null;
+    }
+    if (valueFormat === 'html') return value as string;
+    try {
+      return parseTiptapDocument(value, currentEditor);
+    } catch (cause) {
+      emit('contentError', { phase, reason: 'invalid-document', cause });
+      return null;
+    }
+  };
 
   const { t } = useI18n();
   const globalOptions = inject(admin9UIOptionsKey, undefined);
@@ -240,7 +282,11 @@
   });
 
   const editor = useEditor({
-    content: props.modelValue,
+    content: '',
+    onBeforeCreate: ({ editor: currentEditor }) => {
+      const content = readContent(currentEditor, props.modelValue, 'initial');
+      currentEditor.options.content = typeof content === 'string' ? content : content?.toJSON() ?? '';
+    },
     editable: isEditable.value,
     extensions: [
       StarterKit.configure({
@@ -283,9 +329,14 @@
       },
     },
     onUpdate: ({ editor: currentEditor }) => {
-      const value = currentEditor.isEmpty ? '' : currentEditor.getHTML();
+      let content: string | TiptapDocument;
+      if (valueFormat === 'json') content = getDocumentSnapshot(currentEditor.state.doc);
+      else content = currentEditor.isEmpty ? '' : currentEditor.getHTML();
+      const value = content as TiptapEditorValue<F>;
+      const changeValue =
+        valueFormat === 'json' ? (getDocumentSnapshot(currentEditor.state.doc) as TiptapEditorValue<F>) : value;
       emit('update:modelValue', value);
-      emit('change', value);
+      emit('change', changeValue);
     },
     onSelectionUpdate: ({ editor: currentEditor }) => syncSelectedMedia(currentEditor),
     onTransaction: ({ editor: currentEditor }) => syncSelectedMedia(currentEditor),
@@ -767,16 +818,20 @@
   const focus = () => editor.value?.commands.focus();
   const clear = () => editor.value?.commands.clearContent(true);
   const getHTML = () => (editor.value?.isEmpty ? '' : editor.value?.getHTML() ?? '');
+  const getJSON = (): TiptapDocument =>
+    editor.value ? getDocumentSnapshot(editor.value.state.doc) : { type: 'doc', content: [{ type: 'paragraph' }] };
 
-  defineExpose({ focus, clear, getHTML });
+  defineExpose({ focus, clear, getHTML, getJSON });
 
   watch(
     () => props.modelValue,
     (value) => {
       if (!editor.value) return;
-      const currentValue = editor.value.isEmpty ? '' : editor.value.getHTML();
-      if (value !== currentValue) {
-        editor.value.commands.setContent(value || '', { emitUpdate: false });
+      const content = readContent(editor.value, value, 'update');
+      if (content === null) return;
+      const unchanged = typeof content === 'string' ? content === getHTML() : content.eq(editor.value.state.doc);
+      if (!unchanged) {
+        editor.value.commands.setContent(content, { emitUpdate: false });
         if (!isEditable.value) {
           clearNodeSelection(editor.value);
           selectedMedia.value = undefined;

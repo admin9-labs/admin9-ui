@@ -7,7 +7,7 @@ import AFilePicker from './components/file-picker/index.vue';
 import AFileUploader from './components/file-uploader/index.vue';
 import AIconPicker from './components/icon-picker/index.vue';
 import AProTable from './components/pro-table/index.vue';
-import ATiptapEditor from './components/tiptap-editor/index.vue';
+import ATiptapEditor from './components/tiptap-editor/component';
 import ACoordinatePicker from './components/coordinate-picker/index.vue';
 import AFilterForm from './components/filter-form/index.vue';
 
@@ -45,6 +45,9 @@ export { arcoIconNames } from './components/icon-picker/icon-names';
 
 export type {
   ATiptapEditorProps,
+  TiptapValueFormat,
+  TiptapDocument,
+  TiptapContentError,
   TiptapAudioWidth,
   TiptapBlockWidth,
   TiptapImageDisplay,

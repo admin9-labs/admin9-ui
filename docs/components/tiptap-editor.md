@@ -1,6 +1,6 @@
 # ATiptapEditor
 
-`ATiptapEditor` 是基于 Tiptap 的表单级 HTML 富文本编辑器。它提供中后台常用的内容格式和表格编辑，并在存在 `FilePickerAdapter` 时复用 `AFilePicker` 插入或替换图片、视频和音频。
+`ATiptapEditor` 是基于 Tiptap 的表单级富文本编辑器，支持 HTML 和结构化 JSON 模型。它提供中后台常用的内容格式和表格编辑，并在存在 `FilePickerAdapter` 时复用 `AFilePicker` 插入或替换图片、视频和音频。
 
 ## 使用
 
@@ -27,23 +27,54 @@
 
 文件服务默认只需实现 `list()`。若需要在某一类 Picker 中上传，显式开启对应的 `canUploadImage`、`canUploadVideo` 或 `canUploadAudio`，并为 service 提供 `upload()`。
 
+## JSON 模型
+
+`value-format` 同时约定 `v-model` 的输入与输出格式，默认 `html`，现有 HTML 用法无需修改。
+
+```vue
+<script setup lang="ts">
+  import { ref } from 'vue';
+  import { ATiptapEditor, type TiptapDocument } from '@admin9-labs/admin9-ui';
+
+  const content = ref<TiptapDocument>({
+    type: 'doc',
+    content: [{ type: 'paragraph', content: [{ type: 'text', text: '初始内容' }] }],
+  });
+</script>
+
+<template>
+  <ATiptapEditor v-model="content" value-format="json" />
+</template>
+```
+
+JSON 模式接收完整的 Tiptap 文档对象，不接收字符串化 JSON 或节点数组。可用 `{ type: 'doc', content: [] }` 初始化空内容；省略模型也会初始化为空编辑器，且不会主动触发模型更新。清空后输出编辑器原生空文档对象，不输出 `''` 或 `null`。
+
+保存时可将对象交给应用的数据层；如果存储为字符串，回填前先 `JSON.parse()`。外部更新应整体替换模型对象，不支持直接修改其深层字段。相同文档的副本不会重置选区或撤销记录；外部回填不触发 `update:modelValue` 和 `change`。组件不会修改输入对象，事件与 `getJSON()` 返回独立快照。
+
+`valueFormat` 在实例创建时确定。需要更换格式时，先用 `getHTML()` 或 `getJSON()` 获取目标格式内容，再同时更新模型、格式和组件 `key`，以重建实例。重建会重置选区和撤销历史。
+
+JSON 使用本组件当前 Tiptap schema，支持现有文字标记、表格以及 `blockImage`、`inlineImage`、`video`、`audio` 媒体节点。有效表格的合并单元格与列宽、媒体尺寸与对齐会在保存和回填时保留。这不是跨编辑器通用 JSON 格式；其他编辑器的数据或未注册的扩展节点不能直接回填。JSON 输入直接按 schema 处理，不通过 HTML 中转。
+
+包入口导出 `TiptapValueFormat`、`TiptapDocument`、`TiptapContentError`。`ATiptapEditorProps` 默认对应 HTML，可用 `ATiptapEditorProps<'json'>` 描述 JSON 模式，此时必须提供 `valueFormat: 'json'`；组件事件参数随格式推断。使用 `h()` 编写 JSON 组件时，可显式指定 `h(ATiptapEditor<'json'>, { valueFormat: 'json', modelValue: content })`。实例 ref 继续支持 `ref<InstanceType<typeof ATiptapEditor>>()`，可调用 `focus()`、`clear()`、`getHTML()` 和 `getJSON()`。
+
 ## Props
 
-| 属性                  | 类型                  | 默认值              | 说明                                               |
-| --------------------- | --------------------- | ------------------- | -------------------------------------------------- |
-| `modelValue`          | `string`              | `''`                | HTML 内容                                          |
-| `placeholder`         | `string`              | locale 文案         | 空内容占位符                                       |
-| `disabled`            | `boolean`             | `false`             | 禁用编辑和工具栏                                   |
-| `readonly`            | `boolean`             | `false`             | 只读展示并隐藏工具栏                               |
-| `minHeight`           | `number \| string`    | `240`               | 正文滚动区最小高度；数字按 px 处理                 |
-| `maxHeight`           | `number \| string`    | `min(640px, 60dvh)` | 正文滚动区最大高度；数字按 px 处理                 |
-| `maxLength`           | `number`              | `0`                 | 最大字符数，`0` 表示不限                           |
-| `showWordCount`       | `boolean`             | `true`              | 是否显示字符统计                                   |
-| `service`             | `FilePickerAdapter`   | 插件注入值          | 图片、视频和音频文件浏览服务；启用上传时需上传能力 |
-| `canUploadImage`      | `boolean`             | `false`             | 图片素材弹窗是否允许上传                           |
-| `canUploadVideo`      | `boolean`             | `false`             | 视频素材弹窗是否允许上传                           |
-| `canUploadAudio`      | `boolean`             | `false`             | 音频素材弹窗是否允许上传                           |
-| `defaultImageDisplay` | `'block' \| 'inline'` | `'block'`           | 新图片默认独占一行或跟随文字，不按素材尺寸推断     |
+| 属性                  | 类型                       | 默认值              | 说明                                               |
+| --------------------- | -------------------------- | ------------------- | -------------------------------------------------- |
+| `valueFormat`         | `'html' \| 'json'`         | `'html'`            | 模型输入和输出格式；实例创建时确定                 |
+| `modelValue`          | `string \| TiptapDocument` | 空编辑器            | HTML 模式为字符串；JSON 模式为文档对象             |
+| `placeholder`         | `string`                   | locale 文案         | 空内容占位符                                       |
+| `disabled`            | `boolean`                  | `false`             | 禁用编辑和工具栏                                   |
+| `readonly`            | `boolean`                  | `false`             | 只读展示并隐藏工具栏                               |
+| `minHeight`           | `number \| string`         | `240`               | 正文滚动区最小高度；数字按 px 处理                 |
+| `maxHeight`           | `number \| string`         | `min(640px, 60dvh)` | 正文滚动区最大高度；数字按 px 处理                 |
+| `maxLength`           | `number`                   | `0`                 | 最大字符数，`0` 表示不限                           |
+| `showWordCount`       | `boolean`                  | `true`              | 是否显示字符统计                                   |
+| `service`             | `FilePickerAdapter`        | 插件注入值          | 图片、视频和音频文件浏览服务；启用上传时需上传能力 |
+| `canUploadImage`      | `boolean`                  | `false`             | 图片素材弹窗是否允许上传                           |
+| `canUploadVideo`      | `boolean`                  | `false`             | 视频素材弹窗是否允许上传                           |
+| `canUploadAudio`      | `boolean`                  | `false`             | 音频素材弹窗是否允许上传                           |
+| `defaultImageDisplay` | `'block' \| 'inline'`      | `'block'`           | 新图片默认独占一行或跟随文字，不按素材尺寸推断     |
 
 `maxLength` 可动态调整。降低限制时不会截断已有内容，但会阻止内容继续增长；提高限制或改为 `0` 后，新的限制会从下一次编辑立即生效。
 
@@ -66,26 +97,32 @@
 
 ## Events
 
-| 事件                | 参数               | 说明                         |
-| ------------------- | ------------------ | ---------------------------- |
-| `update:modelValue` | `value: string`    | 内容变化；空文档输出空字符串 |
-| `change`            | `value: string`    | 内容变化                     |
-| `focus`             | 无                 | 编辑区获得焦点               |
-| `blur`              | 无                 | 编辑区失去焦点               |
-| `media-error`       | `TiptapMediaError` | 素材校验拒绝或编辑器命令失败 |
+| 事件                | 参数                         | 说明                                |
+| ------------------- | ---------------------------- | ----------------------------------- |
+| `update:modelValue` | `string` 或 `TiptapDocument` | 内容变化；参数与 `valueFormat` 对应 |
+| `change`            | `string` 或 `TiptapDocument` | 内容变化；参数与 `valueFormat` 对应 |
+| `focus`             | 无                           | 编辑区获得焦点                      |
+| `blur`              | 无                           | 编辑区失去焦点                      |
+| `media-error`       | `TiptapMediaError`           | 素材校验拒绝或编辑器命令失败        |
+| `content-error`     | `TiptapContentError`         | 模型格式不匹配或 JSON 文档结构非法  |
 
 `TiptapMediaError` 包含 `operation`、`mediaType`、`reason`、`attemptedItems` 和 `rejectedItems`；底层命令抛错时还包含 `cause`。`invalid-selection` 可能伴随部分成功，应用应以 `rejectedItems` 判断被跳过的素材；`command-failed` 表示本次有效素材未能写入或替换。
 
+`TiptapContentError` 包含 `phase: 'initial' | 'update'`、`reason: 'format-mismatch' | 'invalid-document'` 及可选的 `cause`。格式不匹配、未知节点或非法文档结构会拒绝整次输入：初始化失败保持空编辑器，外部更新失败保留原内容；均不回写空值，不自动弹提示。属性按现有允许值规范化，不安全媒体节点剔除，不安全链接移除标记并保留文字。应用可监听事件提供自己的错误反馈。
+
 ## 实例方法
 
-| 方法        | 返回      | 说明                              |
-| ----------- | --------- | --------------------------------- |
-| `focus()`   | `boolean` | 聚焦编辑区                        |
-| `clear()`   | `boolean` | 清空内容并触发模型更新            |
-| `getHTML()` | `string`  | 获取当前 HTML；空文档返回空字符串 |
+| 方法        | 返回             | 说明                              |
+| ----------- | ---------------- | --------------------------------- |
+| `focus()`   | `boolean`        | 聚焦编辑区                        |
+| `clear()`   | `boolean`        | 清空内容并触发模型更新            |
+| `getHTML()` | `string`         | 获取当前 HTML；空文档返回空字符串 |
+| `getJSON()` | `TiptapDocument` | 获取当前文档的独立 JSON 快照      |
+
+两种模式均可调用 `getHTML()` 和 `getJSON()`。`clear()` 的事件参数遵循当前模型格式。
 
 ## 安全边界
 
 全部媒体节点只接受 HTTP(S) 或相对 URL。视频和音频序列化时固定输出 `controls` 和 `preload="metadata"`，不会保留 `autoplay`。类型不匹配、URL 为空或协议不安全的素材不会插入或替换正文。
 
-编辑器会按 Tiptap schema 解析输入，但不代替服务端内容安全策略。应用在公开页面渲染保存的 HTML 前，仍需按自身允许标签、属性和 URL 协议执行可信 HTML 清洗。
+编辑器会按 Tiptap schema 解析输入，但不代替服务端内容安全策略。HTML 和 JSON 都需要服务端校验；应用在公开页面渲染保存或转换得到的 HTML 前，仍需按自身允许标签、属性和 URL 协议执行可信 HTML 清洗。

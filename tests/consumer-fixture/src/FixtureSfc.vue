@@ -13,6 +13,7 @@
     type FileItem,
     type Action,
     type ProTableRefreshHandler,
+    type TiptapDocument,
   } from '@admin9-labs/admin9-ui';
 
   defineProps<{
@@ -31,11 +32,32 @@
   const rowActions: Action<FixtureRow>[] = [{ label: 'Edit', permissions: 'records.update', onClick: () => undefined }];
   const attachments = ref<FileItem[]>([]);
   const filters = reactive({ keyword: '', status: undefined as string | undefined });
+  const htmlContent = ref('<p>HTML model</p>');
+  const jsonContent = ref<TiptapDocument>({ type: 'doc', content: [{ type: 'paragraph' }] });
+  const editorRef = ref<InstanceType<typeof ATiptapEditor>>();
+  const onHTMLChange = (value: string) => {
+    htmlContent.value = value;
+  };
+  const onJSONChange = (value: TiptapDocument) => {
+    jsonContent.value = value;
+  };
 </script>
 
 <template>
   <section data-testid="host-baseline-sfc">
     <AIconPicker model-value="" />
+    <ATiptapEditor
+      ref="editorRef"
+      v-model="htmlContent"
+      @change="(value) => onHTMLChange(value)"
+      @update:model-value="onHTMLChange"
+    />
+    <ATiptapEditor
+      v-model="jsonContent"
+      value-format="json"
+      @change="(value) => onJSONChange(value)"
+      @update:model-value="onJSONChange"
+    />
     <AFilterForm :model="filters" :field-flex="{ keyword: 2, status: 1 }">
       <a-form-item field="keyword" label="Keyword"><a-input v-model="filters.keyword" /></a-form-item>
       <a-form-item field="status" label="Status"><a-select v-model="filters.status" /></a-form-item>

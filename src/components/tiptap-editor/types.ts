@@ -1,4 +1,15 @@
+import type { JSONContent } from '@tiptap/core';
 import type { FileItem, FilePickerAdapter, FileType } from '../../services/types';
+
+export type TiptapValueFormat = 'html' | 'json';
+export type TiptapDocument = JSONContent & { type: 'doc'; content: JSONContent[] };
+export type TiptapEditorValue<F extends TiptapValueFormat> = F extends 'json' ? TiptapDocument : string;
+
+export interface TiptapContentError {
+  phase: 'initial' | 'update';
+  reason: 'format-mismatch' | 'invalid-document';
+  cause?: unknown;
+}
 
 export type TiptapImageDisplay = 'block' | 'inline';
 export type TiptapMediaAlign = 'left' | 'center' | 'right';
@@ -19,8 +30,7 @@ export interface TiptapMediaError {
   cause?: unknown;
 }
 
-export interface ATiptapEditorProps {
-  modelValue?: string;
+interface TiptapEditorCommonProps {
   placeholder?: string;
   disabled?: boolean;
   readonly?: boolean;
@@ -37,3 +47,7 @@ export interface ATiptapEditorProps {
   canUploadAudio?: boolean;
   defaultImageDisplay?: TiptapImageDisplay;
 }
+
+/** JSON models require an explicit format; omitting the format always selects HTML at runtime. */
+export type ATiptapEditorProps<F extends TiptapValueFormat = 'html'> = TiptapEditorCommonProps &
+  (F extends 'json' ? { valueFormat: F; modelValue?: TiptapDocument } : { valueFormat?: F; modelValue?: string });

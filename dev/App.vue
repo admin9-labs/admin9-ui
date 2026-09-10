@@ -17,6 +17,7 @@
     type CoordinateValue,
     type Action,
     type ProTableDataChange,
+    type TiptapDocument,
   } from '../src';
   import { type AcceptanceState } from './fake-acceptance-utils';
   import createFakeFilePickerService from './fake-file-picker-service';
@@ -136,6 +137,47 @@
     ].join('')
   );
   const filePickerState = ref<AcceptanceState>('normal');
+  const jsonEditor = ref<{ clear: () => boolean; getJSON: () => TiptapDocument }>();
+  const jsonEditorKey = ref(0);
+  const tiptapJSON = ref<TiptapDocument>({
+    type: 'doc',
+    content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'JSON 内容可保存后回填，继续编辑。' }] },
+      {
+        type: 'table',
+        content: [
+          {
+            type: 'tableRow',
+            content: [
+              {
+                type: 'tableHeader',
+                attrs: { colspan: 2, colwidth: [160, 160] },
+                content: [{ type: 'paragraph', content: [{ type: 'text', text: '合并表头' }] }],
+              },
+            ],
+          },
+          {
+            type: 'tableRow',
+            content: [
+              { type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: '第一列' }] }] },
+              { type: 'tableCell', content: [{ type: 'paragraph', content: [{ type: 'text', text: '第二列' }] }] },
+            ],
+          },
+        ],
+      },
+      { type: 'blockImage', attrs: { src: '/media-board.svg', alt: 'JSON 图片', width: '50%', align: 'left' } },
+      { type: 'video', attrs: { src: '/media-motion.mp4', width: '50%', align: 'center' } },
+      { type: 'audio', attrs: { src: '/media-tone.wav', width: 'compact', align: 'right' } },
+    ],
+  });
+  const savedJSON = ref('');
+  const saveJSON = () => {
+    savedJSON.value = JSON.stringify(jsonEditor.value?.getJSON());
+  };
+  const reloadJSON = () => {
+    tiptapJSON.value = JSON.parse(savedJSON.value);
+    jsonEditorKey.value += 1;
+  };
   const filePickerConstraint = ref<'all' | 'subset' | 'empty'>('subset');
   const filePickerMultiple = ref(true);
   const filePickerValue = ref<FileItem | FileItem[] | undefined>([]);
@@ -544,6 +586,29 @@
           <div class="tiptap-readout" aria-live="polite">
             <span>HTML 输出</span>
             <code>{{ tiptapValue || '（空）' }}</code>
+          </div>
+          <h3>JSON 模型</h3>
+          <ATiptapEditor
+            :key="jsonEditorKey"
+            ref="jsonEditor"
+            v-model="tiptapJSON"
+            value-format="json"
+            :service="filePickerService"
+            :readonly="editorMode === 'readonly'"
+            :disabled="editorMode === 'disabled'"
+            :max-length="2000"
+            data-testid="tiptap-json-editor"
+          />
+          <a-space>
+            <a-button data-testid="save-json" @click="saveJSON">保存 JSON</a-button>
+            <a-button data-testid="reload-json" :disabled="!savedJSON" @click="reloadJSON">回填已保存内容</a-button>
+            <a-button data-testid="clear-json" :disabled="editorMode !== 'normal'" @click="jsonEditor?.clear()"
+              >清空 JSON 内容</a-button
+            >
+          </a-space>
+          <div class="tiptap-readout" aria-live="polite">
+            <span>JSON 输出</span>
+            <code data-testid="tiptap-json-output">{{ JSON.stringify(tiptapJSON, null, 2) }}</code>
           </div>
         </div>
       </section>

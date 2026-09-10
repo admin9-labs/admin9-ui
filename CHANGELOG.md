@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- `ATiptapEditor` 新增 `valueFormat="json"`，支持结构化文档的初始化、编辑输出和回填；默认 HTML 用法保持兼容。
+- `ATiptapEditor` 新增 `getJSON()`、`content-error` 事件及对应公开类型，JSON 输入会校验文档结构并规范化媒体、链接和表格属性。
+
 ## [0.15.0] - 2026-09-10
 
 ### Added
