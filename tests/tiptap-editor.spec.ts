@@ -575,6 +575,10 @@ describe('ATiptapEditor public contract', () => {
   });
   beforeEach(() => {
     document.body.innerHTML = '<div id="app"></div>';
+    // Notification transitions outlive individual fixtures on slower CI runners.
+    // Assert the calls without mounting Arco's independent notification UI.
+    vi.spyOn(Message, 'error').mockImplementation(() => ({} as ReturnType<typeof Message.error>));
+    vi.spyOn(Message, 'warning').mockImplementation(() => ({} as ReturnType<typeof Message.warning>));
   });
 
   afterEach(() => {
