@@ -1,14 +1,14 @@
 <script setup lang="ts" generic="F extends TiptapValueFormat = 'html'">
-  import { computed, inject, nextTick, onMounted, ref, toRefs, watch, type Ref } from 'vue';
+  import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, toRefs, watch, type Ref } from 'vue';
   import { Message } from '@arco-design/web-vue';
-  import { Extension, type Editor } from '@tiptap/core';
+  import { Extension, isNodeEmpty, type Editor } from '@tiptap/core';
   import CharacterCount from '@tiptap/extension-character-count';
   import Placeholder from '@tiptap/extension-placeholder';
   import { Table, TableKit } from '@tiptap/extension-table';
   import TextAlign from '@tiptap/extension-text-align';
   import StarterKit from '@tiptap/starter-kit';
   import { GapCursor } from '@tiptap/pm/gapcursor';
-  import { Fragment } from '@tiptap/pm/model';
+  import { DOMSerializer, Fragment } from '@tiptap/pm/model';
   import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transaction } from '@tiptap/pm/state';
   import { columnResizing, tableEditing } from '@tiptap/pm/tables';
   import { EditorContent, useEditor } from '@tiptap/vue-3';
@@ -17,7 +17,11 @@
   import type { FileItem, FilePickerAdapter, FileType } from '../../services/types';
   import AFilePicker from '../file-picker/index.vue';
   import MediaBubbleMenu from './media-bubble-menu.vue';
-  import { getDocumentSnapshot, parseTiptapDocument } from './content';
+  import { getDocumentSnapshot, getPublicDocument, parseTiptapDocument } from './content';
+  import { createImageUploads } from './image-upload';
+  import { cleanPastedHTML, parseTableText, tableTextContent } from './paste';
+  import { SafeColor, SafeFontSize, SafeHighlight, TextStyle } from './text-format';
+  import TextFormatToolbar from './text-format-toolbar.vue';
   import { Audio, BlockImage, InlineImage, isSafeMediaUrl, type TiptapMediaNodeName, Video } from './media-node';
   import type {
     TiptapContentError,
@@ -31,6 +35,9 @@
     TiptapMediaAlign,
     TiptapMediaError,
     TiptapMediaOperation,
+    TiptapImageUploadState,
+    TiptapImageUploadError,
+    TiptapPasteWarning,
   } from './types';
 
   defineOptions({ name: 'ATiptapEditor' });
@@ -50,6 +57,7 @@
       canUploadImage?: boolean;
       canUploadVideo?: boolean;
       canUploadAudio?: boolean;
+      canUploadAttachment?: boolean;
       defaultImageDisplay?: TiptapImageDisplay;
     }>(),
     {
@@ -64,6 +72,7 @@
       canUploadImage: false,
       canUploadVideo: false,
       canUploadAudio: false,
+      canUploadAttachment: false,
       defaultImageDisplay: 'block',
     }
   );
@@ -75,6 +84,9 @@
     (e: 'blur'): void;
     (e: 'mediaError', error: TiptapMediaError): void;
     (e: 'contentError', error: TiptapContentError): void;
+    (e: 'imageUploadStateChange', state: TiptapImageUploadState): void;
+    (e: 'imageUploadError', error: TiptapImageUploadError): void;
+    (e: 'pasteWarning', warning: TiptapPasteWarning): void;
   }>();
 
   const valueFormat = props.valueFormat ?? 'html';
@@ -115,6 +127,13 @@
   const audioPickerTooltipVisible = ref(false);
   const replacePickerTooltipVisible = ref(false);
   const linkHref = ref('');
+  const linkText = ref('');
+  const initialLinkText = ref('');
+  const initialLinkSelectionEmpty = ref(true);
+  const tableTextVisible = ref(false);
+  const tableText = ref('');
+  const tableTextRows = computed(() => parseTableText(tableText.value));
+  const attachmentValue = ref<FileItem[]>();
   const contentRef = ref<HTMLElement>();
   const mediaToolbarRef = ref<HTMLElement>();
   const bubbleMenuReady = ref(false);
@@ -281,14 +300,41 @@
     },
   });
 
+  let uploadEditor: Editor | undefined;
+  const uploads = createImageUploads({
+    editor: () => uploadEditor,
+    service: () => resolvedFileService.value,
+    enabled: () => isEditable.value && props.canUploadImage && typeof resolvedFileService.value?.upload === 'function',
+    display: () => props.defaultImageDisplay,
+    t: (key) => t(`admin9Ui.tiptapEditor.${key}`),
+    state: (state) => emit('imageUploadStateChange', state),
+    error: (error) => {
+      emit('imageUploadError', error);
+      Message.error(t(`admin9Ui.tiptapEditor.${error.reason === 'upload-unavailable' ? 'uploadUnavailable' : 'uploadFailed'}`));
+    },
+  });
+  const publicHTML = (currentEditor: Editor) => {
+    const doc = getPublicDocument(currentEditor.state.doc);
+    if (isNodeEmpty(doc)) return '';
+    const container = document.createElement('div');
+    container.append(DOMSerializer.fromSchema(currentEditor.schema).serializeFragment(doc.content));
+    return container.innerHTML;
+  };
   const editor = useEditor({
     content: '',
     onBeforeCreate: ({ editor: currentEditor }) => {
+      uploadEditor = currentEditor;
       const content = readContent(currentEditor, props.modelValue, 'initial');
       currentEditor.options.content = typeof content === 'string' ? content : content?.toJSON() ?? '';
     },
     editable: isEditable.value,
     extensions: [
+      uploads.extension,
+      uploads.inlineExtension,
+      TextStyle,
+      SafeColor,
+      SafeFontSize,
+      SafeHighlight,
       StarterKit.configure({
         trailingNode: false,
         link: {
@@ -321,6 +367,36 @@
       RemoveLeadingEmptyParagraphBeforeMedia,
     ],
     editorProps: {
+      transformPastedHTML: (html) => {
+        const result = cleanPastedHTML(html);
+        if (result.skippedImages) {
+          emit('pasteWarning', { reason: 'unsupported-image', count: result.skippedImages });
+          Message.warning(t('admin9Ui.tiptapEditor.pasteImagesSkipped', { count: result.skippedImages }));
+        }
+        return result.html;
+      },
+      handleClick: (view, pos, event) => {
+        const link = (event.target as HTMLElement)?.closest('a[href]');
+        if (!link || !isEditable.value) return false;
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)));
+        // Defined below the editor so toolbar actions share the same link panel.
+        // eslint-disable-next-line no-use-before-define
+        prepareLink();
+        linkPopupVisible.value = true;
+        return true;
+      },
+      handlePaste: (_view, event) => {
+        if (!isEditable.value || event.clipboardData?.getData('text/html')) return false;
+        const files = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith('image/'));
+        return uploads.insert(files, 'paste');
+      },
+      handleDrop: (view, event, _slice, moved) => {
+        if (!isEditable.value || moved || view.dragging) return false;
+        const files = Array.from(event.dataTransfer?.files ?? []).filter((file) => file.type.startsWith('image/'));
+        if (!files.length) return false;
+        const position = view.posAtCoords({ left: event.clientX, top: event.clientY });
+        return uploads.insert(files, 'drop', position?.pos);
+      },
       attributes: {
         'class': 'a9-tiptap-editor__prose',
         'role': 'textbox',
@@ -331,7 +407,7 @@
     onUpdate: ({ editor: currentEditor }) => {
       let content: string | TiptapDocument;
       if (valueFormat === 'json') content = getDocumentSnapshot(currentEditor.state.doc);
-      else content = currentEditor.isEmpty ? '' : currentEditor.getHTML();
+      else content = publicHTML(currentEditor);
       const value = content as TiptapEditorValue<F>;
       const changeValue =
         valueFormat === 'json' ? (getDocumentSnapshot(currentEditor.state.doc) as TiptapEditorValue<F>) : value;
@@ -339,7 +415,10 @@
       emit('change', changeValue);
     },
     onSelectionUpdate: ({ editor: currentEditor }) => syncSelectedMedia(currentEditor),
-    onTransaction: ({ editor: currentEditor }) => syncSelectedMedia(currentEditor),
+    onTransaction: ({ editor: currentEditor }) => {
+      syncSelectedMedia(currentEditor);
+      uploads.sync();
+    },
     onFocus: () => {
       isFocused.value = true;
       emit('focus');
@@ -389,7 +468,7 @@
   const getSelectedMediaElement = () => {
     const currentEditor = editor.value;
     const selection = selectedMedia.value;
-    if (!currentEditor || !selection) return undefined;
+    if (!currentEditor || currentEditor.isDestroyed || !selection) return undefined;
 
     const nodeDom = currentEditor.view.nodeDOM(selection.pos);
     const mediaElement = nodeDom instanceof Element ? nodeDom : nodeDom?.parentElement;
@@ -510,6 +589,28 @@
     else if (value === 'delete-column') chain.deleteColumn().run();
     else if (value === 'toggle-header-row') chain.toggleHeaderRow().run();
     else if (value === 'delete-table') chain.deleteTable().run();
+    else if (value === 'merge-cells') chain.mergeCells().run();
+    else if (value === 'split-cell') chain.splitCell().run();
+  };
+  const insertTableText = () => {
+    const currentEditor = editor.value;
+    if (!currentEditor || !isEditable.value || !tableTextRows.value.length || currentEditor.isActive('table')) return false;
+    const previousDocument = currentEditor.state.doc;
+    const inserted = currentEditor.chain().focus().insertContent(tableTextContent(tableTextRows.value)).run();
+    if (!inserted || currentEditor.state.doc.eq(previousDocument)) {
+      Message.error(t('admin9Ui.tiptapEditor.tableInsertFailed'));
+      return false;
+    }
+    tableText.value = '';
+    return true;
+  };
+  const clearTextFormat = () => {
+    if (!editor.value || !isEditable.value) return;
+    const chain = editor.value.chain().focus();
+    ['bold', 'italic', 'underline', 'strike', 'code', 'textStyle', 'highlight'].forEach((mark) => {
+      if (editor.value?.schema.marks[mark]) chain.unsetMark(mark);
+    });
+    chain.run();
   };
 
   const previewTable = (rows: number, columns: number) => {
@@ -556,13 +657,25 @@
   });
 
   const prepareLink = () => {
+    editor.value?.commands.extendMarkRange('link');
     linkHref.value = String(editor.value?.getAttributes('link').href ?? '');
+    const selection = editor.value?.state.selection;
+    initialLinkSelectionEmpty.value = selection?.empty ?? true;
+    linkText.value = selection ? editor.value?.state.doc.textBetween(selection.from, selection.to, ' ') ?? '' : '';
+    initialLinkText.value = linkText.value;
   };
   const applyLink = () => {
     if (!editor.value || !isEditable.value) return;
     const href = linkHref.value.trim();
     const chain = editor.value.chain().focus().extendMarkRange('link');
-    if (href) chain.setLink({ href }).run();
+    const extension = editor.value.extensionManager.extensions.find((item) => item.name === 'link');
+    if (href && !extension?.options.isAllowedUri(href, { protocols: extension.options.protocols })) {
+      Message.error(t('admin9Ui.tiptapEditor.invalidLink'));
+      return;
+    }
+    if (href && (initialLinkSelectionEmpty.value || linkText.value !== initialLinkText.value)) {
+      chain.insertContent({ type: 'text', text: linkText.value || href, marks: [{ type: 'link', attrs: { href } }] }).run();
+    } else if (href) chain.setLink({ href }).run();
     else chain.unsetLink().run();
     linkPopupVisible.value = false;
   };
@@ -571,6 +684,38 @@
     editor.value.chain().focus().extendMarkRange('link').unsetLink().run();
     linkHref.value = '';
     linkPopupVisible.value = false;
+  };
+  const openLink = () => {
+    const extension = editor.value?.extensionManager.extensions.find((item) => item.name === 'link');
+    const href = linkHref.value.trim();
+    if (href && extension?.options.isAllowedUri(href, { protocols: extension.options.protocols })) {
+      window.open(href, '_blank', 'noopener,noreferrer');
+    }
+  };
+  const insertAttachments = (items: FileItem[]) => {
+    if (!isEditable.value || !editor.value) return;
+    const valid = items.filter(
+      (item) =>
+        ['document', 'archive', 'other'].includes(item.type) &&
+        (item.status === undefined || item.status === 'ready') &&
+        isSafeMediaUrl(item.url) &&
+        item.name.trim()
+    );
+    if (valid.length !== items.length) Message.error(t('admin9Ui.tiptapEditor.invalidAttachment'));
+    if (!valid.length) return;
+    editor.value
+      .chain()
+      .focus()
+      .insertContent(
+        valid.map((item) => ({
+          type: 'paragraph',
+          content: [{ type: 'text', text: item.name, marks: [{ type: 'link', attrs: { href: item.url } }] }],
+        }))
+      )
+      .run();
+    nextTick(() => {
+      attachmentValue.value = undefined;
+    });
   };
 
   const placeGapCursorAfterInsertedBlock =
@@ -816,12 +961,16 @@
   };
 
   const focus = () => editor.value?.commands.focus();
-  const clear = () => editor.value?.commands.clearContent(true);
-  const getHTML = () => (editor.value?.isEmpty ? '' : editor.value?.getHTML() ?? '');
+  const clear = () => {
+    uploads.pause();
+    return editor.value?.commands.clearContent(true);
+  };
+  const getHTML = () => (editor.value ? publicHTML(editor.value) : '');
   const getJSON = (): TiptapDocument =>
     editor.value ? getDocumentSnapshot(editor.value.state.doc) : { type: 'doc', content: [{ type: 'paragraph' }] };
 
-  defineExpose({ focus, clear, getHTML, getJSON });
+  const getImageUploadState = () => uploads.state();
+  defineExpose({ focus, clear, getHTML, getJSON, getImageUploadState });
 
   watch(
     () => props.modelValue,
@@ -829,8 +978,10 @@
       if (!editor.value) return;
       const content = readContent(editor.value, value, 'update');
       if (content === null) return;
-      const unchanged = typeof content === 'string' ? content === getHTML() : content.eq(editor.value.state.doc);
+      const unchanged =
+        typeof content === 'string' ? content === getHTML() : content.eq(getPublicDocument(editor.value.state.doc));
       if (!unchanged) {
+        uploads.pause();
         editor.value.commands.setContent(content, { emitUpdate: false });
         if (!isEditable.value) {
           clearNodeSelection(editor.value);
@@ -840,21 +991,32 @@
     }
   );
   watch(isEditable, (value) => {
+    if (!value) uploads.pause();
     if (!value) tablePopupVisible.value = false;
     const currentEditor = editor.value;
     currentEditor?.setEditable(value);
     if (!value && currentEditor) clearNodeSelection(currentEditor);
     if (!value) selectedMedia.value = undefined;
+    uploads.sync();
   });
   watch([() => selectedMedia.value?.pos, () => selectedMedia.value?.type, () => selectedMedia.value?.attrs.alt], () => {
     altDraft.value = typeof selectedMedia.value?.attrs.alt === 'string' ? selectedMedia.value.attrs.alt : '';
   });
   watch([() => selectedMedia.value?.pos, () => selectedMedia.value?.type], () => {
     altPopupVisible.value = false;
+    nextTick(() => {
+      const currentEditor = editor.value;
+      if (!selectedMedia.value || !currentEditor || currentEditor.isDestroyed) return;
+      updateMediaBubbleVisibility();
+      currentEditor.view.dispatch(currentEditor.state.tr.setMeta('a9TiptapMediaBubbleMenu', 'updatePosition'));
+    });
   });
   onMounted(() => {
     bubbleMenuReady.value = true;
+    uploads.sync();
   });
+  watch([resolvedFileService, () => props.canUploadImage], () => uploads.pause());
+  onBeforeUnmount(() => uploads.dispose());
 </script>
 
 <template>
@@ -883,6 +1045,7 @@
 
       <span class="a9-tiptap-editor__divider" aria-hidden="true" />
 
+      <TextFormatToolbar :editor="editor" :disabled="disabled" />
       <a-tooltip :content="t('admin9Ui.tiptapEditor.bold')">
         <a-button
           size="small"
@@ -998,12 +1161,19 @@
         <template #content>
           <div class="a9-tiptap-editor__link-panel">
             <a-input
+              v-model="linkText"
+              :aria-label="t('admin9Ui.tiptapEditor.linkText')"
+              :placeholder="t('admin9Ui.tiptapEditor.linkText')"
+            />
+            <a-input
               v-model="linkHref"
+              :aria-label="t('admin9Ui.tiptapEditor.link')"
               :placeholder="t('admin9Ui.tiptapEditor.linkPlaceholder')"
               allow-clear
               @press-enter="applyLink"
             />
             <div class="a9-tiptap-editor__link-actions">
+              <a-button v-if="linkHref" size="small" @click="openLink">{{ t('admin9Ui.tiptapEditor.openLink') }}</a-button>
               <a-button v-if="editor?.isActive('link')" size="small" status="danger" @click="removeLink">
                 {{ t('admin9Ui.tiptapEditor.removeLink') }}
               </a-button>
@@ -1014,6 +1184,43 @@
           </div>
         </template>
       </a-popover>
+
+      <a-tooltip :content="t('admin9Ui.tiptapEditor.clearFormat')">
+        <a-button
+          size="small"
+          type="text"
+          :disabled="disabled"
+          :aria-label="t('admin9Ui.tiptapEditor.clearFormat')"
+          @mousedown.prevent
+          @click="clearTextFormat"
+        >
+          <template #icon><icon-eraser /></template>
+        </a-button>
+      </a-tooltip>
+      <AFilePicker
+        v-if="resolvedFileService"
+        v-model="attachmentValue"
+        :service="resolvedFileService"
+        :file-types="['document', 'archive', 'other']"
+        multiple
+        :can-upload="props.canUploadAttachment"
+        @change="insertAttachments"
+      >
+        <template #trigger="{ open }">
+          <a-tooltip :content="t('admin9Ui.tiptapEditor.attachment')">
+            <a-button
+              size="small"
+              type="text"
+              :disabled="disabled"
+              :aria-label="t('admin9Ui.tiptapEditor.attachment')"
+              @mousedown.prevent
+              @click="open"
+            >
+              <template #icon><icon-attachment /></template>
+            </a-button>
+          </a-tooltip>
+        </template>
+      </AFilePicker>
 
       <a-tooltip
         v-if="resolvedFileService"
@@ -1154,6 +1361,14 @@
                 />
               </template>
             </div>
+            <a-button
+              size="small"
+              @click="
+                tablePopupVisible = false;
+                tableTextVisible = true;
+              "
+              >{{ t('admin9Ui.tiptapEditor.pasteTable') }}</a-button
+            >
           </div>
         </template>
       </a-popover>
@@ -1178,6 +1393,12 @@
             <a-doption value="add-column-after">{{ t('admin9Ui.tiptapEditor.addColumnAfter') }}</a-doption>
             <a-doption value="delete-column">{{ t('admin9Ui.tiptapEditor.deleteColumn') }}</a-doption>
             <a-doption value="toggle-header-row">{{ t('admin9Ui.tiptapEditor.toggleHeaderRow') }}</a-doption>
+            <a-doption value="merge-cells" :disabled="!editor?.can().mergeCells()">{{
+              t('admin9Ui.tiptapEditor.mergeCells')
+            }}</a-doption>
+            <a-doption value="split-cell" :disabled="!editor?.can().splitCell()">{{
+              t('admin9Ui.tiptapEditor.splitCell')
+            }}</a-doption>
             <a-doption value="delete-table">{{ t('admin9Ui.tiptapEditor.deleteTable') }}</a-doption>
           </template>
         </template>
@@ -1247,6 +1468,21 @@
         </a-button>
       </a-tooltip>
     </div>
+
+    <a-modal
+      v-model:visible="tableTextVisible"
+      :title="t('admin9Ui.tiptapEditor.pasteTable')"
+      :ok-button-props="{ disabled: !tableTextRows.length || !isEditable }"
+      :on-before-ok="insertTableText"
+    >
+      <a-textarea
+        v-model="tableText"
+        :aria-label="t('admin9Ui.tiptapEditor.pasteTable')"
+        :placeholder="t('admin9Ui.tiptapEditor.pasteTablePlaceholder')"
+        :auto-size="{ minRows: 4, maxRows: 10 }"
+      />
+      <p>{{ t('admin9Ui.tiptapEditor.tableSize', { rows: tableTextRows.length, columns: tableTextRows[0]?.length ?? 0 }) }}</p>
+    </a-modal>
 
     <div ref="contentRef" class="a9-tiptap-editor__content" role="region" :aria-label="t('admin9Ui.tiptapEditor.contentArea')">
       <EditorContent :editor="editor" />
@@ -1499,6 +1735,27 @@
 </template>
 
 <style scoped lang="less">
+  .a9-tiptap-editor :deep(.a9-tiptap-editor__upload) {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 240px;
+    padding: 12px;
+    color: var(--color-text-2);
+    background: var(--color-fill-2);
+    border: 1px dashed var(--color-border-3);
+
+    img {
+      max-width: 100%;
+      max-height: 180px;
+      object-fit: contain;
+    }
+
+    button {
+      cursor: pointer;
+    }
+  }
+
   .a9-tiptap-editor {
     display: flex;
     flex-direction: column;

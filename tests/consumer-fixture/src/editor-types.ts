@@ -6,6 +6,9 @@ import {
   type TiptapDocument,
   type TiptapValueFormat,
   type TiptapContentError,
+  type TiptapImageUploadState,
+  type TiptapImageUploadError,
+  type TiptapPasteWarning,
 } from '@admin9-labs/admin9-ui';
 
 const document: TiptapDocument = { type: 'doc', content: [{ type: 'paragraph' }] };
@@ -18,6 +21,16 @@ const html: string | undefined = editorRef.value?.getHTML();
 const json: TiptapDocument | undefined = editorRef.value?.getJSON();
 editorRef.value?.focus();
 editorRef.value?.clear();
+const imageUploadState: TiptapImageUploadState | undefined = editorRef.value?.getImageUploadState();
+h(ATiptapEditor, {
+  ...htmlProps,
+  canUploadImage: true,
+  canUploadAttachment: true,
+  onImageUploadStateChange: (state: TiptapImageUploadState) => state.canSave,
+  onImageUploadError: (error: TiptapImageUploadError) => error.reason,
+  onPasteWarning: (warning: TiptapPasteWarning) => warning.count,
+});
+export { imageUploadState };
 // @ts-expect-error Instance methods retain their concrete return types.
 export const invalidHTMLReturn: number | undefined = editorRef.value?.getHTML();
 // @ts-expect-error Instance emits reject values outside the document/string contract.

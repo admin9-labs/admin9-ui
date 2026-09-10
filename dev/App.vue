@@ -18,6 +18,7 @@
     type Action,
     type ProTableDataChange,
     type TiptapDocument,
+    type TiptapImageUploadState,
   } from '../src';
   import { type AcceptanceState } from './fake-acceptance-utils';
   import createFakeFilePickerService from './fake-file-picker-service';
@@ -137,7 +138,15 @@
     ].join('')
   );
   const filePickerState = ref<AcceptanceState>('normal');
-  const jsonEditor = ref<{ clear: () => boolean; getJSON: () => TiptapDocument }>();
+  const htmlEditor = ref<InstanceType<typeof ATiptapEditor>>();
+  const jsonEditor = ref<InstanceType<typeof ATiptapEditor>>();
+  const htmlUploadState = ref<TiptapImageUploadState>({ pending: 0, uploading: 0, failed: 0, canSave: true });
+  const jsonUploadState = ref<TiptapImageUploadState>({ pending: 0, uploading: 0, failed: 0, canSave: true });
+  const savedHTML = ref('');
+  const saveHTML = () => {
+    if (!htmlEditor.value?.getImageUploadState().canSave) return;
+    savedHTML.value = htmlEditor.value.getHTML();
+  };
   const jsonEditorKey = ref(0);
   const tiptapJSON = ref<TiptapDocument>({
     type: 'doc',
@@ -172,6 +181,7 @@
   });
   const savedJSON = ref('');
   const saveJSON = () => {
+    if (!jsonEditor.value?.getImageUploadState().canSave) return;
     savedJSON.value = JSON.stringify(jsonEditor.value?.getJSON());
   };
   const reloadJSON = () => {
@@ -570,6 +580,7 @@
 
         <div class="tiptap-workspace component-frame">
           <ATiptapEditor
+            ref="htmlEditor"
             v-model="tiptapValue"
             :service="filePickerService"
             :readonly="editorMode === 'readonly'"
@@ -581,8 +592,12 @@
             :can-upload-audio="true"
             placeholder="请输入公告正文"
             data-testid="tiptap-editor"
+            @image-upload-state-change="htmlUploadState = $event"
           />
           <a-button data-testid="tiptap-after-editor-focus-target">编辑器后的操作</a-button>
+          <a-button :disabled="!htmlUploadState.canSave" @click="saveHTML">保存 HTML</a-button>
+          <span v-if="!htmlUploadState.canSave">请等待图片上传，或重试、删除失败图片后保存。</span>
+          <span v-else-if="savedHTML">HTML 已保存</span>
           <div class="tiptap-readout" aria-live="polite">
             <span>HTML 输出</span>
             <code>{{ tiptapValue || '（空）' }}</code>
@@ -593,19 +608,22 @@
             ref="jsonEditor"
             v-model="tiptapJSON"
             value-format="json"
+            :can-upload-image="true"
             :service="filePickerService"
             :readonly="editorMode === 'readonly'"
             :disabled="editorMode === 'disabled'"
             :max-length="2000"
             data-testid="tiptap-json-editor"
+            @image-upload-state-change="jsonUploadState = $event"
           />
           <a-space>
-            <a-button data-testid="save-json" @click="saveJSON">保存 JSON</a-button>
+            <a-button data-testid="save-json" :disabled="!jsonUploadState.canSave" @click="saveJSON">保存 JSON</a-button>
             <a-button data-testid="reload-json" :disabled="!savedJSON" @click="reloadJSON">回填已保存内容</a-button>
             <a-button data-testid="clear-json" :disabled="editorMode !== 'normal'" @click="jsonEditor?.clear()"
               >清空 JSON 内容</a-button
             >
           </a-space>
+          <span v-if="!jsonUploadState.canSave">请等待图片上传，或重试、删除失败图片后保存。</span>
           <div class="tiptap-readout" aria-live="polite">
             <span>JSON 输出</span>
             <code data-testid="tiptap-json-output">{{ JSON.stringify(tiptapJSON, null, 2) }}</code>

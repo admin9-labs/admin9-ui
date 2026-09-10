@@ -27,7 +27,50 @@
 
 文件服务默认只需实现 `list()`。若需要在某一类 Picker 中上传，显式开启对应的 `canUploadImage`、`canUploadVideo` 或 `canUploadAudio`，并为 service 提供 `upload()`。
 
-## JSON 模型
+## 图片粘贴与拖拽
+
+设置 `canUploadImage=true` 且文件服务实现 `upload()` 后，可粘贴截图或从文件管理器拖入 PNG、JPEG、GIF、WebP 图片。默认仍关闭上传。HTML 和 JSON 模式使用相同流程，上传完成的图片可继续调整大小、对齐和替代文字。
+
+图片先在插入位置显示预览，最多并发上传三张；提供进度的服务显示百分比，否则显示加载状态。失败后可原位重试或删除，多图按输入顺序排列。删除或撤销未完成图片会取消上传，晚到响应不会将其重新插入；重做已成功图片使用正式地址，不再次上传。只读／禁用切换会取消在途请求，恢复编辑后可以重试或删除未完成项。
+
+上传沿用 `FileUploadOptions`，图片使用 `fileType: 'image'`、`groupId: null`，并传入进度回调和 `AbortSignal`。结果须有非空 ID、正确图片类型、就绪状态和 HTTP(S) 或相对 URL。`blob:`、base64、上传任务 ID 和本地文件对象不会写入公开 HTML／JSON。本组件当前采用即时上传，不提供保存时提交 base64 的模式。
+
+消费方应监听 `image-upload-state-change`，并在提交时再次调用 `getImageUploadState()`。`pending`、`uploading`、`failed` 任一非零时，`canSave=false`；用户等待、重试或删除未完成图片后才能保存。`canSave` 只表示图片任务是否完成，不代替业务表单校验。`getHTML()`、`getJSON()` 与模型事件仍可读取已完成内容，消费方不能以拿到内容代替状态检查。
+
+```vue
+<ATiptapEditor
+  ref="editor"
+  v-model="content"
+  :service="fileService"
+  :can-upload-image="true"
+  @image-upload-state-change="uploadState = $event"
+/>
+<a-button :disabled="!uploadState.canSave" @click="save">保存</a-button>
+```
+
+`save()` 中先检查 `editor.getImageUploadState().canSave`，再读取内容提交。初始化也会发送状态事件。真正的外部文档替换、清空和卸载会取消任务；相同内容的模型回写不会中断上传。
+
+清空或替换正文后，撤销可恢复已取消图片的占位，并通过重试重新上传。为支持撤销，当前编辑器会保留对应本地文件任务；占位离开正文时释放临时预览地址，卸载时清理全部任务。只读／禁用期间不可重试或删除，恢复编辑后操作重新可用。
+
+## 外部内容、链接和附件
+
+图文粘贴优先使用剪贴板 HTML，保留支持的段落、列表、表格与安全图片地址，不将剪贴板文件重复追加。安全的网页图片保留外链，不自动转存；`file:`、不可访问的 `blob:`、base64 及 Word 本地图片引用会跳过并报告一次 `paste-warning`。其余内容保留。不解析 RTF 图片，也不承诺 Word／网页像素级还原。
+
+Excel 提供的 HTML 表格可直接粘贴；已有表格中的单元格粘贴沿用 Tiptap 行为。纯文本制表符不会自动转换成表格。需要 TSV 时，在插入表格面板选择“粘贴表格数据”，粘贴制表符分列、换行分行的数据，确认行列数后插入。空单元格会保留，公式作为普通文字。
+
+表格插入被字符限制等规则拒绝时，弹窗和输入草稿会保留，并提示重试；不会把未插入的内容视为成功。
+
+链接面板支持显示文字、地址、打开和移除；无选区时也能插入链接。选中文字后粘贴 URL 可直接设置链接。正文中的“插入附件”复用文件选择器，接受 `document / archive / other`，以文件名作为普通链接插入，可多选；不包含附件卡片、鉴权下载或预览服务。`canUploadAttachment` 默认 `false`，仅控制附件弹窗上传。
+
+## 文字格式与表格操作
+
+工具栏提供文字色、高亮预设以及默认／12／14／16／18／20／24／28／32px 字号。选区存在多个值时显示混合格式；无选区时作用于后续输入。恢复默认会移除显式值，默认文字色继承主题；显式色在暗色主题下仍保持原色。安全的非预设导入色可保留并显示当前值，但不提供任意色值输入；非预设字号回落为继承值。任意 CSS 样式不在保存契约内。
+
+“清除文字格式”移除基础文字标记、行内代码、颜色、高亮和字号，保留链接、图片、表格及列表结构；支持撤销。系统纯文本粘贴快捷键保留换行而不带入富文本格式。
+
+表格内选中可合并的矩形单元格区域可执行合并；有跨行／跨列的单元格可拆分。操作不可用时禁用，内容和有效列宽按 Tiptap 表格规则保留；支持撤销和 HTML／JSON 回填。
+
+## JSON 模型使用
 
 `value-format` 同时约定 `v-model` 的输入与输出格式，默认 `html`，现有 HTML 用法无需修改。
 
@@ -74,6 +117,7 @@ JSON 使用本组件当前 Tiptap schema，支持现有文字标记、表格以�
 | `canUploadImage`      | `boolean`                  | `false`             | 图片素材弹窗是否允许上传                           |
 | `canUploadVideo`      | `boolean`                  | `false`             | 视频素材弹窗是否允许上传                           |
 | `canUploadAudio`      | `boolean`                  | `false`             | 音频素材弹窗是否允许上传                           |
+| `canUploadAttachment` | `boolean`                  | `false`             | 附件弹窗是否允许上传                               |
 | `defaultImageDisplay` | `'block' \| 'inline'`      | `'block'`           | 新图片默认独占一行或跟随文字，不按素材尺寸推断     |
 
 `maxLength` 可动态调整。降低限制时不会截断已有内容，但会阻止内容继续增长；提高限制或改为 `0` 后，新的限制会从下一次编辑立即生效。
@@ -105,6 +149,9 @@ JSON 使用本组件当前 Tiptap schema，支持现有文字标记、表格以�
 | `blur`              | 无                           | 编辑区失去焦点                      |
 | `media-error`       | `TiptapMediaError`           | 素材校验拒绝或编辑器命令失败        |
 | `content-error`     | `TiptapContentError`         | 模型格式不匹配或 JSON 文档结构非法  |
+| `image-upload-state-change` | `TiptapImageUploadState` | 图片排队、上传、失败数量及 `canSave` |
+| `image-upload-error` | `TiptapImageUploadError` | 图片来源、文件、原因及可选底层错误 |
+| `paste-warning` | `TiptapPasteWarning` | 跳过图片的原因及数量 |
 
 `TiptapMediaError` 包含 `operation`、`mediaType`、`reason`、`attemptedItems` 和 `rejectedItems`；底层命令抛错时还包含 `cause`。`invalid-selection` 可能伴随部分成功，应用应以 `rejectedItems` 判断被跳过的素材；`command-failed` 表示本次有效素材未能写入或替换。
 
@@ -118,6 +165,7 @@ JSON 使用本组件当前 Tiptap schema，支持现有文字标记、表格以�
 | `clear()`   | `boolean`        | 清空内容并触发模型更新            |
 | `getHTML()` | `string`         | 获取当前 HTML；空文档返回空字符串 |
 | `getJSON()` | `TiptapDocument` | 获取当前文档的独立 JSON 快照      |
+| `getImageUploadState()` | `TiptapImageUploadState` | 获取独立的图片任务状态快照 |
 
 两种模式均可调用 `getHTML()` 和 `getJSON()`。`clear()` 的事件参数遵循当前模型格式。
 
@@ -126,3 +174,5 @@ JSON 使用本组件当前 Tiptap schema，支持现有文字标记、表格以�
 全部媒体节点只接受 HTTP(S) 或相对 URL。视频和音频序列化时固定输出 `controls` 和 `preload="metadata"`，不会保留 `autoplay`。类型不匹配、URL 为空或协议不安全的素材不会插入或替换正文。
 
 编辑器会按 Tiptap schema 解析输入，但不代替服务端内容安全策略。HTML 和 JSON 都需要服务端校验；应用在公开页面渲染保存或转换得到的 HTML 前，仍需按自身允许标签、属性和 URL 协议执行可信 HTML 清洗。
+
+新增文字格式需要消费方清洗和渲染端允许相应的 `span`、`mark` 以及白名单颜色／字号属性。组件侧回填通过不等于消费方最终页面样式已验证。

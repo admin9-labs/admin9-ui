@@ -8,6 +8,7 @@ import {
   normalizeMediaAlign,
 } from './media-attributes';
 import type { TiptapDocument } from './types';
+import { normalizeFontSize, normalizeTextColor } from './text-format';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -16,6 +17,7 @@ function checkShape(value: unknown, ancestors = new Set<unknown>()): asserts val
   if (!isRecord(value) || typeof value.type !== 'string' || ancestors.has(value)) {
     throw new Error('Expected an acyclic Tiptap node.');
   }
+  if (['a9ImageUpload', 'a9InlineImageUpload'].includes(value.type)) throw new Error('Upload placeholders are private.');
   if (value.attrs !== undefined && !isRecord(value.attrs)) throw new Error('Invalid node attributes.');
   if (value.text !== undefined && typeof value.text !== 'string') throw new Error('Invalid node text.');
   if ((value.type === 'text' && value.content !== undefined) || (value.type !== 'text' && value.text !== undefined)) {
@@ -88,6 +90,15 @@ export function parseTiptapDocument(value: unknown, editor: Editor): ProseMirror
       attrs.align = ['left', 'center', 'right'].includes(attrs.align) ? attrs.align : null;
     }
     const marks = node.marks.flatMap((mark) => {
+      if (mark.type.name === 'textStyle') {
+        const color = normalizeTextColor(mark.attrs.color);
+        const fontSize = normalizeFontSize(mark.attrs.fontSize);
+        return color || fontSize ? [mark.type.create({ color, fontSize })] : [];
+      }
+      if (mark.type.name === 'highlight') {
+        const color = normalizeTextColor(mark.attrs.color);
+        return color || mark.attrs.color == null ? [mark.type.create({ color })] : [];
+      }
       if (mark.type.name !== 'link') return [mark];
       const { href } = mark.attrs;
       // The component configures Tiptap's default isAllowedUri validator, also used by HTML parsing.
@@ -118,6 +129,20 @@ export function parseTiptapDocument(value: unknown, editor: Editor): ProseMirror
   return normalized;
 }
 
+export function getPublicDocument(document: ProseMirrorNode): ProseMirrorNode {
+  const clean = (node: ProseMirrorNode): ProseMirrorNode | null => {
+    if (['a9ImageUpload', 'a9InlineImageUpload'].includes(node.type.name)) return null;
+    if (node.isText || node.isLeaf) return node;
+    const children: ProseMirrorNode[] = [];
+    node.forEach((child) => {
+      const result = clean(child);
+      if (result) children.push(result);
+    });
+    return node.type.createAndFill(node.attrs, children, node.marks);
+  };
+  return clean(document) ?? document.type.createAndFill() ?? document;
+}
+
 export function getDocumentSnapshot(document: ProseMirrorNode): TiptapDocument {
-  return JSON.parse(JSON.stringify(document.toJSON())) as TiptapDocument;
+  return JSON.parse(JSON.stringify(getPublicDocument(document).toJSON())) as TiptapDocument;
 }

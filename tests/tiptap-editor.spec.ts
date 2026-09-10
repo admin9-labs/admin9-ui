@@ -4,16 +4,17 @@ import { Message } from '@arco-design/web-vue';
 import type { Editor } from '@tiptap/core';
 import { GapCursor } from '@tiptap/pm/gapcursor';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
-import { columnResizingPluginKey } from '@tiptap/pm/tables';
+import { CellSelection, columnResizingPluginKey } from '@tiptap/pm/tables';
 import { createI18n } from 'vue-i18n';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ATiptapEditor from '../src/components/tiptap-editor/index.vue';
-import type { TiptapDocument } from '../src/components/tiptap-editor/types';
+import type { TiptapDocument, TiptapImageUploadState } from '../src/components/tiptap-editor/types';
 import { messages } from '../src/locale';
 
 vi.mock('../src/components/file-picker/index.vue', async () => {
   const vue = await import('vue');
   const selectedMedia = {
+    document: { id: 'document-1', name: 'Registration.pdf', type: 'document', groupId: null, url: '/registration.pdf' },
     image: {
       id: 'image-1',
       name: 'Admin9 cover',
@@ -219,6 +220,7 @@ interface TiptapEditorInstance extends ComponentPublicInstance {
   clear: () => boolean;
   getHTML: () => string;
   getJSON: () => TiptapDocument;
+  getImageUploadState: () => TiptapImageUploadState;
 }
 
 async function flush() {
@@ -239,6 +241,34 @@ async function waitForEditorStateRender() {
 }
 
 function installStubs(app: App) {
+  app.component(
+    'AModal',
+    defineComponent({
+      props: { visible: Boolean, onBeforeOk: Function },
+      emits: ['update:visible'],
+      setup:
+        (props, { slots, emit }) =>
+        () =>
+          props.visible
+            ? h('div', [
+                slots.default?.(),
+                h(
+                  'button',
+                  {
+                    'data-testid': 'confirm-table-text',
+                    'onClick': async () => {
+                      if ((await props.onBeforeOk?.()) !== false) emit('update:visible', false);
+                    },
+                  },
+                  'Confirm table'
+                ),
+              ])
+            : null,
+    })
+  );
+  app.component('ATextarea', InputStub);
+  app.component('IconEraser', IconStub);
+  app.component('IconAttachment', IconStub);
   app.component('AButton', ButtonStub);
   app.component('ATooltip', TransparentStub);
   app.component('ADropdown', TransparentStub);
@@ -286,6 +316,25 @@ function getInternalEditor(instance: TiptapEditorInstance) {
   return (instance.$.setupState as { editor: Editor }).editor;
 }
 
+async function mountReactiveEditor(initialProps: Record<string, unknown>) {
+  const props = ref(initialProps);
+  const editorRef = ref<TiptapEditorInstance>();
+  const app = createApp({ setup: () => () => h(ATiptapEditor, { ...props.value, ref: editorRef }) });
+  app.use(createI18n({ legacy: false, locale: 'en-US', messages }));
+  installStubs(app);
+  mountedApps.push(app);
+  app.mount('#app');
+  await flush();
+  if (!editorRef.value) throw new Error('Editor did not mount');
+  return { props, instance: editorRef.value, editor: getInternalEditor(editorRef.value) };
+}
+
+function pasteTestImage(editor: Editor) {
+  const data = new DataTransfer();
+  data.items.add(new File(['image'], 'image.png', { type: 'image/png' }));
+  editor.view.dom.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }));
+}
+
 function findNodePosition(editor: Editor, nodeName: string) {
   let position = -1;
   editor.state.doc.descendants((node, pos) => {
@@ -304,6 +353,226 @@ function dispatchEditorKey(key: 'ArrowLeft' | 'Backspace') {
 }
 
 describe('ATiptapEditor public contract', () => {
+  it('updates a linked inline image URL without replacing the image with text', async () => {
+    const instance = mountEditor({ modelValue: '<p><a href="/old"><img src="/image.png" data-display="inline"></a></p>' });
+    await flush();
+    getInternalEditor(instance).commands.setNodeSelection(1);
+    document.querySelector<HTMLButtonElement>('button[aria-label="Link"]')?.click();
+    await flush();
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Link"]');
+    if (!input) throw new Error('Link input did not mount');
+    input.value = '/new';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await flush();
+    document.querySelector<HTMLButtonElement>('.a9-tiptap-editor__link-actions button:last-child')?.click();
+    expect(instance.getHTML()).toContain('href="/new"');
+    expect(instance.getHTML()).toContain('src="/image.png"');
+    expect(getInternalEditor(instance).state.doc.textContent).toBe('');
+  });
+
+  it('preserves an over-limit table draft and inserts it after the limit is raised', async () => {
+    const { props, instance } = await mountReactiveEditor({ modelValue: '<p>X</p>', maxLength: 5 });
+    const error = vi.spyOn(Message, 'error').mockImplementation(() => ({} as ReturnType<typeof Message.error>));
+    document.querySelector<HTMLButtonElement>('button[aria-label="Table"]')?.click();
+    await flush();
+    const open = [...document.querySelectorAll<HTMLButtonElement>('.a9-tiptap-editor__table-picker button')].find(
+      (button) => button.textContent === 'Paste table data'
+    );
+    open?.click();
+    await flush();
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Paste table data"]');
+    if (!input) throw new Error('Table data input did not mount');
+    input.value = 'abcdef\tghi';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await flush();
+    document.querySelector<HTMLButtonElement>('[data-testid="confirm-table-text"]')?.click();
+    await flush();
+    expect(instance.getHTML()).toBe('<p>X</p>');
+    expect(document.querySelector('input[aria-label="Paste table data"]')).toBe(input);
+    expect(input.value).toBe('abcdef\tghi');
+    expect(error).toHaveBeenCalledOnce();
+    props.value = { ...props.value, maxLength: 100 };
+    await flush();
+    document.querySelector<HTMLButtonElement>('[data-testid="confirm-table-text"]')?.click();
+    await flush();
+    expect(instance.getHTML()).toContain('abcdef');
+    expect(instance.getHTML()).toContain('<table');
+    expect(document.querySelector('input[aria-label="Paste table data"]')).toBeNull();
+  });
+
+  it('keeps keyboard-created default highlights through a JSON model round trip', async () => {
+    const { props, instance, editor } = await mountReactiveEditor({
+      valueFormat: 'json',
+      modelValue: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Highlight' }] }] },
+    });
+    editor.commands.selectAll();
+    editor.commands.keyboardShortcut('Mod-Shift-h');
+    expect(instance.getHTML()).toContain('<mark>Highlight</mark>');
+    const saved = instance.getJSON();
+    props.value = { ...props.value, modelValue: saved };
+    await flush();
+    expect(instance.getJSON()).toEqual(saved);
+    expect(instance.getHTML()).toContain('<mark>Highlight</mark>');
+  });
+
+  it.each(['readonly', 'disabled'])('blocks upload controls in %s and restores them on return to editing', async (mode) => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    const { props, instance, editor } = await mountReactiveEditor({
+      canUploadImage: true,
+      service: {
+        list: vi.fn(),
+        upload: () =>
+          new Promise(() => {
+            /* Keep the upload pending until cancellation. */
+          }),
+      },
+    });
+    pasteTestImage(editor);
+    await flush();
+    props.value = { ...props.value, [mode]: true };
+    await flush();
+    let remove = document.querySelector<HTMLButtonElement>('.a9-tiptap-editor__upload button:last-child');
+    expect(remove?.disabled).toBe(true);
+    // Exercise the handler as well as the DOM disabled state.
+    if (remove) remove.onclick?.call(remove, new MouseEvent('click'));
+    expect(instance.getImageUploadState().failed).toBe(1);
+    props.value = { ...props.value, [mode]: false };
+    await flush();
+    remove = document.querySelector<HTMLButtonElement>('.a9-tiptap-editor__upload button:last-child');
+    expect(remove?.disabled).toBe(false);
+    remove?.click();
+    expect(instance.getImageUploadState().canSave).toBe(true);
+  });
+
+  it.each(['clear', 'external replacement'])(
+    'restores a retryable image when undoing %s and ignores the cancelled response',
+    async (operation) => {
+      vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview');
+      vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+      let complete!: (item: unknown) => void;
+      const upload = vi
+        .fn()
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              complete = resolve;
+            })
+        )
+        .mockResolvedValue({ id: 'retry', name: 'image.png', type: 'image', groupId: null, url: '/retry.png' });
+      const { props, instance, editor } = await mountReactiveEditor({
+        modelValue: '<p>Before</p>',
+        canUploadImage: true,
+        service: { list: vi.fn(), upload },
+      });
+      pasteTestImage(editor);
+      await flush();
+      if (operation === 'clear') instance.clear();
+      else {
+        props.value = { ...props.value, modelValue: '<p>Replacement</p>' };
+        await flush();
+      }
+      editor.commands.undo();
+      await flush();
+      const retry = [...document.querySelectorAll<HTMLButtonElement>('.a9-tiptap-editor__upload button')].find(
+        (button) => button.textContent === 'Retry'
+      );
+      expect(retry).toBeDefined();
+      complete({ id: 'old', name: 'image.png', type: 'image', groupId: null, url: '/old.png' });
+      await flush();
+      expect(instance.getHTML()).not.toContain('/old.png');
+      retry?.click();
+      await flush();
+      expect(instance.getHTML()).toContain('/retry.png');
+      expect(instance.getImageUploadState().canSave).toBe(true);
+    }
+  );
+  it('keeps safe pasted HTML images, reports inaccessible images once, and retains table structure', async () => {
+    const warning = vi.fn();
+    const instance = mountEditor({ onPasteWarning: warning });
+    await flush();
+    const editor = getInternalEditor(instance);
+    editor.view.pasteHTML(
+      '<p>Notice<img src="https://example.com/cover.png"><img src="file:///local.png"></p><table><tr><td>A</td><td>B</td></tr></table>'
+    );
+    await flush();
+    expect(instance.getHTML()).toContain('https://example.com/cover.png');
+    expect(instance.getHTML()).not.toContain('file:');
+    expect(instance.getHTML()).toContain('<table');
+    expect(warning).toHaveBeenCalledOnce();
+    expect(warning).toHaveBeenCalledWith({ reason: 'unsupported-image', count: 1 });
+  });
+
+  it('round-trips safe colors, highlights and preset sizes through JSON', async () => {
+    const instance = mountEditor({
+      modelValue: '<p><span style="color:red;font-size:20px;background-color:yellow">Important</span></p>',
+    });
+    await flush();
+    const saved = instance.getJSON();
+    const html = instance.getHTML();
+    expect(html).toContain('20px');
+    expect(html).toContain('color: red');
+    expect(html).toContain('<mark');
+    const editor = getInternalEditor(instance);
+    editor.commands.setContent(saved);
+    expect(instance.getHTML()).toBe(html);
+  });
+
+  it('clears text formatting but preserves links, tables, and their contents', async () => {
+    const instance = mountEditor({
+      modelValue:
+        '<p><a href="/notice"><strong><span style="color:red;font-size:20px">Notice</span></strong></a></p><table><tr><td>Keep</td></tr></table>',
+    });
+    await flush();
+    const editor = getInternalEditor(instance);
+    editor.commands.selectAll();
+    document.querySelector<HTMLButtonElement>('button[aria-label="Clear text formatting"]')?.click();
+    const html = instance.getHTML();
+    expect(html).toContain('href="/notice"');
+    expect(html).toContain('<table');
+    expect(html).not.toContain('<strong');
+    expect(html).not.toContain('font-size');
+    expect(html).not.toContain('color: red');
+    editor.commands.undo();
+    expect(instance.getHTML()).toContain('<strong');
+  });
+
+  it('links selected text on URL paste without replacing the label', async () => {
+    const instance = mountEditor({ modelValue: '<p>Documentation</p>' });
+    await flush();
+    const editor = getInternalEditor(instance);
+    editor.commands.setTextSelection({ from: 1, to: 14 });
+    editor.view.pasteText('https://example.com/docs');
+    expect(instance.getHTML()).toContain('href="https://example.com/docs"');
+    expect(editor.state.doc.textContent).toBe('Documentation');
+  });
+
+  it('merges and splits selected table cells without losing content', async () => {
+    const instance = mountEditor({ modelValue: '<table><tr><td>A</td><td>B</td></tr></table>' });
+    await flush();
+    const editor = getInternalEditor(instance);
+    const cells: number[] = [];
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'tableCell') cells.push(pos);
+    });
+    editor.view.dispatch(
+      editor.state.tr.setSelection(new CellSelection(editor.state.doc.resolve(cells[0]), editor.state.doc.resolve(cells[1])))
+    );
+    expect(editor.commands.mergeCells()).toBe(true);
+    expect(instance.getHTML()).toContain('colspan="2"');
+    expect(editor.commands.splitCell()).toBe(true);
+    expect(editor.state.doc.textContent).toContain('A');
+    expect(editor.state.doc.textContent).toContain('B');
+    expect(instance.getHTML()).not.toContain('colspan="2"');
+  });
+
+  it('inserts a selected attachment as an ordinary link', async () => {
+    const instance = mountEditor({ service: { list: vi.fn() } });
+    await flush();
+    document.querySelector<HTMLButtonElement>('[data-file-types="document,archive,other"] .media-picker-confirm')?.click();
+    expect(instance.getHTML()).toContain('href="/registration.pdf"');
+    expect(instance.getHTML()).toContain('Registration.pdf');
+  });
   beforeEach(() => {
     document.body.innerHTML = '<div id="app"></div>';
   });

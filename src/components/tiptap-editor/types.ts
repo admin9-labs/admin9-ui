@@ -19,6 +19,25 @@ export type TiptapAudioWidth = 'compact' | 'standard' | 'full';
 export type TiptapMediaOperation = 'insert' | 'replace';
 export type TiptapMediaErrorReason = 'invalid-selection' | 'command-failed';
 
+export interface TiptapImageUploadState {
+  pending: number;
+  uploading: number;
+  failed: number;
+  canSave: boolean;
+}
+
+export interface TiptapImageUploadError {
+  source: 'paste' | 'drop';
+  file: File;
+  reason: 'upload-unavailable' | 'unsupported-image' | 'upload-failed' | 'invalid-result' | 'insert-failed';
+  cause?: unknown;
+}
+
+export interface TiptapPasteWarning {
+  reason: 'unsupported-image';
+  count: number;
+}
+
 export interface TiptapMediaError {
   operation: TiptapMediaOperation;
   mediaType: Extract<FileType, 'image' | 'video' | 'audio'>;
@@ -45,6 +64,7 @@ interface TiptapEditorCommonProps {
   canUploadVideo?: boolean;
   /** Enable audio upload in the picker. Defaults to false and requires upload capability when enabled. */
   canUploadAudio?: boolean;
+  canUploadAttachment?: boolean;
   defaultImageDisplay?: TiptapImageDisplay;
 }
 

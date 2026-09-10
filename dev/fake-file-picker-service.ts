@@ -228,13 +228,21 @@ export default function createFakeFilePickerService(state: AcceptanceState): Fil
       await wait(120);
       ensureActive();
       options.onProgress?.(100);
+      const response = await fetch('/__acceptance/uploads', {
+        method: 'POST',
+        body: options.file,
+        signal: options.signal,
+        headers: { 'Content-Type': options.file.type || 'application/octet-stream' },
+      });
+      if (!response.ok) throw new Error('Acceptance upload failed.');
+      const uploaded: { url: string } = await response.json();
       uploadSequence += 1;
       const item: FileItem = {
         id: `file-upload-${Date.now()}-${uploadSequence}`,
         name: options.file.name,
         type: options.fileType,
         groupId: options.groupId,
-        url: URL.createObjectURL(options.file),
+        url: uploaded.url,
         mime: options.file.type,
         size: options.file.size,
         status: 'ready',

@@ -150,6 +150,9 @@ const OptionStub = defineComponent({
 });
 
 function installStubs(app: App) {
+  app.component('ATextarea', InputStub);
+  app.component('IconEraser', defineComponent({ setup: () => () => h('i') }));
+  app.component('IconAttachment', defineComponent({ setup: () => () => h('i') }));
   app.use(createI18n({ legacy: false, locale: 'en-US', messages }));
   app.component('AButton', ButtonStub);
   app.component('AModal', ModalStub);
