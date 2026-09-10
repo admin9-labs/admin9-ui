@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-09-10
+
 ### Added
 
 - `ATiptapEditor` 支持粘贴和拖拽 PNG、JPEG、GIF、WebP 图片，提供原位上传进度、失败重试、删除取消，以及图片上传状态事件和提交前检查方法。
@@ -13,6 +15,8 @@
 ### Changed
 
 - `canUploadImage` 同时控制图片选择器上传、剪贴板图片上传和外部图片文件拖入；默认仍为 `false`。
+
+**Full Changelog**: https://github.com/admin9-labs/admin9-ui/compare/v0.16.0...v0.17.0
 
 ## [0.16.0] - 2026-09-10
 
