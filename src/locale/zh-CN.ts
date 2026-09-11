@@ -1,4 +1,17 @@
 export default {
+  chatComposer: {
+    placeholder: '输入消息，Enter 发送，Shift+Enter 换行',
+    send: '发送',
+    stop: '停止生成',
+  },
+  chatMessageList: {
+    label: '聊天消息',
+    empty: '暂无消息',
+    user: '用户',
+    assistant: '助手',
+    bottom: '回到底部',
+    status: { pending: '等待回复', streaming: '正在生成', complete: '生成完成', error: '生成失败', stopped: '已停止' },
+  },
   filterForm: {
     search: '查询',
     reset: '重置',

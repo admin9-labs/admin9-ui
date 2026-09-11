@@ -1,6 +1,7 @@
 <script setup lang="ts">
   import { computed, reactive, ref, watch } from 'vue';
   import type { TableColumnData } from '@arco-design/web-vue';
+  import ChatAcceptance from './chat-acceptance.vue';
   import {
     ACoordinatePicker,
     AFilePicker,
@@ -115,6 +116,7 @@
   const lastCoordinateEvent = ref('等待选择');
   const tencentMapApiKey = import.meta.env.VITE_TENCENT_MAP_KEY || '';
   const editorMode = ref<'normal' | 'readonly' | 'disabled'>('normal');
+  const chatFocused = new URLSearchParams(window.location.search).get('component') === 'chat';
   const tiptapFocused = new URLSearchParams(window.location.search).get('component') === 'tiptap-editor';
   const tiptapValue = ref(
     [
@@ -268,7 +270,8 @@
 </script>
 
 <template>
-  <div class="acceptance-shell" :class="{ 'is-component-focused': tiptapFocused }">
+  <div v-if="chatFocused" class="acceptance-shell is-component-focused"><ChatAcceptance /></div>
+  <div v-else class="acceptance-shell" :class="{ 'is-component-focused': tiptapFocused }">
     <header v-if="!tiptapFocused" class="topbar">
       <div>
         <div class="product-name">@admin9-labs/admin9-ui</div>
@@ -278,6 +281,7 @@
     </header>
 
     <nav v-if="!tiptapFocused" class="section-nav" aria-label="组件验收导航">
+      <a href="#chat">AI 聊天</a>
       <a href="#filter-form">AFilterForm</a>
       <a href="#pro-table">AProTable</a>
       <a href="#icon-picker">AIconPicker</a>
@@ -288,6 +292,7 @@
     </nav>
 
     <main>
+      <ChatAcceptance v-if="!tiptapFocused" />
       <section v-if="!tiptapFocused" id="filter-form" class="acceptance-section" data-testid="filter-form-section">
         <div class="section-heading">
           <div>

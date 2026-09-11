@@ -39,6 +39,8 @@ const localeExports = await import('@admin9-labs/admin9-ui/locale');
 assert.equal(packageExports.default.install instanceof Function, true);
 assert.equal(packageExports.localePrefix, 'admin9Ui');
 assert.equal(localeExports.localePrefix, 'admin9Ui');
+assert.ok(packageExports.AChatMessageList);
+assert.ok(packageExports.AChatComposer);
 assert.ok(packageExports.AIconPicker);
 assert.ok(packageExports.ACoordinatePicker);
 assert.ok(packageExports.AFilePicker);
@@ -49,6 +51,8 @@ assert.ok(packageExports.ATiptapEditor);
 const require = createRequire(import.meta.url);
 const commonJsPackage = require('@admin9-labs/admin9-ui');
 const commonJsLocale = require('@admin9-labs/admin9-ui/locale');
+assert.ok(commonJsPackage.AChatMessageList);
+assert.ok(commonJsPackage.AChatComposer);
 assert.ok(commonJsPackage.AIconPicker);
 assert.ok(commonJsPackage.ACoordinatePicker);
 assert.ok(commonJsPackage.AFilePicker);
@@ -58,6 +62,8 @@ assert.equal(commonJsLocale.localePrefix, 'admin9Ui');
 
 const cssPath = import.meta.resolve('@admin9-labs/admin9-ui/styles');
 const css = await readFile(new URL(cssPath), 'utf8');
+assert.match(css, /\.a9-chat-message-list/);
+assert.match(css, /\.a9-chat-composer/);
 assert.match(css, /\.a9-(coordinate|file|icon|pro|tiptap)-/);
 assert.match(css, /\.a9-tiptap-editor__media-bubble/);
 
@@ -153,4 +159,33 @@ assert.ok(host.querySelector('.a9-file-uploader'), 'AFileUploader did not mount 
 assert.ok(host.querySelector('.arco-input-wrapper'), 'Arco input integration did not mount.');
 assert.ok(host.querySelector('.arco-table'), 'Arco table integration did not mount.');
 app.unmount();
+for (const exports of [packageExports, commonJsPackage]) {
+  const chatHost = window.document.createElement('div');
+  window.document.body.append(chatHost);
+  let submitted;
+  const chatApp = createApp({
+    render: () =>
+      h('div', [
+        h(exports.AChatMessageList, {
+          messages: [{ id: 'a', role: 'assistant', content: '**tarball**' }],
+          style: 'height: 200px',
+        }),
+        h(exports.AChatComposer, {
+          modelValue: 'consumer input',
+          onSubmit: (value) => {
+            submitted = value;
+          },
+        }),
+      ]),
+  });
+  chatApp.use(createI18n({ legacy: false, locale: 'en-US', messages: packageExports.messages }));
+  chatApp.mount(chatHost);
+  await nextTick();
+  assert.equal(chatHost.querySelector('strong')?.textContent, 'tarball');
+  assert.ok(chatHost.querySelector('textarea')?.getAttribute('aria-label'));
+  chatHost.querySelector('.a9-chat-composer button').click();
+  assert.equal(submitted, 'consumer input');
+  chatApp.unmount();
+  chatHost.remove();
+}
 await window.happyDOM.abort();

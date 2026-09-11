@@ -218,6 +218,8 @@ describe('package public API', () => {
   it('exports only the supported runtime capabilities from the root entry', () => {
     expect(Object.keys(publicApi).sort()).toEqual(
       [
+        'AChatMessageList',
+        'AChatComposer',
         'AIconPicker',
         'ACoordinatePicker',
         'AFilePicker',
@@ -247,6 +249,8 @@ describe('package public API', () => {
   it('registers public components through the default plugin', () => {
     const app = createApp(defineComponent({ template: '<div />' }));
     app.use(publicApi.default);
+    expect(app.component('AChatMessageList')).toBe(publicApi.AChatMessageList);
+    expect(app.component('AChatComposer')).toBe(publicApi.AChatComposer);
 
     expect(app.component('AMediaLibrary')).toBeUndefined();
     expect(app.component('AFileManager')).toBeUndefined();

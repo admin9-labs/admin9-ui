@@ -96,6 +96,8 @@ try {
     'dist/locale/index.cjs',
     'dist/locale/index.d.ts',
     'dist/style.css',
+    'docs/components/chat-message-list.md',
+    'docs/components/chat-composer.md',
     'docs/components/coordinate-picker.md',
     'docs/components/file-uploader.md',
     'docs/components/filter-form.md',
@@ -158,7 +160,7 @@ try {
   ['vue', '@arco-design/web-vue', 'vue-i18n'].forEach((peer) => {
     assert(installedPackage.peerDependencies?.[peer], `Published package does not declare required peer: ${peer}`);
   });
-  ['@tiptap/core', '@tiptap/pm', '@tiptap/starter-kit', '@tiptap/vue-3'].forEach((dependency) => {
+  ['markdown-it', '@tiptap/core', '@tiptap/pm', '@tiptap/starter-kit', '@tiptap/vue-3'].forEach((dependency) => {
     assert(installedPackage.dependencies?.[dependency], `Published package does not declare runtime dependency: ${dependency}`);
   });
   assert(installedPackage.exports?.['.']?.types, 'Root export is missing its types condition.');

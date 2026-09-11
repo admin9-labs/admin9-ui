@@ -1,4 +1,23 @@
 export default {
+  chatComposer: {
+    placeholder: 'Message (Enter to send, Shift+Enter for a new line)',
+    send: 'Send',
+    stop: 'Stop generating',
+  },
+  chatMessageList: {
+    label: 'Chat messages',
+    empty: 'No messages yet',
+    user: 'User',
+    assistant: 'Assistant',
+    bottom: 'Back to bottom',
+    status: {
+      pending: 'Waiting for reply',
+      streaming: 'Generating',
+      complete: 'Generation complete',
+      error: 'Generation failed',
+      stopped: 'Stopped',
+    },
+  },
   filterForm: {
     search: 'Search',
     reset: 'Reset',

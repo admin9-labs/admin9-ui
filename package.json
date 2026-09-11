@@ -1,6 +1,6 @@
 {
   "name": "@admin9-labs/admin9-ui",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "补充 Arco Design Vue 中后台通用场景的 Vue 组件库",
   "type": "module",
   "license": "MIT",
@@ -75,6 +75,7 @@
     "@arco-design/web-vue": "2.57.0",
     "@vitejs/plugin-vue": "3.2.0",
     "@vitejs/plugin-vue-jsx": "2.1.1",
+    "@types/markdown-it": "14.2.0",
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "eslint": "^8.57.1",
@@ -114,6 +115,7 @@
     "@tiptap/extension-text-style": "^3.29.2",
     "@tiptap/pm": "^3.29.2",
     "@tiptap/starter-kit": "^3.29.2",
-    "@tiptap/vue-3": "^3.29.2"
+    "@tiptap/vue-3": "^3.29.2",
+    "markdown-it": "14.3.1"
   }
 }

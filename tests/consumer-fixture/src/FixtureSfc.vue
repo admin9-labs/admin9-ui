@@ -1,6 +1,11 @@
 <script setup lang="ts">
   import { reactive, ref } from 'vue';
   import {
+    AChatMessageList,
+    AChatComposer,
+    type AChatMessageListExposed,
+    type AChatComposerExposed,
+    type ChatMessage,
     AIconPicker,
     ACoordinatePicker,
     AFilePicker,
@@ -30,6 +35,13 @@
   const fetchRows = async () => ({ list: [] as FixtureRow[], total: 0 });
   const refreshRows: ProTableRefreshHandler = ({ refresh }) => refresh();
   const rowActions: Action<FixtureRow>[] = [{ label: 'Edit', permissions: 'records.update', onClick: () => undefined }];
+  const chatMessages = ref<ChatMessage[]>([{ id: 'a', role: 'assistant', content: '**fixture**' }]);
+  const draft = ref('draft');
+  const chatList = ref<AChatMessageListExposed>();
+  const composer = ref<AChatComposerExposed>();
+  const submitChat = (value: string) => {
+    chatMessages.value.push({ id: `u-${chatMessages.value.length}`, role: 'user', content: value });
+  };
   const attachments = ref<FileItem[]>([]);
   const filters = reactive({ keyword: '', status: undefined as string | undefined });
   const htmlContent = ref('<p>HTML model</p>');
@@ -45,6 +57,16 @@
 
 <template>
   <section data-testid="host-baseline-sfc">
+    <AChatMessageList ref="chatList" :messages="chatMessages" style="height: 240px">
+      <template #footer="{ message, index }"
+        ><span>{{ message.id }}:{{ index }}</span></template
+      >
+    </AChatMessageList>
+    <AChatComposer ref="composer" v-model="draft" @submit="submitChat" @stop="chatList?.scrollToBottom()">
+      <template #toolbar="{ disabled, generating, submitDisabled }"
+        ><button :disabled="disabled || submitDisabled" @click="composer?.focus()">{{ generating }}</button></template
+      >
+    </AChatComposer>
     <AIconPicker model-value="" />
     <ATiptapEditor
       ref="editorRef"

@@ -61,6 +61,8 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 - [`AFilePicker`](./docs/components/file-picker.md)：支持后端分页、跨页选择和可选上传的文件选择器
 - [`AFileUploader`](./docs/components/file-uploader.md)：支持进度、取消、重试和部分成功的本地批量上传队列
 - [`AFilterForm`](./docs/components/filter-form.md)：默认提供卡片式背景，并根据字段数和响应式列数自动调整布局的筛选表单
+- [`AChatMessageList`](./docs/components/chat-message-list.md)：受控聊天消息、Markdown、生成状态与阅读位置保持
+- [`AChatComposer`](./docs/components/chat-composer.md)：文本输入、发送、停止及附件操作插槽
 - [`AIconPicker`](./docs/components/icon-picker.md)：支持分类、搜索和键盘导航的 Arco 图标选择器
 - [`AProTable`](./docs/components/pro-table.md)：通过 `fetcher` 接入数据源，并支持可选标题、前置内容、轻量工具栏与受控多选的页面级表格
 - [`ATiptapEditor`](./docs/components/tiptap-editor.md)：支持 HTML / JSON 模型、常用格式、表格与图片、视频、音频编辑的富文本编辑器

@@ -3,6 +3,8 @@ import admin9UIPluginOptionsKey from './internal/options';
 import type { Admin9UIPluginOptions } from './services/types';
 
 // 组件
+import AChatMessageList from './components/chat-message-list/index.vue';
+import AChatComposer from './components/chat-composer/index.vue';
 import AFilePicker from './components/file-picker/index.vue';
 import AFileUploader from './components/file-uploader/index.vue';
 import AIconPicker from './components/icon-picker/index.vue';
@@ -10,6 +12,21 @@ import AProTable from './components/pro-table/index.vue';
 import ATiptapEditor from './components/tiptap-editor/component';
 import ACoordinatePicker from './components/coordinate-picker/index.vue';
 import AFilterForm from './components/filter-form/index.vue';
+
+export type {
+  ChatMessage,
+  ChatMessageStatus,
+  ChatMessageSlot,
+  AChatMessageListProps,
+  AChatMessageListSlots,
+  AChatMessageListExposed,
+} from './components/chat-message-list/types';
+export type {
+  ChatComposerSlot,
+  AChatComposerProps,
+  AChatComposerSlots,
+  AChatComposerExposed,
+} from './components/chat-composer/types';
 
 // 服务接口契约（供 App 实现 adapter 时 import 类型）
 export type {
@@ -93,7 +110,17 @@ export type {
 } from './components/pro-table/types';
 
 // 组件命名导出（供按需 import）
-export { ACoordinatePicker, AFilePicker, AFileUploader, AFilterForm, AIconPicker, AProTable, ATiptapEditor };
+export {
+  AChatMessageList,
+  AChatComposer,
+  ACoordinatePicker,
+  AFilePicker,
+  AFileUploader,
+  AFilterForm,
+  AIconPicker,
+  AProTable,
+  ATiptapEditor,
+};
 
 /**
  * 安装插件。
@@ -108,6 +135,8 @@ const Admin9UI = {
   install(app: App, options: Admin9UIPluginOptions = {}) {
     // 名称冲突检测：A 前缀下若与 Arco 原生组件重名，提示及早发现
     const reserved = [
+      'AChatMessageList',
+      'AChatComposer',
       'AFilePicker',
       'AFileUploader',
       'AFilterForm',
@@ -123,6 +152,8 @@ const Admin9UI = {
       }
     });
 
+    app.component('AChatMessageList', AChatMessageList);
+    app.component('AChatComposer', AChatComposer);
     app.component('AFilePicker', AFilePicker);
     app.component('AFileUploader', AFileUploader);
     app.component('AFilterForm', AFilterForm);

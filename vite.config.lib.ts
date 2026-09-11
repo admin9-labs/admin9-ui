@@ -45,7 +45,7 @@ export default defineConfig({
     },
     cssCodeSplit: false,
     rollupOptions: {
-      external: ['vue', '@arco-design/web-vue', 'vue-i18n', /^@tiptap\//],
+      external: ['vue', '@arco-design/web-vue', 'vue-i18n', 'markdown-it', /^@tiptap\//],
       output: {
         exports: 'named',
         assetFileNames: 'style.css',

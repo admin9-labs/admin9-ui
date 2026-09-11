@@ -1,0 +1,103 @@
+# AChatComposer
+
+受控聊天输入组件，基于 Arco Textarea 和 Button，提供发送、停止及附件和工具区域。只发出用户操作事件，不调用请求，也不拥有上传队列。
+
+## 基础用法
+
+```vue
+<script setup lang="ts">
+  import { ref } from 'vue';
+  import { AChatComposer, type AChatComposerExposed } from '@admin9-labs/admin9-ui';
+  import '@admin9-labs/admin9-ui/styles';
+
+  const composer = ref<AChatComposerExposed>();
+  const draft = ref('');
+  const generating = ref(false);
+  const submitDisabled = ref(false);
+  let controller: AbortController | undefined;
+
+  async function submit(value: string) {
+    if (generating.value || submitDisabled.value || !value.trim()) return;
+    generating.value = true;
+    draft.value = '';
+    const request = new AbortController();
+    controller = request;
+    try {
+      // sendMessage 由应用提供，并负责消息存储、增量拼接和错误展示。
+      await sendMessage(value, request.signal);
+    } finally {
+      if (controller === request) {
+        controller = undefined;
+        generating.value = false;
+      }
+    }
+  }
+  function stop() {
+    controller?.abort();
+    // 保持 generating，直到请求终止完成；sendMessage 应处理取消错误。
+  }
+</script>
+
+<template>
+  <AChatComposer
+    ref="composer"
+    v-model="draft"
+    :generating="generating"
+    :submit-disabled="submitDisabled"
+    @submit="submit"
+    @stop="stop"
+  />
+</template>
+```
+
+`sendMessage` 不是库导出。应用应同步守卫提交、在请求接受后清空输入，并处理失败、中止和过期回调。组件不提供异步请求去重或自动清空行为。
+
+需在宿主注册 Arco 并合并库 `messages` 至 vue-i18n。默认文案随宿主语言切换，主题跟随 Arco。
+
+## Props、Events、方法
+
+| 属性           | 类型      | 默认值         | 说明                                   |
+| -------------- | --------- | -------------- | -------------------------------------- |
+| modelValue     | `string`  | 必填           | 受控文本                               |
+| generating     | `boolean` | `false`        | 禁止发送，主按钮变为停止；仍可编辑草稿 |
+| disabled       | `boolean` | `false`        | 禁用输入及默认按钮，优先级最高         |
+| submitDisabled | `boolean` | `false`        | 仅禁止发送，不禁用输入和停止           |
+| placeholder    | `string`  | 国际化默认文案 | 输入提示及可访问名称                   |
+
+| 事件              | 参数            | 说明             |
+| ----------------- | --------------- | ---------------- |
+| update:modelValue | `value: string` | 输入变化         |
+| submit            | `value: string` | 未裁剪的原始文本 |
+| stop              | 无              | 请求停止生成     |
+
+公开方法 `focus(): void` 聚焦输入框。导出 `AChatComposerProps`、`AChatComposerSlots`、`AChatComposerExposed` 和 `ChatComposerSlot` 类型。
+
+## 键盘与状态
+
+- 自动增高为 2–6 行，继续输入后内部滚动。
+- Enter 发送，Shift+Enter 换行；Ctrl、Meta、Alt 组合不作为发送键。
+- 中文输入法组合中的 Enter 不发送。
+- `trim()` 后为空则禁止发送；提交保留原始空格、换行。
+- 生成期间 Enter 换行，可编辑下一条草稿，停止不清空草稿。
+- 附件上传时用 `submitDisabled` 阻止发送；只有需要连停止一起禁用时才使用 `disabled`。
+- 首版仅支持有效文本提交，不支持纯附件消息。
+
+## 插槽组合
+
+`header`、`attachments`、`toolbar` 均接收 `{ disabled, submitDisabled, generating }`。自定义控件由应用根据这些状态禁用。
+
+```vue
+<AChatComposer v-model="draft" :generating="generating" :submit-disabled="uploading" @submit="submit" @stop="stop">
+  <template #header="{ disabled }">
+    <a-button :disabled="disabled" @click="draft = '请整理摘要'">整理摘要</a-button>
+  </template>
+  <template #attachments>
+    <a-tag v-for="file in files" :key="file.id">{{ file.name }}</a-tag>
+  </template>
+  <template #toolbar="{ disabled }">
+    <AFilePicker v-model="files" :service="fileService" :disabled="disabled" multiple />
+  </template>
+</AChatComposer>
+```
+
+`AFilePicker` 需显式导入；`files`、`uploading`、`fileService` 由应用管理。组件不自动上传附件、不将业务文件数据拼进 `submit` 事件。与 `AChatMessageList` 配合时，重试操作放在消息 `actions` 插槽。

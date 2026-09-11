@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-09-12
+
+### Added
+
+- 新增 `AChatMessageList`，支持受控消息、默认角色头像、助手 Markdown、生成状态、历史阅读位置保持及流式滚动跟随；提供正文、引用和操作插槽。
+- 新增 `AChatComposer`，支持受控多行输入、中文输入法、发送／停止事件及附件操作插槽；`submitDisabled` 仅限制发送，不影响停止生成。
+
+**Full Changelog**: https://github.com/admin9-labs/admin9-ui/compare/v0.17.0...v0.18.0
+
 ## [0.17.0] - 2026-09-10
 
 ### Added
