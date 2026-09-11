@@ -9,6 +9,7 @@
     generating: false,
     disabled: false,
     submitDisabled: false,
+    autoSize: () => ({ minRows: 2, maxRows: 6 }),
   });
   const emit = defineEmits<{
     'update:modelValue': [value: string];
@@ -19,13 +20,20 @@
   const { t } = useI18n();
   const textarea = ref<InstanceType<typeof Textarea>>();
   const composing = ref(false);
+  const wordLength = (value: string) => Array.from(value).length;
+  const wordSlice = (value: string, length: number) => Array.from(value).slice(0, length).join('');
   const slotState = computed(() => ({
     disabled: props.disabled,
     submitDisabled: props.submitDisabled,
     generating: props.generating,
   }));
   const canSubmit = computed(
-    () => !props.disabled && !props.submitDisabled && !props.generating && Boolean(props.modelValue.trim())
+    () =>
+      !props.disabled &&
+      !props.submitDisabled &&
+      !props.generating &&
+      Boolean(props.modelValue.trim()) &&
+      (props.maxLength === undefined || wordLength(props.modelValue) <= props.maxLength)
   );
   const submit = () => {
     if (canSubmit.value) emit('submit', props.modelValue);
@@ -65,15 +73,20 @@
         :disabled="disabled"
         :placeholder="placeholder ?? t('admin9Ui.chatComposer.placeholder')"
         :textarea-attrs="{ 'aria-label': placeholder ?? t('admin9Ui.chatComposer.placeholder') }"
-        :auto-size="{ minRows: 2, maxRows: 6 }"
+        :auto-size="autoSize"
+        :max-length="maxLength"
+        :word-length="wordLength"
+        :word-slice="wordSlice"
         @update:model-value="emit('update:modelValue', $event)"
       />
     </div>
     <div class="a9-chat-composer__bar">
       <div class="a9-chat-composer__toolbar"><slot name="toolbar" v-bind="slotState" /></div>
-      <Button type="primary" :disabled="disabled || (!generating && !canSubmit)" @click="activate">
-        {{ t(generating ? 'admin9Ui.chatComposer.stop' : 'admin9Ui.chatComposer.send') }}
-      </Button>
+      <slot name="action" v-bind="slotState" :can-submit="canSubmit" :activate="activate">
+        <Button type="primary" :disabled="disabled || (!generating && !canSubmit)" @click="activate">
+          {{ t(generating ? 'admin9Ui.chatComposer.stop' : 'admin9Ui.chatComposer.send') }}
+        </Button>
+      </slot>
     </div>
   </div>
 </template>

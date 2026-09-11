@@ -1,4 +1,4 @@
-import { createApp, h, nextTick, reactive, type App } from 'vue';
+import { createApp, h, nextTick, reactive, ref, type App } from 'vue';
 import { createI18n } from 'vue-i18n';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AChatComposer from '../src/components/chat-composer/index.vue';
@@ -6,7 +6,16 @@ import type { AChatComposerExposed } from '../src/components/chat-composer/types
 import { messages } from '../src/locale';
 
 let app: App;
-const state = reactive({ modelValue: '', generating: false, disabled: false, submitDisabled: false });
+const customAction = ref(false);
+let activate: (() => void) | undefined;
+const state = reactive({
+  modelValue: '',
+  generating: false,
+  disabled: false,
+  submitDisabled: false,
+  maxLength: undefined as number | undefined,
+  autoSize: { minRows: 1, maxRows: 8 },
+});
 const submit = vi.fn();
 const stop = vi.fn();
 const update = vi.fn();
@@ -19,8 +28,9 @@ const key = (options: KeyboardEventInit = {}) => {
   return event;
 };
 beforeEach(() => {
+  customAction.value = false;
   document.body.innerHTML = '<div id="app"></div>';
-  Object.assign(state, { modelValue: '', generating: false, disabled: false, submitDisabled: false });
+  Object.assign(state, { modelValue: '', generating: false, disabled: false, submitDisabled: false, maxLength: undefined });
   app = createApp({
     render: () =>
       h(
@@ -36,6 +46,18 @@ beforeEach(() => {
         },
         {
           toolbar: (scope: Record<string, boolean>) => h('span', { 'data-slot': JSON.stringify(scope) }),
+          ...(customAction.value
+            ? {
+                action: (scope: { disabled: boolean; generating: boolean; canSubmit: boolean; activate: () => void }) => {
+                  activate = scope.activate;
+                  return h(
+                    'button',
+                    { disabled: scope.disabled || (!scope.generating && !scope.canSubmit), onClick: scope.activate },
+                    'Custom'
+                  );
+                },
+              }
+            : {}),
         }
       ),
   });
@@ -45,6 +67,48 @@ beforeEach(() => {
 afterEach(() => app.unmount());
 
 describe('AChatComposer', () => {
+  it('truncates pasted supplementary characters by code point without splitting them', async () => {
+    state.maxLength = 1;
+    await nextTick();
+    input().value = '😀a';
+    input().dispatchEvent(new Event('input', { bubbles: true }));
+    expect(update).toHaveBeenCalledWith('😀');
+    state.modelValue = '😀';
+    await nextTick();
+    key();
+    expect(submit).toHaveBeenCalledWith('😀');
+  });
+  it('guards a custom action and permits stopping during submit cooldown', async () => {
+    customAction.value = true;
+    await nextTick();
+    activate?.();
+    expect(submit).not.toHaveBeenCalled();
+    state.modelValue = 'hello';
+    await nextTick();
+    button().click();
+    expect(submit).toHaveBeenCalledWith('hello');
+    Object.assign(state, { generating: true, submitDisabled: true });
+    await nextTick();
+    expect(button().disabled).toBe(false);
+    button().click();
+    expect(stop).toHaveBeenCalledOnce();
+    state.disabled = true;
+    await nextTick();
+    activate?.();
+    expect(stop).toHaveBeenCalledOnce();
+  });
+  it('rejects externally supplied overlong text and accepts the exact limit', async () => {
+    state.maxLength = 2;
+    state.modelValue = '三个字';
+    await nextTick();
+    key();
+    expect(submit).not.toHaveBeenCalled();
+    expect(button().disabled).toBe(true);
+    state.modelValue = '两字';
+    await nextTick();
+    key();
+    expect(submit).toHaveBeenCalledWith('两字');
+  });
   it('emits controlled input and submits untrimmed content without clearing', async () => {
     input().value = 'draft';
     input().dispatchEvent(new Event('input', { bubbles: true }));

@@ -6,6 +6,8 @@ export interface AChatComposerProps {
   disabled?: boolean;
   submitDisabled?: boolean;
   placeholder?: string;
+  autoSize?: { minRows?: number; maxRows?: number };
+  maxLength?: number;
 }
 
 export interface ChatComposerSlot {
@@ -18,6 +20,7 @@ export interface AChatComposerSlots {
   header?: (scope: ChatComposerSlot) => VNode[];
   attachments?: (scope: ChatComposerSlot) => VNode[];
   toolbar?: (scope: ChatComposerSlot) => VNode[];
+  action?: (scope: ChatComposerSlot & { canSubmit: boolean; activate: () => void }) => VNode[];
 }
 
 export interface AChatComposerExposed {

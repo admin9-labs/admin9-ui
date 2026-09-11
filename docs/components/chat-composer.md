@@ -56,13 +56,15 @@
 
 ## Props、Events、方法
 
-| 属性           | 类型      | 默认值         | 说明                                   |
-| -------------- | --------- | -------------- | -------------------------------------- |
-| modelValue     | `string`  | 必填           | 受控文本                               |
-| generating     | `boolean` | `false`        | 禁止发送，主按钮变为停止；仍可编辑草稿 |
-| disabled       | `boolean` | `false`        | 禁用输入及默认按钮，优先级最高         |
-| submitDisabled | `boolean` | `false`        | 仅禁止发送，不禁用输入和停止           |
-| placeholder    | `string`  | 国际化默认文案 | 输入提示及可访问名称                   |
+| 属性           | 类型                                     | 默认值                       | 说明                                   |
+| -------------- | ---------------------------------------- | ---------------------------- | -------------------------------------- |
+| modelValue     | `string`                                 | 必填                         | 受控文本                               |
+| generating     | `boolean`                                | `false`                      | 禁止发送，主按钮变为停止；仍可编辑草稿 |
+| disabled       | `boolean`                                | `false`                      | 禁用输入及默认按钮，优先级最高         |
+| submitDisabled | `boolean`                                | `false`                      | 仅禁止发送，不禁用输入和停止           |
+| placeholder    | `string`                                 | 国际化默认文案               | 输入提示及可访问名称                   |
+| autoSize       | `{ minRows?: number; maxRows?: number }` | `{ minRows: 2, maxRows: 6 }` | 输入行数范围                           |
+| maxLength      | `number`                                 | 不限制                       | 输入及提交长度限制                     |
 
 | 事件              | 参数            | 说明             |
 | ----------------- | --------------- | ---------------- |
@@ -74,7 +76,7 @@
 
 ## 键盘与状态
 
-- 自动增高为 2–6 行，继续输入后内部滚动。
+- 默认自动增高为 2–6 行，可通过 `autoSize` 调整；继续输入后内部滚动。
 - Enter 发送，Shift+Enter 换行；Ctrl、Meta、Alt 组合不作为发送键。
 - 中文输入法组合中的 Enter 不发送。
 - `trim()` 后为空则禁止发送；提交保留原始空格、换行。
@@ -85,6 +87,8 @@
 ## 插槽组合
 
 `header`、`attachments`、`toolbar` 均接收 `{ disabled, submitDisabled, generating }`。自定义控件由应用根据这些状态禁用。
+
+`action` 插槽额外提供 `{ canSubmit, activate }`，用于替换默认发送／停止按钮。按钮禁用条件为 `disabled || (!generating && !canSubmit)`，点击调用 `activate()`，仍经过空白、长度、禁用和生成状态守卫。组件不会自动执行请求。
 
 ```vue
 <AChatComposer v-model="draft" :generating="generating" :submit-disabled="uploading" @submit="submit" @stop="stop">
