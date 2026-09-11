@@ -4,10 +4,14 @@
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-09-12
+
 ### Added
 
 - `AChatComposer` 支持 `autoSize`、`maxLength` 和受提交守卫保护的 `action` 插槽，可定制输入行数、长度及发送／停止按钮。
 - `maxLength` 的输入截断与提交校验统一按 Unicode 码点计数，保留完整 Emoji 等补充字符。
+
+**Full Changelog**: https://github.com/admin9-labs/admin9-ui/compare/v0.18.0...v0.19.0
 
 ## [0.18.0] - 2026-09-12
 
