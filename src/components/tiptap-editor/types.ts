@@ -71,3 +71,11 @@ interface TiptapEditorCommonProps {
 /** JSON models require an explicit format; omitting the format always selects HTML at runtime. */
 export type ATiptapEditorProps<F extends TiptapValueFormat = 'html'> = TiptapEditorCommonProps &
   (F extends 'json' ? { valueFormat: F; modelValue?: TiptapDocument } : { valueFormat?: F; modelValue?: string });
+
+export interface ATiptapEditorExposed {
+  focus(): boolean | undefined;
+  clear(): boolean | undefined;
+  getHTML(): string;
+  getJSON(): TiptapDocument;
+  getImageUploadState(): TiptapImageUploadState;
+}

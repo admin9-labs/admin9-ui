@@ -93,6 +93,3 @@ export type FilePickerAdapter = FileBrowseCapability & Partial<FileUploadCapabil
 export interface Admin9UIPluginOptions {
   fileService?: FilePickerAdapter;
 }
-
-/** @deprecated Use Admin9UIPluginOptions. */
-export type Admin9UIOptions = Admin9UIPluginOptions;

@@ -16,14 +16,14 @@ app.use(ArcoVueIcon);
 
 ## Props
 
-| Prop          | 类型                             | 默认值      | 说明                                            |
-| ------------- | -------------------------------- | ----------- | ----------------------------------------------- |
-| `modelValue`  | `string \| undefined`            | `''`        | 接受 kebab 或 PascalCase，选择后输出 kebab 名称 |
-| `allowClear`  | `boolean`                        | `false`     | 是否显示清除按钮                                |
-| `placeholder` | `string`                         | locale 文案 | 空值提示                                        |
-| `size`        | `'small' \| 'medium' \| 'large'` | `'medium'`  | 输入框尺寸                                      |
-| `disabled`    | `boolean`                        | `false`     | 原生禁用，不可聚焦、打开、选择或清除            |
-| `readonly`    | `boolean`                        | `false`     | 值可聚焦查看，但不可打开、选择或清除            |
+| Prop          | 类型                                       | 默认值      | 说明                                            |
+| ------------- | ------------------------------------------ | ----------- | ----------------------------------------------- |
+| `modelValue`  | `string \| undefined`                      | `''`        | 接受 kebab 或 PascalCase，选择后输出 kebab 名称 |
+| `allowClear`  | `boolean`                                  | `false`     | 是否显示清除按钮                                |
+| `placeholder` | `string`                                   | locale 文案 | 空值提示                                        |
+| `size`        | `'mini' \| 'small' \| 'medium' \| 'large'` | 继承        | 输入框尺寸                                      |
+| `disabled`    | `boolean`                                  | `false`     | 原生禁用，不可聚焦、打开、选择或清除            |
+| `readonly`    | `boolean`                                  | `false`     | 值可聚焦查看，但不可打开、选择或清除            |
 
 未声明为 prop 的 `id`、`name`、`aria-*`、`autocomplete` 和 `data-*` 会转发到真实输入；`class` 与 `style` 保留在组件根元素。
 
@@ -48,3 +48,11 @@ app.use(ArcoVueIcon);
 - 图标网格使用方向键移动，`Home`、`End` 跳到首尾，`Enter` 或 `Space` 选择。
 - `Escape` 关闭弹层并把焦点还给输入。
 - 清除按钮是独立焦点目标；键盘清除不会打开选择弹层。
+
+## 表单与实例方法
+
+size 采用 Arco `Size`（mini/small/medium/large），不设置独立默认值，依次由显式参数、Form 和底层 Input 的 ConfigProvider 决定。Form 禁用同时阻止弹层和清空；readonly 允许读取但不改变选择。
+
+用户实际改变图标或清空后触发外层字段 change 校验；搜索和分类等草稿操作不触发该校验。同一图标的 kebab/Pascal 表示不会被视为不同选择。模型回显不发出 change。
+
+实例提供 `focus()`、`blur()`，作用于触发输入框。导出 `AIconPickerProps`、`AIconPickerExposed`。class/style 作用于根节点，其余原生输入属性透传到 Input 的 inputAttrs。

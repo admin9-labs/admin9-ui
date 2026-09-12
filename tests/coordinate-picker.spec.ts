@@ -198,6 +198,38 @@ afterEach(() => {
 });
 
 describe('ACoordinatePicker', () => {
+  it('clears loading and ignores the previous response when searching an empty keyword', async () => {
+    installTencentMap();
+    let resolve!: (value: { data: [] }) => void;
+    suggestion.getSuggestions.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        })
+    );
+    const mounted = mountPicker();
+    click(mounted.host.querySelector('.a9-coordinate-picker__trigger'));
+    await waitFor(() => FakeMap.instances.length === 1);
+    const modal = document.body.querySelector('.a9-coordinate-picker__modal');
+    const input = modal?.querySelector<HTMLInputElement>('.a9-coordinate-picker__search input');
+    if (!input) throw new Error('Missing search input');
+    input.value = 'Pending';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+    await nextTick();
+    expect(suggestion.getSuggestions).toHaveBeenCalledOnce();
+    input.value = '';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+    await nextTick();
+    expect(modal?.querySelector('.arco-icon-loading')).toBeNull();
+    resolve({ data: [] });
+    await flush();
+    expect(modal?.querySelector('.a9-coordinate-picker__result')).toBeNull();
+  });
+
   it('keeps map clicks in a draft until confirmation', async () => {
     installTencentMap();
     const mounted = mountPicker();

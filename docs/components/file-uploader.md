@@ -27,7 +27,7 @@
     file-type="image"
     group-id="design"
     accept="image/*"
-    :max-files="10"
+    :limit="10"
     :max-file-size="10485760"
     @complete="onComplete"
   />
@@ -45,12 +45,13 @@
 | `groupId`     | `string \| null`                | `null`             | 当前真实类型下的目标分组；`null` 表示未分组                        |
 | `accept`      | `string`                        | `undefined`        | 可选的原生文件选择提示；默认不限制格式，不用于业务分类或安全校验   |
 | `multiple`    | `boolean`                       | `true`             | 是否允许本地文件选择器一次选择多个文件                             |
-| `maxFiles`    | `number`                        | `0`                | 当前队列最多记录数；`0` 表示不限制，清除已完成记录后可释放额度     |
+| `limit`       | `number`                        | `0`                | 当前队列最多记录数；`0` 表示不限制，清除已完成记录后可释放额度     |
 | `maxFileSize` | `number`                        | `0`                | 单文件最大字节数；`0` 表示组件端不限制                             |
 | `buttonText`  | `string`                        | locale 文案        | 上传按钮文字                                                       |
 | `disabled`    | `boolean`                       | `false`            | 显式禁用文件选择入口；上传中仍可继续选择并追加文件                 |
+| `size`        | `Size`                          | 继承               | 默认上传按钮尺寸                                                   |
 
-`maxFiles`、`maxFileSize` 和 `accept` 只提供前端交互约束。adapter/后端仍必须校验文件内容、真实 MIME、扩展名、大小、恶意文件、身份、资源归属、具体类型和分组授权。
+`limit`、`maxFileSize` 和 `accept` 只提供前端交互约束。adapter/后端仍必须校验文件内容、真实 MIME、扩展名、大小、恶意文件、身份、资源归属、具体类型和分组授权。
 
 ## Events
 
@@ -95,3 +96,11 @@
 - Picker 通过 `upload-success` / `upload-error` 继续提供单项上传结果事件。
 
 队列面板不创建独立 Modal。按钮和任务操作均提供可访问名称；状态摘要使用 `aria-live`，可与 Picker 弹窗连续使用。
+
+## 表单与命令边界
+
+`size?: Size` 控制默认上传按钮，未配置时沿用 Form／Arco 配置；队列布局不随 size 改变。disabled 继承外层 Form，禁止新上传和重试，包括实例 upload/retry 与自定义触发器路径；仍可取消正在进行的任务以释放资源。
+
+limit 是当前队列数量上限，maxFileSize 以字节计；retry 会重新验证两个限制。accept 沿用原生选择提示，不对 File 内容作安全保证。通过验证的返回文件必须有合法 HTTP(S)、相对或 blob URL。
+
+class/style 及未声明的原生属性交给根节点，不透传为 Arco Upload 的网络请求配置。导出 Props、Exposed 和任务／批次类型；公开任务快照不暴露 AbortController 或内部回调。

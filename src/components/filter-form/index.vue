@@ -6,6 +6,7 @@
     computed,
     defineComponent,
     h,
+    mergeProps,
     nextTick,
     onBeforeUnmount,
     onMounted,
@@ -15,7 +16,7 @@
     type PropType,
     type VNode,
   } from 'vue';
-  import { Button, Form, type FormInstance, type ResponsiveValue } from '@arco-design/web-vue';
+  import { Button, Form, type FormInstance, type Size, type ResponsiveValue } from '@arco-design/web-vue';
   import { useI18n } from 'vue-i18n';
 
   const COLLAPSE_THRESHOLD_ROWS = 2;
@@ -51,6 +52,8 @@
     name: 'AFilterForm',
     inheritAttrs: false,
     props: {
+      disabled: { type: Boolean, default: false },
+      size: { type: String as PropType<Size>, default: undefined },
       model: {
         type: Object as PropType<object>,
         required: true,
@@ -72,7 +75,7 @@
       search: (values: Record<string, unknown>) => Boolean(values),
       reset: () => true,
     },
-    setup(props, { attrs, emit, slots }) {
+    setup(props, { attrs, emit, slots, expose }) {
       const { t } = useI18n();
       const formRef = ref<FormInstance>();
       const collapsed = ref(true);
@@ -106,9 +109,22 @@
         if (currentOverflow) collapsed.value = false;
       };
       const handleReset = () => {
-        formRef.value?.clearValidate();
+        formRef.value?.resetFields();
         emit('reset');
       };
+
+      // Exposed methods can only be invoked after the Form ref has mounted.
+      /* eslint-disable @typescript-eslint/no-non-null-assertion */
+      expose({
+        validate: (...args: Parameters<FormInstance['validate']>) => formRef.value!.validate(...args),
+        validateField: (...args: Parameters<FormInstance['validateField']>) => formRef.value!.validateField(...args),
+        resetFields: (...args: Parameters<FormInstance['resetFields']>) => formRef.value!.resetFields(...args),
+        clearValidate: (...args: Parameters<FormInstance['clearValidate']>) => formRef.value!.clearValidate(...args),
+        setFields: (...args: Parameters<FormInstance['setFields']>) => formRef.value!.setFields(...args),
+        scrollToField: (...args: Parameters<FormInstance['scrollToField']>) => formRef.value!.scrollToField(...args),
+      });
+
+      /* eslint-enable @typescript-eslint/no-non-null-assertion */
 
       const SearchIcon = resolveComponent('IconSearch') as Component;
       const RefreshIcon = resolveComponent('IconRefresh') as Component;
@@ -144,6 +160,8 @@
               type: 'primary',
               htmlType: 'submit',
               loading: props.loading,
+              disabled: props.disabled,
+              size: props.size,
             },
             {
               icon: () => h(SearchIcon),
@@ -155,6 +173,8 @@
             {
               class: 'a9-filter-form__reset',
               htmlType: 'button',
+              disabled: props.disabled || props.loading,
+              size: props.size,
               onClick: handleReset,
             },
             {
@@ -172,6 +192,7 @@
                 'class': 'a9-filter-form__toggle',
                 'type': 'text',
                 'htmlType': 'button',
+                'size': props.size,
                 'aria-expanded': String(!collapsed.value),
                 'onClick': () => {
                   collapsed.value = !collapsed.value;
@@ -187,22 +208,23 @@
 
         return h(
           Form,
-          {
-            ...attrs,
+          mergeProps(attrs, {
             'ref': formRef,
             'model': props.model,
+            'disabled': props.disabled,
+            'size': props.size,
             'layout': 'horizontal',
             'labelAlign': 'left',
             'autoLabelWidth': viewportWidth.value <= 767,
             'labelColProps': { flex: 'none' },
             'wrapperColProps': { flex: '1' },
-            'class': ['a9-filter-form', attrs.class],
+            'class': 'a9-filter-form',
             'data-layout': layout,
             'data-field-count': String(fieldNodes.length),
             'data-active-cols': String(activeCols.value),
             'onSubmitSuccess': handleSearch,
             'onSubmitFailed': handleSubmitFailed,
-          },
+          }),
           {
             default: () =>
               h('div', { class: 'a9-filter-form__body' }, [

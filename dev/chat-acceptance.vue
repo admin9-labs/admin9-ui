@@ -163,6 +163,7 @@
       <a-button @click="locale = locale === 'zh-CN' ? 'en-US' : 'zh-CN'">中 / EN</a-button>
       <a-button @click="toggleTheme">明 / 暗</a-button>
       <a-radio-group v-model="composerSize" type="button" size="small" data-testid="chat-composer-size">
+        <a-radio value="mini">Mini</a-radio>
         <a-radio value="small">Small</a-radio>
         <a-radio value="medium">Medium</a-radio>
         <a-radio value="large">Large</a-radio>

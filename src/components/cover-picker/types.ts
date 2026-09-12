@@ -1,7 +1,8 @@
+import type { Size } from '@arco-design/web-vue';
 import type { FileItem, FilePickerAdapter } from '../../services/types';
 
 export type CoverMode = 'single' | 'triple' | 'none';
-export type CoverPickerSize = 'small' | 'medium' | 'large';
+export type CoverPickerSize = Size;
 
 export type CoverPickerValue =
   | { mode: 'none'; images: [] }
@@ -15,4 +16,5 @@ export interface ACoverPickerProps {
   canUpload?: boolean;
   accept?: string;
   disabled?: boolean;
+  readonly?: boolean;
 }

@@ -71,6 +71,8 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 
 包同时导出组件相关类型、`Admin9UIPluginOptions`、文件浏览与上传能力类型、locale 资源和 `arcoIconNames`。
 
+表单控件衔接 Arco Form 的禁用和校验行为；适用组件的尺寸使用 Arco `Size`。各组件的绑定值、事件、插槽和实例方法以对应文档为准，组件 Props 与实例类型可从包根入口导入。
+
 ## 集成边界
 
 - `ACoverPicker`、`AFilePicker` 和 `AFileUploader` 只负责选择与上传交互。文件管理页面以及删除、移动、分组、权限和业务字段由应用实现。

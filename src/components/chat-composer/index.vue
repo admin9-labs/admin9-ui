@@ -1,6 +1,6 @@
 <script setup lang="ts">
-  import { computed, ref } from 'vue';
-  import { Button, Textarea, Tooltip } from '@arco-design/web-vue';
+  import { computed, ref, toRef } from 'vue';
+  import { Button, Textarea, Tooltip, useFormItem } from '@arco-design/web-vue';
   import IconArrowUp from '@arco-design/web-vue/es/icon/icon-arrow-up';
   import IconStop from '@arco-design/web-vue/es/icon/icon-stop';
   import { useI18n } from 'vue-i18n';
@@ -8,9 +8,10 @@
 
   defineOptions({ name: 'AChatComposer' });
   const props = withDefaults(defineProps<AChatComposerProps>(), {
-    size: 'large',
+    size: undefined,
     generating: false,
     disabled: false,
+    readonly: false,
     submitDisabled: false,
     autoSize: () => ({ minRows: 2, maxRows: 6 }),
   });
@@ -18,32 +19,44 @@
     'update:modelValue': [value: string];
     'submit': [value: string];
     'stop': [];
+    'input': [value: string, event: Event];
+    'change': [value: string, event: Event];
+    'focus': [event: FocusEvent];
+    'blur': [event: FocusEvent];
   }>();
   defineSlots<AChatComposerSlots>();
   const { t } = useI18n();
   const textarea = ref<InstanceType<typeof Textarea>>();
+  const { mergedDisabled, mergedSize } = useFormItem({ disabled: toRef(props, 'disabled'), size: toRef(props, 'size') });
+  const resolvedSize = computed(() => mergedSize.value ?? 'large');
+  const resolvedMaxLength = computed(() => Math.max(0, props.maxLength ?? 0));
   const composing = ref(false);
   const wordLength = (value: string) => Array.from(value).length;
   const wordSlice = (value: string, length: number) => Array.from(value).slice(0, length).join('');
   const slotState = computed(() => ({
-    size: props.size,
-    disabled: props.disabled,
+    size: resolvedSize.value,
+    disabled: Boolean(mergedDisabled.value),
+    readonly: props.readonly,
     submitDisabled: props.submitDisabled,
     generating: props.generating,
   }));
   const canSubmit = computed(
     () =>
-      !props.disabled &&
+      !mergedDisabled.value &&
+      !props.readonly &&
       !props.submitDisabled &&
       !props.generating &&
       Boolean(props.modelValue.trim()) &&
-      (props.maxLength === undefined || wordLength(props.modelValue) <= props.maxLength)
+      (resolvedMaxLength.value === 0 || wordLength(props.modelValue) <= resolvedMaxLength.value)
   );
+  const updateValue = (value: string) => {
+    if (!mergedDisabled.value && !props.readonly) emit('update:modelValue', value);
+  };
   const submit = () => {
     if (canSubmit.value) emit('submit', props.modelValue);
   };
   const activate = () => {
-    if (props.disabled) return;
+    if (mergedDisabled.value || props.readonly) return;
     if (props.generating) emit('stop');
     else submit();
   };
@@ -63,11 +76,11 @@
     event.preventDefault();
     submit();
   };
-  defineExpose<AChatComposerExposed>({ focus: () => textarea.value?.focus() });
+  defineExpose<AChatComposerExposed>({ focus: () => textarea.value?.focus(), blur: () => textarea.value?.blur() });
 </script>
 
 <template>
-  <div class="a9-chat-composer" :class="`a9-chat-composer--${size}`">
+  <div class="a9-chat-composer" :class="`a9-chat-composer--${resolvedSize}`">
     <div v-if="$slots.header" class="a9-chat-composer__header"><slot name="header" v-bind="slotState" /></div>
     <div v-if="$slots.attachments" class="a9-chat-composer__attachments"><slot name="attachments" v-bind="slotState" /></div>
     <div
@@ -79,14 +92,18 @@
       <Textarea
         ref="textarea"
         :model-value="modelValue"
-        :disabled="disabled"
+        :disabled="mergedDisabled"
         :placeholder="placeholder ?? t('admin9Ui.chatComposer.placeholder')"
-        :textarea-attrs="{ 'aria-label': placeholder ?? t('admin9Ui.chatComposer.placeholder') }"
+        :textarea-attrs="{ 'aria-label': placeholder ?? t('admin9Ui.chatComposer.placeholder'), ...textareaAttrs, readonly }"
         :auto-size="autoSize"
-        :max-length="maxLength"
+        :max-length="resolvedMaxLength"
         :word-length="wordLength"
         :word-slice="wordSlice"
-        @update:model-value="emit('update:modelValue', $event)"
+        @update:model-value="updateValue"
+        @input="(value, event) => emit('input', value, event)"
+        @change="(value, event) => emit('change', value, event)"
+        @focus="emit('focus', $event)"
+        @blur="emit('blur', $event)"
       />
     </div>
     <div class="a9-chat-composer__bar">
@@ -97,9 +114,9 @@
             class="a9-chat-composer__action"
             type="primary"
             shape="circle"
-            :size="size"
+            :size="resolvedSize"
             :aria-label="t(generating ? 'admin9Ui.chatComposer.stop' : 'admin9Ui.chatComposer.send')"
-            :disabled="disabled || (!generating && !canSubmit)"
+            :disabled="mergedDisabled || readonly || (!generating && !canSubmit)"
             @click="activate"
           >
             <template #icon><IconStop v-if="generating" /><IconArrowUp v-else /></template>
@@ -120,12 +137,22 @@
     --a9-chat-composer-section-gap: 8px;
 
     box-sizing: border-box;
+    width: 100%;
     min-width: 0;
     padding: var(--a9-chat-composer-padding-block) var(--a9-chat-composer-padding-inline);
     color: var(--color-text-1);
     background: var(--color-bg-2);
     border: 1px solid var(--color-border-2);
     border-radius: 8px;
+
+    &--mini {
+      --a9-chat-composer-padding-block: 6px;
+      --a9-chat-composer-padding-inline: 8px;
+      --a9-chat-composer-content-gap: 4px;
+      --a9-chat-composer-toolbar-gap: 4px;
+      --a9-chat-composer-bar-gap: 6px;
+      --a9-chat-composer-section-gap: 4px;
+    }
 
     &--small {
       --a9-chat-composer-padding-block: 8px;

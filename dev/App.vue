@@ -1,6 +1,7 @@
 <script setup lang="ts">
   import { computed, reactive, ref, watch } from 'vue';
   import type { TableColumnData } from '@arco-design/web-vue';
+  import AuditAcceptance from './audit-acceptance.vue';
   import ChatAcceptance from './chat-acceptance.vue';
   import {
     ACoverPicker,
@@ -19,13 +20,15 @@
     type CoverPickerSize,
     type CoordinateSelection,
     type CoordinateValue,
-    type Action,
+    type ProTableAction,
     type ProTableDataChange,
     type TiptapDocument,
     type TiptapImageUploadState,
   } from '../src';
   import { type AcceptanceState } from './fake-acceptance-utils';
   import createFakeFilePickerService from './fake-file-picker-service';
+
+  const auditFocused = new URLSearchParams(window.location.search).has('audit');
 
   interface TableRow {
     id: number;
@@ -98,13 +101,13 @@
   const tableError = ref(false);
   const tableLoading = ref(false);
   const tableDataSummary = ref('等待有效数据');
-  const selectedRowKeys = ref<(string | number)[]>([]);
-  const tableActions: Action<TableRow>[] = [
+  const selectedKeys = ref<(string | number)[]>([]);
+  const tableActions: ProTableAction<TableRow>[] = [
     {
       label: '定位',
       permissions: 'table.select',
       onClick: (record) => {
-        selectedRowKeys.value = [record.id];
+        selectedKeys.value = [record.id];
       },
     },
   ];
@@ -260,7 +263,8 @@
       : `${selection.latitude}, ${selection.longitude}`;
   };
   const resetFilter = (model: FilterModel) => Object.assign(model, createFilterModel());
-  const recordFilePickerEvent = (items: FileItem[]) => {
+  const recordFilePickerEvent = (value: FileItem | FileItem[] | undefined) => {
+    const items = Array.isArray(value) ? value : [value].filter((item): item is FileItem => Boolean(item));
     lastFilePickerEvent.value = items.length ? items.map((item) => item.name).join('、') : '已清空';
   };
   const recordCoverPickerEvent = (value: CoverPickerValue) => {
@@ -281,7 +285,8 @@
 </script>
 
 <template>
-  <div v-if="chatFocused" class="acceptance-shell is-component-focused"><ChatAcceptance /></div>
+  <AuditAcceptance v-if="auditFocused" />
+  <div v-else-if="chatFocused" class="acceptance-shell is-component-focused"><ChatAcceptance /></div>
   <div v-else class="acceptance-shell" :class="{ 'is-component-focused': tiptapFocused }">
     <header v-if="!tiptapFocused" class="topbar">
       <div>
@@ -464,7 +469,7 @@
         <a-alert v-if="tableError" type="error" data-testid="table-error-state">模拟 fetcher 已拒绝请求</a-alert>
         <AProTable
           :key="tableState"
-          v-model:selected-row-keys="selectedRowKeys"
+          v-model:selected-keys="selectedKeys"
           :columns="columns"
           :fetcher="tableFetcher"
           :actions="tableActions"
@@ -662,7 +667,7 @@
             :service="fileUploaderService"
             file-type="image"
             group-id="image-design"
-            :max-files="5"
+            :limit="5"
             :max-file-size="5242880"
             data-testid="standalone-file-uploader"
             @complete="recordFileUploaderEvent"

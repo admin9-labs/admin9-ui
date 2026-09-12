@@ -20,7 +20,7 @@
     type FilePickerAdapter,
     type FileUploadCapability,
     type FileItem,
-    type Action,
+    type ProTableAction,
     type ProTableRefreshHandler,
     type TiptapDocument,
   } from '@admin9-labs/admin9-ui';
@@ -38,7 +38,7 @@
 
   const fetchRows = async () => ({ list: [] as FixtureRow[], total: 0 });
   const refreshRows: ProTableRefreshHandler = ({ refresh }) => refresh();
-  const rowActions: Action<FixtureRow>[] = [{ label: 'Edit', permissions: 'records.update', onClick: () => undefined }];
+  const rowActions: ProTableAction<FixtureRow>[] = [{ label: 'Edit', permissions: 'records.update', onClick: () => undefined }];
   const chatMessages = ref<ChatMessage[]>([{ id: 'a', role: 'assistant', content: '**fixture**' }]);
   const draft = ref('draft');
   const chatComposerSize: ChatComposerSize = 'medium';

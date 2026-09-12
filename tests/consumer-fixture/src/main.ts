@@ -18,7 +18,7 @@ import Admin9UI, {
   type ATiptapEditorProps,
   type ACoverPickerProps,
   type AFilterFormProps,
-  type Action,
+  type ProTableAction,
   type AProTableEmits,
   type AProTableExposed,
   type AProTableProps,
@@ -26,7 +26,6 @@ import Admin9UI, {
   type CoordinateSelection,
   type CoordinateValue,
   type CoverPickerValue,
-  type Admin9UIOptions,
   type Admin9UIPluginOptions,
   type FileItem,
   type FilePickerAdapter,
@@ -51,7 +50,7 @@ import Admin9UI, {
   type TiptapImageDisplay,
   type TiptapInlineImageSize,
   type TiptapMediaAlign,
-  type Slot,
+  type ProTableActionSlot,
 } from '@admin9-labs/admin9-ui';
 import { enUS, localePrefix, messages, zhCN } from '@admin9-labs/admin9-ui/locale';
 import '@arco-design/web-vue/dist/arco.css';
@@ -102,8 +101,6 @@ const fileUploaderService: FileUploadCapability = {
 const emptyUploadResult: FileUploadBatchResult = { succeeded: [], failed: [], cancelled: [] };
 
 const pluginOptions: Admin9UIPluginOptions = { fileService };
-const legacyPluginOptions: Admin9UIOptions = pluginOptions;
-const compatiblePluginOptions: Admin9UIPluginOptions = legacyPluginOptions;
 const defaultImageDisplay: TiptapImageDisplay = 'inline';
 const audioWidth: TiptapAudioWidth = 'standard';
 const blockWidth: TiptapBlockWidth = '50%';
@@ -121,8 +118,8 @@ interface FixtureRow {
   id: number;
   name: string;
 }
-const rowAction: Action<FixtureRow> = { label: 'Open', onClick: () => undefined };
-const rowSlot: Slot<FixtureRow> = {
+const rowAction: ProTableAction<FixtureRow> = { label: 'Open', onClick: () => undefined };
+const rowSlot: ProTableActionSlot<FixtureRow> = {
   record: { id: 1, name: 'Fixture row' },
   column: { dataIndex: 'actions' },
   rowIndex: 0,
@@ -224,5 +221,5 @@ const app = createApp({
 app.use(ArcoVue);
 Object.entries(ArcoVueIcon).forEach(([name, component]) => app.component(name, component as Component));
 app.use(i18n);
-app.use(Admin9UI, compatiblePluginOptions);
+app.use(Admin9UI, pluginOptions);
 app.mount('#app');

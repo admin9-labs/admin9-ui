@@ -1,49 +1,46 @@
 <script setup lang="ts">
-  import { computed, inject, onMounted, ref, watch } from 'vue';
+  import { computed, inject, onBeforeUnmount, ref, toRef, watch } from 'vue';
+  import { FormItem, useFormItem } from '@arco-design/web-vue';
   import { useI18n } from 'vue-i18n';
+  import type {
+    AFilePickerProps,
+    AFilePickerExposed,
+    FilePickerValue as ModelValue,
+    FilePickerView as FileView,
+  } from './types';
+  import safeFileUrl from '../../internal/file-url';
   import AFileUploader from '../file-uploader/index.vue';
   import type { AFileUploaderExposed, FileUploadBatchResult, FileUploadFailure } from '../file-uploader/types';
   import FileItemView from '../../internal/file-item.vue';
   import admin9UIOptionsKey from '../../internal/options';
   import type { FileGroup, FileItem, FileListParams, FilePickerAdapter, FileType } from '../../services/types';
 
-  type ModelValue = FileItem | FileItem[] | undefined;
-  type FileView = 'grid' | 'list';
   type GroupId = string | null | undefined;
 
   const FILE_TYPES: readonly FileType[] = ['image', 'video', 'audio', 'document', 'archive', 'other'];
   const FILE_TYPE_SET = new Set<FileType>(FILE_TYPES);
 
-  const props = withDefaults(
-    defineProps<{
-      modelValue?: ModelValue;
-      fileTypes?: readonly FileType[];
-      multiple?: boolean;
-      limit?: number;
-      pageSize?: number;
-      buttonText?: string;
-      accept?: string;
-      canUpload?: boolean;
-      initialView?: FileView;
-      service?: FilePickerAdapter;
-    }>(),
-    {
-      modelValue: undefined,
-      fileTypes: () => ['image', 'video', 'audio', 'document', 'archive', 'other'],
-      multiple: false,
-      limit: 0,
-      pageSize: 24,
-      buttonText: '',
-      accept: undefined,
-      canUpload: false,
-      initialView: 'grid',
-      service: undefined,
-    }
-  );
+  const props = withDefaults(defineProps<AFilePickerProps>(), {
+    disabled: false,
+    readonly: false,
+    allowClear: true,
+    modelValue: undefined,
+    fileTypes: () => ['image', 'video', 'audio', 'document', 'archive', 'other'],
+    multiple: false,
+    limit: 0,
+    pageSize: 24,
+    buttonText: '',
+    accept: undefined,
+    canUpload: false,
+    defaultView: 'grid',
+    service: undefined,
+  });
 
   const emit = defineEmits<{
     (e: 'update:modelValue', value: ModelValue): void;
-    (e: 'change', items: FileItem[]): void;
+    (e: 'change', value: ModelValue): void;
+    (e: 'confirm', items: FileItem[]): void;
+    (e: 'clear'): void;
     (e: 'selectionChange', items: FileItem[]): void;
     (e: 'visibleChange', visible: boolean): void;
     (e: 'uploadSuccess', item: FileItem): void;
@@ -56,6 +53,11 @@
     empty?: (slotProps: { constrained: boolean }) => unknown;
   }>();
 
+  const { mergedDisabled, mergedSize, eventHandlers } = useFormItem({
+    disabled: toRef(props, 'disabled'),
+    size: toRef(props, 'size'),
+  });
+  const interactionDisabled = computed(() => mergedDisabled.value || props.readonly);
   const { t } = useI18n();
   const globalOptions = inject(admin9UIOptionsKey, undefined);
   const resolvedService = computed<FilePickerAdapter | undefined>(() => props.service ?? globalOptions?.fileService);
@@ -87,7 +89,7 @@
   const showsAggregateType = computed(() => allowedFileTypes.value.length > 1);
 
   const visible = ref(false);
-  const view = ref<FileView>(props.initialView);
+  const view = ref<FileView>(props.defaultView);
   const activeFileType = ref<FileType | undefined>();
   const activeGroupId = ref<GroupId>(undefined);
   const list = ref<FileItem[]>([]);
@@ -108,7 +110,7 @@
   let viewGeneration = 0;
   let latestListRequest = 0;
   let latestGroupRequest = 0;
-  let lastCorrectionSignature = '';
+  let modelNeedsNormalization = false;
 
   const GROUP_ALL = '__admin9_ui_file_picker_all__';
   const GROUP_UNGROUPED = '__admin9_ui_file_picker_ungrouped__';
@@ -147,7 +149,7 @@
   );
 
   const hasStableId = (item: FileItem) => typeof item.id === 'string' && item.id.trim().length > 0;
-  const hasUsableUrl = (item: FileItem) => typeof item.url === 'string' && item.url.trim().length > 0;
+  const hasUsableUrl = (item: FileItem) => Boolean(safeFileUrl(item.url));
   const isReady = (item: FileItem) => item.status === undefined || item.status === 'ready';
   const hasKnownType = (item: FileItem) => FILE_TYPE_SET.has(item.type);
   const isValueEligible = (item: FileItem) =>
@@ -209,14 +211,9 @@
     if (notify) emit('selectionChange', next);
     return true;
   };
-  const itemSignature = (item: FileItem) => JSON.stringify(itemFields.map((field) => item[field] ?? null));
-  const inputSignature = (value: ModelValue) => {
-    if (Array.isArray(value)) return `array:${value.map(itemSignature).join('|')}`;
-    return value ? `item:${itemSignature(value)}` : 'empty';
-  };
   const outputValue = (items: FileItem[]): ModelValue => (props.multiple ? items : items[0]);
   const modelMatches = (value: ModelValue, items: FileItem[]) => {
-    if (items.length === 0 && value === undefined) return true;
+    if (value === undefined && items.length === 0) return true;
     if (props.multiple) return Array.isArray(value) && sameItems(value, items);
     return !Array.isArray(value) && Boolean(value) && items.length === 1 && sameItem(value as FileItem, items[0]);
   };
@@ -235,26 +232,19 @@
   };
   const emitCommittedValue = (items: FileItem[]) => {
     const next = sanitizeItems(items);
-    if (sameItems(committedItems.value, next)) return false;
+    if (sameItems(committedItems.value, next) && !modelNeedsNormalization) return false;
+    modelNeedsNormalization = false;
     committedItems.value = next;
     emit('update:modelValue', outputValue(next));
-    emit('change', next);
+    emit('change', outputValue(next));
+    eventHandlers.value?.onChange?.();
     return true;
   };
   const syncExternalModel = () => {
-    const input = props.modelValue;
-    const next = sanitizeItems(itemsFromModel(input));
+    const next = sanitizeItems(itemsFromModel(props.modelValue));
+    modelNeedsNormalization = !modelMatches(props.modelValue, next);
     committedItems.value = next;
-    if (visible.value) replaceDraft(next);
-    if (modelMatches(input, next)) {
-      lastCorrectionSignature = '';
-      return;
-    }
-    const signature = `${props.multiple}:${inputSignature(input)}=>${next.map(itemSignature).join('|')}`;
-    if (signature === lastCorrectionSignature) return;
-    lastCorrectionSignature = signature;
-    emit('update:modelValue', outputValue(next));
-    emit('change', next);
+    if (visible.value) replaceDraft(next, false);
   };
 
   const defaultActiveType = () => (allowedFileTypes.value.length === 1 ? allowedFileTypes.value[0] : undefined);
@@ -404,6 +394,7 @@
   };
 
   const open = () => {
+    if (interactionDisabled.value || visible.value) return;
     requireService();
     visible.value = true;
     replaceDraft(committedItems.value, false);
@@ -425,17 +416,19 @@
       ?.focus();
   };
   const clear = () => {
+    if (interactionDisabled.value) return;
     replaceDraft([], visible.value);
-    emitCommittedValue([]);
+    if (emitCommittedValue([])) emit('clear');
   };
   const confirm = () => {
     const next = sanitizeItems(draftItems.value);
-    if (!hasAllowedTypes.value) return;
+    if (!visible.value || interactionDisabled.value || !hasAllowedTypes.value) return;
     emitCommittedValue(next);
+    emit('confirm', next);
     close();
   };
   const toggleItem = (item: FileItem) => {
-    if (!isSelectable(item)) return;
+    if (interactionDisabled.value || !isSelectable(item)) return;
     if (!props.multiple) {
       replaceDraft([item]);
     } else {
@@ -462,7 +455,7 @@
   watch(
     () => props.modelValue,
     () => syncExternalModel(),
-    { deep: true }
+    { deep: true, immediate: true }
   );
   watch(
     () => [props.multiple, props.limit] as const,
@@ -493,28 +486,38 @@
     }
   );
 
-  onMounted(syncExternalModel);
-  defineExpose({ open, close, clear, refresh });
+  watch(interactionDisabled, (value) => {
+    if (value) close();
+  });
+  onBeforeUnmount(invalidateRequests);
+  defineExpose<AFilePickerExposed>({ open, close, clear, refresh });
 </script>
 
 <template>
   <div class="a9-file-picker">
     <div class="a9-file-picker__trigger-row">
       <span ref="triggerRoot" class="a9-file-picker__trigger">
-        <slot name="trigger" :open="open" :selected-items="selectedItems" :selected-count="selectedCount" :disabled="false">
-          <a-button data-testid="file-picker-trigger" @click="open">
+        <slot
+          name="trigger"
+          :open="open"
+          :selected-items="selectedItems"
+          :selected-count="selectedCount"
+          :disabled="interactionDisabled"
+        >
+          <a-button :disabled="interactionDisabled" :size="mergedSize" data-testid="file-picker-trigger" @click="open">
             <template #icon><icon-folder /></template>
             {{ triggerLabel }}
             <span v-if="selectedCount">({{ selectedCount }})</span>
           </a-button>
         </slot>
       </span>
-      <a-tooltip v-if="selectedCount" :content="t('admin9Ui.filePicker.clear')">
+      <a-tooltip v-if="allowClear && selectedCount && !interactionDisabled" :content="t('admin9Ui.filePicker.clear')">
         <a-button
           type="text"
           status="danger"
           :aria-label="t('admin9Ui.filePicker.clear')"
           data-testid="file-picker-clear"
+          :size="mergedSize"
           @click="clear"
         >
           <template #icon><icon-close /></template>
@@ -539,169 +542,177 @@
       @cancel="close"
       @close="restoreTriggerFocus"
     >
-      <div class="a9-file-picker__workspace">
-        <aside class="a9-file-picker__sidebar" :aria-label="t('admin9Ui.filePicker.fileTypes')">
-          <button
-            v-if="showsAggregateType"
-            type="button"
-            class="a9-file-picker__type-button"
-            :class="{ 'is-active': activeFileType === undefined }"
-            :aria-pressed="activeFileType === undefined"
-            @click="selectFileType(undefined)"
-          >
-            <icon-folder />
-            <span>{{ aggregateLabel }}</span>
-          </button>
-          <button
-            v-for="fileType in allowedFileTypes"
-            :key="fileType"
-            type="button"
-            class="a9-file-picker__type-button"
-            :class="{ 'is-active': activeFileType === fileType }"
-            :aria-pressed="activeFileType === fileType"
-            @click="selectFileType(fileType)"
-          >
-            <icon-file-image v-if="fileType === 'image'" />
-            <icon-file-video v-else-if="fileType === 'video'" />
-            <icon-file-audio v-else-if="fileType === 'audio'" />
-            <icon-archive v-else-if="fileType === 'archive'" />
-            <icon-file v-else />
-            <span>{{ t(`admin9Ui.filePicker.types.${fileType}`) }}</span>
-          </button>
-        </aside>
+      <FormItem no-style :validate-trigger="[]">
+        <div class="a9-file-picker__workspace">
+          <aside class="a9-file-picker__sidebar" :aria-label="t('admin9Ui.filePicker.fileTypes')">
+            <button
+              v-if="showsAggregateType"
+              type="button"
+              class="a9-file-picker__type-button"
+              :class="{ 'is-active': activeFileType === undefined }"
+              :aria-pressed="activeFileType === undefined"
+              @click="selectFileType(undefined)"
+            >
+              <icon-folder />
+              <span>{{ aggregateLabel }}</span>
+            </button>
+            <button
+              v-for="fileType in allowedFileTypes"
+              :key="fileType"
+              type="button"
+              class="a9-file-picker__type-button"
+              :class="{ 'is-active': activeFileType === fileType }"
+              :aria-pressed="activeFileType === fileType"
+              @click="selectFileType(fileType)"
+            >
+              <icon-file-image v-if="fileType === 'image'" />
+              <icon-file-video v-else-if="fileType === 'video'" />
+              <icon-file-audio v-else-if="fileType === 'audio'" />
+              <icon-archive v-else-if="fileType === 'archive'" />
+              <icon-file v-else />
+              <span>{{ t(`admin9Ui.filePicker.types.${fileType}`) }}</span>
+            </button>
+          </aside>
 
-        <main class="a9-file-picker__main">
-          <a-alert v-if="!hasAllowedTypes" type="warning" class="a9-file-picker__constraint-empty">
-            {{ t('admin9Ui.filePicker.noAllowedTypes') }}
-          </a-alert>
+          <main class="a9-file-picker__main">
+            <a-alert v-if="!hasAllowedTypes" type="warning" class="a9-file-picker__constraint-empty">
+              {{ t('admin9Ui.filePicker.noAllowedTypes') }}
+            </a-alert>
 
-          <template v-else>
-            <div class="a9-file-picker__toolbar">
-              <a-input-search
-                v-model="keyword"
-                class="a9-file-picker__search"
-                :placeholder="t('admin9Ui.filePicker.searchPlaceholder')"
-                allow-clear
-                search-button
-                @search="onSearch"
-                @clear="onSearch"
-              />
-              <div class="a9-file-picker__toolbar-actions">
-                <a-tooltip :content="t('admin9Ui.filePicker.refresh')">
-                  <a-button
-                    :aria-label="t('admin9Ui.filePicker.refresh')"
-                    :loading="loading"
-                    data-testid="file-picker-refresh"
-                    @click="refresh"
-                  >
-                    <template #icon><icon-refresh /></template>
-                  </a-button>
-                </a-tooltip>
-                <a-radio-group v-model="view" type="button" class="a9-file-picker__view-toggle">
-                  <a-tooltip :content="t('admin9Ui.filePicker.gridView')">
-                    <a-radio value="grid" :aria-label="t('admin9Ui.filePicker.gridView')"><icon-apps /></a-radio>
+            <template v-else>
+              <div class="a9-file-picker__toolbar">
+                <a-input-search
+                  v-model="keyword"
+                  class="a9-file-picker__search"
+                  :placeholder="t('admin9Ui.filePicker.searchPlaceholder')"
+                  allow-clear
+                  search-button
+                  @search="onSearch"
+                  @press-enter="onSearch"
+                  @clear="onSearch"
+                />
+                <div class="a9-file-picker__toolbar-actions">
+                  <a-tooltip :content="t('admin9Ui.filePicker.refresh')">
+                    <a-button
+                      :aria-label="t('admin9Ui.filePicker.refresh')"
+                      :loading="loading"
+                      data-testid="file-picker-refresh"
+                      @click="refresh"
+                    >
+                      <template #icon><icon-refresh /></template>
+                    </a-button>
                   </a-tooltip>
-                  <a-tooltip :content="t('admin9Ui.filePicker.listView')">
-                    <a-radio value="list" :aria-label="t('admin9Ui.filePicker.listView')"><icon-list /></a-radio>
+                  <a-radio-group v-model="view" type="button" class="a9-file-picker__view-toggle">
+                    <a-tooltip :content="t('admin9Ui.filePicker.gridView')">
+                      <a-radio value="grid" :aria-label="t('admin9Ui.filePicker.gridView')"><icon-apps /></a-radio>
+                    </a-tooltip>
+                    <a-tooltip :content="t('admin9Ui.filePicker.listView')">
+                      <a-radio value="list" :aria-label="t('admin9Ui.filePicker.listView')"><icon-list /></a-radio>
+                    </a-tooltip>
+                  </a-radio-group>
+                  <a-tooltip v-if="canUpload" :content="uploadTooltip">
+                    <span>
+                      <AFileUploader
+                        ref="uploader"
+                        :service="resolvedService"
+                        :file-type="uploadFileType"
+                        :group-id="uploadGroupId"
+                        :accept="accept"
+                        :button-text="t('admin9Ui.filePicker.upload')"
+                        @success="onUploadResponse"
+                        @error="onUploadError"
+                        @complete="onUploadComplete"
+                      />
+                    </span>
                   </a-tooltip>
-                </a-radio-group>
-                <a-tooltip v-if="canUpload" :content="uploadTooltip">
-                  <span>
-                    <AFileUploader
-                      ref="uploader"
-                      :service="resolvedService"
-                      :file-type="uploadFileType"
-                      :group-id="uploadGroupId"
-                      :accept="accept"
-                      :button-text="t('admin9Ui.filePicker.upload')"
-                      @response="onUploadResponse"
-                      @error="onUploadError"
-                      @complete="onUploadComplete"
-                    />
-                  </span>
-                </a-tooltip>
+                </div>
               </div>
-            </div>
 
-            <div v-if="hasGroupNavigation" class="a9-file-picker__groups">
-              <a-alert v-if="groupError" type="error" class="a9-file-picker__group-error">
-                {{ t('admin9Ui.filePicker.groupLoadFailed') }}
-                <a-button type="text" size="mini" data-testid="file-picker-retry-groups" @click="fetchGroups">
+              <div v-if="hasGroupNavigation" class="a9-file-picker__groups">
+                <a-alert v-if="groupError" type="error" class="a9-file-picker__group-error">
+                  {{ t('admin9Ui.filePicker.groupLoadFailed') }}
+                  <a-button type="text" size="mini" data-testid="file-picker-retry-groups" @click="fetchGroups">
+                    {{ t('admin9Ui.filePicker.retry') }}
+                  </a-button>
+                </a-alert>
+                <a-spin v-else :loading="groupLoading" class="a9-file-picker__group-spin">
+                  <a-select v-model="compactGroupValue" :aria-label="t('admin9Ui.filePicker.groups')">
+                    <a-option :value="GROUP_ALL">{{ t('admin9Ui.filePicker.groupAll') }}</a-option>
+                    <a-option :value="GROUP_UNGROUPED">{{ t('admin9Ui.filePicker.groupUngrouped') }}</a-option>
+                    <a-option v-for="group in groups" :key="group.id" :value="groupOptionValue(group.id)">
+                      {{ group.name }}{{ group.count === undefined ? '' : ` (${group.count})` }}
+                    </a-option>
+                  </a-select>
+                </a-spin>
+              </div>
+
+              <a-alert v-if="listError" type="error" class="a9-file-picker__list-error">
+                {{ t('admin9Ui.filePicker.loadFailed') }}
+                <a-button type="text" size="small" data-testid="file-picker-retry-list" @click="fetchList">
                   {{ t('admin9Ui.filePicker.retry') }}
                 </a-button>
               </a-alert>
-              <a-spin v-else :loading="groupLoading" class="a9-file-picker__group-spin">
-                <a-select v-model="compactGroupValue" :aria-label="t('admin9Ui.filePicker.groups')">
-                  <a-option :value="GROUP_ALL">{{ t('admin9Ui.filePicker.groupAll') }}</a-option>
-                  <a-option :value="GROUP_UNGROUPED">{{ t('admin9Ui.filePicker.groupUngrouped') }}</a-option>
-                  <a-option v-for="group in groups" :key="group.id" :value="groupOptionValue(group.id)">
-                    {{ group.name }}{{ group.count === undefined ? '' : ` (${group.count})` }}
-                  </a-option>
-                </a-select>
-              </a-spin>
-            </div>
 
-            <a-alert v-if="listError" type="error" class="a9-file-picker__list-error">
-              {{ t('admin9Ui.filePicker.loadFailed') }}
-              <a-button type="text" size="small" data-testid="file-picker-retry-list" @click="fetchList">
-                {{ t('admin9Ui.filePicker.retry') }}
-              </a-button>
-            </a-alert>
-
-            <a-spin :loading="loading" class="a9-file-picker__spin">
-              <component
-                :is="multiple ? 'div' : 'a-radio-group'"
-                v-if="!listError && !empty"
-                class="a9-file-picker__items"
-                :data-view="view"
-                :aria-label="t('admin9Ui.filePicker.results')"
-                :role="multiple ? 'group' : 'radiogroup'"
-                :model-value="multiple ? undefined : selectedDraftId"
-                @update:model-value="selectSingleItem"
-              >
-                <article
-                  v-for="(item, index) in list"
-                  :key="`${item.id || `${item.type}-${item.name}`}:${index}`"
-                  class="a9-file-picker__item"
-                  :class="{ 'is-selected': draftMap.has(item.id), 'is-disabled': !isSelectable(item) }"
-                  :data-file-id="item.id"
+              <a-spin :loading="loading" class="a9-file-picker__spin">
+                <component
+                  :is="multiple ? 'div' : 'a-radio-group'"
+                  v-if="!listError && !empty"
+                  class="a9-file-picker__items"
+                  :data-view="view"
+                  :aria-label="t('admin9Ui.filePicker.results')"
+                  :role="multiple ? 'group' : 'radiogroup'"
+                  :model-value="multiple ? undefined : selectedDraftId"
+                  @update:model-value="selectSingleItem"
                 >
-                  <a-checkbox
-                    v-if="multiple"
-                    class="a9-file-picker__checkbox"
-                    :model-value="draftMap.has(item.id)"
-                    :disabled="!isSelectable(item)"
-                    @keydown.enter.prevent="toggleItem(item)"
-                    @change="toggleItem(item)"
+                  <article
+                    v-for="(item, index) in list"
+                    :key="`${item.id || `${item.type}-${item.name}`}:${index}`"
+                    class="a9-file-picker__item"
+                    :class="{ 'is-selected': draftMap.has(item.id), 'is-disabled': !isSelectable(item) }"
+                    :data-file-id="item.id"
                   >
-                    <span class="a9-file-picker__selection-label">
-                      {{ t('admin9Ui.filePicker.selectItem', { name: item.name }) }}
-                    </span>
-                  </a-checkbox>
-                  <a-radio
-                    v-else
-                    class="a9-file-picker__checkbox"
-                    :value="item.id"
-                    :disabled="!isSelectable(item)"
-                    @keydown.enter.prevent="toggleItem(item)"
-                  >
-                    <span class="a9-file-picker__selection-label">
-                      {{ t('admin9Ui.filePicker.selectItem', { name: item.name }) }}
-                    </span>
-                  </a-radio>
-                  <slot name="item" :item="item" :available="isSelectable(item)" :selected="draftMap.has(item.id)" :view="view">
-                    <FileItemView :item="item" :available="isSelectable(item)" :status-label="statusLabel(item)" />
-                  </slot>
-                </article>
-              </component>
-              <div v-else-if="empty" class="a9-file-picker__empty">
-                <slot name="empty" :constrained="false"><a-empty :description="t('admin9Ui.filePicker.empty')" /></slot>
-              </div>
-            </a-spin>
-          </template>
-        </main>
-      </div>
-
+                    <a-checkbox
+                      v-if="multiple"
+                      class="a9-file-picker__checkbox"
+                      :model-value="draftMap.has(item.id)"
+                      :disabled="!isSelectable(item)"
+                      @keydown.enter.prevent="toggleItem(item)"
+                      @change="toggleItem(item)"
+                    >
+                      <span class="a9-file-picker__selection-label">
+                        {{ t('admin9Ui.filePicker.selectItem', { name: item.name }) }}
+                      </span>
+                    </a-checkbox>
+                    <a-radio
+                      v-else
+                      class="a9-file-picker__checkbox"
+                      :value="item.id"
+                      :disabled="!isSelectable(item)"
+                      @keydown.enter.prevent="toggleItem(item)"
+                    >
+                      <span class="a9-file-picker__selection-label">
+                        {{ t('admin9Ui.filePicker.selectItem', { name: item.name }) }}
+                      </span>
+                    </a-radio>
+                    <slot
+                      name="item"
+                      :item="item"
+                      :available="isSelectable(item)"
+                      :selected="draftMap.has(item.id)"
+                      :view="view"
+                    >
+                      <FileItemView :item="item" :available="isSelectable(item)" :status-label="statusLabel(item)" />
+                    </slot>
+                  </article>
+                </component>
+                <div v-else-if="empty" class="a9-file-picker__empty">
+                  <slot name="empty" :constrained="false"><a-empty :description="t('admin9Ui.filePicker.empty')" /></slot>
+                </div>
+              </a-spin>
+            </template>
+          </main>
+        </div>
+      </FormItem>
       <template #footer>
         <div class="a9-file-picker__footer">
           <div class="a9-file-picker__footer-status" aria-live="polite">

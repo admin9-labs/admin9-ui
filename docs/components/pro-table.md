@@ -8,7 +8,7 @@
 <script setup lang="ts">
   import { ref } from 'vue';
   import type { TableColumnData } from '@arco-design/web-vue';
-  import { AProTable, type Action, type ProTableDataChange } from '@admin9-labs/admin9-ui';
+  import { AProTable, type ProTableAction, type ProTableDataChange } from '@admin9-labs/admin9-ui';
   import { queryRows } from './api';
   import { createRecord, exportRows } from './commands';
 
@@ -24,7 +24,7 @@
     keyword?: string;
   }
 
-  const selectedRowKeys = ref<(string | number)[]>([]);
+  const selectedKeys = ref<(string | number)[]>([]);
   const tableLoading = ref(false);
   const requestError = ref<unknown>();
   const activeRecord = ref<TableRow>();
@@ -43,7 +43,7 @@
   const openRecord = (record: TableRow) => {
     activeRecord.value = record;
   };
-  const actions: Action<TableRow>[] = [
+  const actions: ProTableAction<TableRow>[] = [
     { label: '查看', onClick: (record) => openRecord(record) },
     { label: '编辑', permissions: 'records.update', onClick: (record) => openRecord(record) },
   ];
@@ -52,7 +52,7 @@
 
 <template>
   <AProTable
-    v-model:selected-row-keys="selectedRowKeys"
+    v-model:selected-keys="selectedKeys"
     :columns="columns"
     :fetcher="fetchRows"
     :actions="actions"
@@ -117,55 +117,58 @@
 
 `surface` 默认为 `false`，适合嵌入消费方已有容器；传 `surface` 时使用 Arco 主题背景、`20px` 内边距和 `4px` 圆角呈现数据工作台，不会嵌套 `a-card`。标题、工具栏和前置内容存在时，各自与下一块保持 `12px` 间距。工具栏在窄屏自动换行，搜索框占满可用行宽；表格横向滚动仍由消费方通过 Arco `scroll` 属性控制。
 
-`Action<T>` 包含 `label`、`onClick(record)` 和可选的 `permissions`。权限数组采用任一匹配语义；未声明权限的操作始终显示，声明权限的操作仅在 `permission` 判断函数通过时显示。未提供判断函数时，带权限要求的操作默认隐藏。
+`ProTableAction<T>` 包含 `label`、`onClick(record)` 和可选的 `permissions`。权限数组采用任一匹配语义；未声明权限的操作始终显示，声明权限的操作仅在 `permission` 判断函数通过时显示。未提供判断函数时，带权限要求的操作默认隐藏。
 
 请求结果的 `total` 使当前页超出最后有效页时，组件会回退到最后有效页并自动重新请求；两次请求共享同一个 loading 周期。设置 `:pagination="false"` 时不显示分页并固定请求第一页。
 
 `paginationOptions` 只接受 `showTotal`、`showPageSize`、`showJumper`、`simple` 和 `pageSizeOptions`；`current`、`pageSize`、`total` 与分页事件始终由组件管理。缺省时 `showTotal` 和 `showPageSize` 均为 `true`。
 
-`selectionOptions` 只接受 `showCheckedAll` 和 `onlyCurrent`，仅在 `multiple` 开启时生效。`onlyCurrent: false` 保留跨页 keys；设为 `true` 时，翻页、修改页容量、搜索和重置页码刷新会在请求前清选，普通刷新不会预清。最终数据接受后还会将 keys 与当前页行 key 取交集；只有 keys 实际变化才同时触发 `update:selectedRowKeys` 和 `select`。
+`selectionOptions` 只接受 `showCheckedAll` 和 `onlyCurrent`，仅在 `multiple` 开启时生效。`onlyCurrent: false` 保留跨页 keys；设为 `true` 时，翻页、修改页容量、搜索和重置页码刷新会在请求前清选，普通刷新不会预清。最终数据接受后还会将 keys 与当前页行 key 取交集；只有 keys 实际变化才同时触发 `update:selectedKeys` 和 `selection-change`；`select` 仅保留 Arco 的单行选择语义。
 
 每次最新请求的最终结果被接受后触发一次 `data-change`。页码越界回退的中间结果、迟到结果、失败、失效请求和 `clearCurrentData` 的临时空数据均不会触发。
 
 ## Props
 
-| Prop                | 类型                                                | 默认值  | 说明                                                      |
-| ------------------- | --------------------------------------------------- | ------- | --------------------------------------------------------- |
-| `columns`           | `TableColumnData[]`                                 | 必填    | Arco Table 列定义                                         |
-| `fetcher`           | `(params) => Promise<{ list: T[]; total: number }>` | 必填    | 分页数据源                                                |
-| `title`             | `string`                                            | -       | 可选标题；`surface-title` 插槽优先                        |
-| `rowKey`            | `string`                                            | `'id'`  | 行唯一标识字段                                            |
-| `pageSize`          | `number`                                            | `10`    | 初始分页容量                                              |
-| `pagination`        | `boolean`                                           | `true`  | 传 `false` 时关闭分页并固定请求第一页                     |
-| `paginationOptions` | `ProTablePaginationOptions`                         | -       | 分页展示白名单配置                                        |
-| `searchable`        | `boolean`                                           | `false` | 是否显示关键词搜索                                        |
-| `refreshable`       | `boolean`                                           | 见说明  | 是否显示内置刷新按钮；未传时跟随 `searchable`，可显式关闭 |
-| `refreshHandler`    | `ProTableRefreshHandler`                            | -       | 内置按钮的可选复合刷新行为                                |
-| `surface`           | `boolean`                                           | `false` | 是否启用数据工作台表面                                    |
-| `showAction`        | `boolean`                                           | `false` | 是否显式追加操作列；传入操作配置或操作插槽时也会自动追加  |
-| `actions`           | `Action<T>[]`                                       | `[]`    | 配置式行操作                                              |
-| `permission`        | `(permission: string) => boolean`                   | -       | 单项权限判断函数                                          |
-| `multiple`          | `boolean`                                           | `false` | 是否启用受控行多选                                        |
-| `selectedRowKeys`   | `(string \| number)[]`                              | `[]`    | `v-model:selected-row-keys` 的当前值                      |
-| `selectionOptions`  | `ProTableSelectionOptions`                          | -       | 多选展示与当前页选择行为                                  |
+| Prop                | 类型                                                | 默认值         | 说明                                                      |
+| ------------------- | --------------------------------------------------- | -------------- | --------------------------------------------------------- |
+| `columns`           | `TableColumnData[]`                                 | 必填           | Arco Table 列定义                                         |
+| `fetcher`           | `(params) => Promise<{ list: T[]; total: number }>` | 必填           | 分页数据源                                                |
+| `title`             | `string`                                            | -              | 可选标题；`surface-title` 插槽优先                        |
+| `rowKey`            | `string`                                            | `'id'`         | 行唯一标识字段                                            |
+| `pageSize`          | `number`                                            | `10`           | 初始分页容量                                              |
+| `pagination`        | `boolean`                                           | `true`         | 传 `false` 时关闭分页并固定请求第一页                     |
+| `paginationOptions` | `ProTablePaginationOptions`                         | -              | 分页展示白名单配置                                        |
+| `searchable`        | `boolean`                                           | `false`        | 是否显示关键词搜索                                        |
+| `refreshable`       | `boolean`                                           | 见说明         | 是否显示内置刷新按钮；未传时跟随 `searchable`，可显式关闭 |
+| `refreshHandler`    | `ProTableRefreshHandler`                            | -              | 内置按钮的可选复合刷新行为                                |
+| `surface`           | `boolean`                                           | `false`        | 是否启用数据工作台表面                                    |
+| `showAction`        | `boolean`                                           | `false`        | 是否显式追加操作列；传入操作配置或操作插槽时也会自动追加  |
+| `actions`           | `ProTableAction<T>[]`                               | `[]`           | 配置式行操作                                              |
+| `permission`        | `(permission: string) => boolean`                   | -              | 单项权限判断函数                                          |
+| `multiple`          | `boolean`                                           | `false`        | 是否启用受控行多选                                        |
+| `selectedKeys`      | `(string \| number)[]`                              | `[]`           | `v-model:selected-keys` 的当前值                          |
+| `selectionOptions`  | `ProTableSelectionOptions`                          | -              | 多选展示与当前页选择行为                                  |
+| `size`              | `Size`                                              | 继承 Arco 配置 | 同时控制内部表单／表格与操作区控件                        |
 
-未声明的 Arco Table 属性会转发到内部 `a-table`。`columns`、`data`、`loading`、`pagination`、`rowKey`、`rowSelection` 和 `bordered` 由组件管理，不应通过透传属性覆盖。
+未声明的 Arco Table 属性会转发到内部 `a-table`。`columns`、`data`、`loading`、`pagination`、`rowKey`、`rowSelection` 由组件管理，不应通过透传属性覆盖。`bordered` 默认 false，可显式覆盖。
 
 ## Events
 
-| 事件                     | 参数                    | 时机                                            |
-| ------------------------ | ----------------------- | ----------------------------------------------- |
-| `update:selectedRowKeys` | `(string \| number)[]`  | 多选变化，或调用 `clearSelection()`             |
-| `select`                 | `TableData[]`           | 多选变化；只包含当前页数据中能匹配选中 key 的行 |
-| `error`                  | `unknown`               | 当前有效的 fetcher 请求失败                     |
-| `loading-change`         | `boolean`               | 有效请求周期的加载状态变化                      |
-| `data-change`            | `ProTableDataChange<T>` | 最新请求的最终结果被接受                        |
+| 事件                  | 参数                    | 时机                                       |
+| --------------------- | ----------------------- | ------------------------------------------ |
+| `update:selectedKeys` | `(string \| number)[]`  | 多选变化，或调用 `clearSelection()`        |
+| `selection-change`    | `(string \| number)[]`  | 用户选择或 clearSelection 后的完整选中 key |
+| `select`              | `(keys, key, record)`   | 透传 Arco 单行选择事件                     |
+| `select-all`          | `boolean`               | 透传 Arco 全选事件                         |
+| `error`               | `unknown`               | 当前有效的 fetcher 请求失败                |
+| `loading-change`      | `boolean`               | 有效请求周期的加载状态变化                 |
+| `data-change`         | `ProTableDataChange<T>` | 最新请求的最终结果被接受                   |
 
 初始加载、搜索、刷新按钮和分页产生的请求失败会通过 `error` 通知，同时由组件消费 Promise rejection，避免未处理拒绝。旧请求的迟到结果不会覆盖较新请求的数据或加载状态。
 
 ## Slots
 
-内部 `a-table` 会透传应用提供的普通具名插槽及其作用域参数。操作列依次渲染 `actions` prop、`actions` 插槽和兼容保留的 `action` 插槽；如果 `columns` 已包含 `slotName: 'action'` 或内部操作列标识，组件不会重复追加。
+内部 `a-table` 会透传应用提供的普通具名插槽及其作用域参数。操作列依次渲染 `actions` prop 和 `actions` 插槽；如果 `columns` 已包含 `slotName: 'action'` 或内部操作列标识，组件不会重复追加。
 
 | 插槽            | 作用域                         | 说明                                       |
 | --------------- | ------------------------------ | ------------------------------------------ |
@@ -173,25 +176,31 @@
 | `toolbar-left`  | -                              | 新增、导入、保存、批量操作等消费方业务命令 |
 | `toolbar-right` | -                              | 导出、列设置等消费方自定义工具             |
 | `before-table`  | -                              | 表格前通用内容；空内容不占间距             |
-| `actions`       | `Slot<T>`                      | 追加行操作，位于配置式操作之后             |
-| `action`        | `Slot<T>`                      | 旧版行操作插槽，保留向后兼容               |
+| `actions`       | `ProTableActionSlot<T>`        | 追加行操作，位于配置式操作之后             |
 | `footer`        | `{ data: T[]; total: number }` | 表格下方内容                               |
 | `popover`       | -                              | 全局内容，只渲染一次，不随行重复           |
 
-`Slot<T>` 表示 Arco 操作列插槽作用域，包含 `record`、`column` 和 `rowIndex`。
+`ProTableActionSlot<T>` 表示 Arco 操作列插槽作用域，包含 `record`、`column` 和 `rowIndex`。
 
 ## 实例方法
 
 `defineExpose` 提供：
 
 - `doRequest(options?: { clearCurrentData?: boolean }): Promise<void>`：按当前页码、分页容量和关键词重新请求。默认保留当前数据，仅当 `clearCurrentData` 为 `true` 时先清空当前行。
-- `refresh(resetPage?: boolean): Promise<void>`：保留原 boolean 签名；传 `true` 时先回到第一页。
 - `refresh(options?: { resetPage?: boolean; clearCurrentData?: boolean }): Promise<void>`：在同一次请求前应用页码重置与可选临时清空。
 - `invalidate(): void`：失效当前及更早请求并立即结束 loading，保留数据、分页和选择；被失效 Promise 静默完成，之后可以正常刷新。
-- `clearSelection(): void`：keys 实际变化时同时发出空的 `update:selectedRowKeys` 和 `select`，不直接接管受控 prop。
+- `clearSelection(): void`：keys 实际变化时同时发出空的 `update:selectedKeys` 和 `selection-change`，不直接接管受控 prop。
 
 `doRequest()` 和 `refresh()` 的有效请求失败时 Promise 保持 rejected，调用方必须 `await` 并处理错误。组件内部的初始加载、搜索、默认刷新按钮和分页请求则通过 `error` 事件通知失败。`refreshHandler` 自身的错误不会触发 `error`；若处理器调用 `refresh()` 后 fetcher 失败，该请求仍遵循原有 fetcher 错误契约。普通新请求替代的旧 Promise 保持原有行为；只有显式 `invalidate()` 覆盖的旧成功或失败会静默完成。
 
 ## 公共类型
 
-包根入口导出 `Action`、`Slot`、`AProTableProps`、`AProTableEmits`、`AProTableSlots`、`AProTableExposed`、`ProTableFetcher`、`ProTableFetcherParams`、`ProTableFetcherResult`、`ProTableFooterSlot`、`ProTableDataChange`、`ProTablePaginationOptions`、`ProTablePermission`、`ProTableRefreshContext`、`ProTableRefreshHandler`、`ProTableRefreshOptions`、`ProTableRequestOptions`、`ProTableRowKey` 和 `ProTableSelectionOptions`。
+包根入口导出 `ProTableAction`、`ProTableActionSlot`、`AProTableProps`、`AProTableEmits`、`AProTableSlots`、`AProTableExposed`、`ProTableFetcher`、`ProTableFetcherParams`、`ProTableFetcherResult`、`ProTableFooterSlot`、`ProTableDataChange`、`ProTablePaginationOptions`、`ProTablePermission`、`ProTableRefreshContext`、`ProTableRefreshHandler`、`ProTableRefreshOptions`、`ProTableRequestOptions`、`ProTableRowKey` 和 `ProTableSelectionOptions`。
+
+## 官方行为与边界
+
+绑定使用 Arco Table 的 `v-model:selectedKeys`；`selection-change` 返回完整 key 数组，不能将当前页行对象当作跨页选择的完整结果。`select` 保留官方 `(keys, key, record)` 载荷。组件卸载会使未完成请求失效。
+
+`pageSize` 或 `pagination` 变化会回到第一页并重新请求。服务端排序／筛选可监听透传的 `sorter-change`／`filter-change`，更新 fetcher 闭包中的条件后调用 `refresh({ resetPage: true })`。官方列配置的本地排序／筛选仅作用于当前已加载数据，不等同于全量服务端结果。
+
+`size` 同时传给 Arco Table、搜索框和刷新按钮，尺寸含义沿用官方，不使用固定按钮高度覆盖。公开实例方法类型为 `AProTableExposed`；操作项及作用域类型为 `ProTableAction<T>`、`ProTableActionSlot<T>`。操作插槽仅保留 `actions`。

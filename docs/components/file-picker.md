@@ -46,21 +46,27 @@
 | `buttonText`  | `string`                              | locale 文案        | 默认触发按钮文案                                         |
 | `accept`      | `string`                              | `undefined`        | 可选的原生 MIME/扩展名提示；默认不限制可选择格式         |
 | `canUpload`   | `boolean`                             | `false`            | 显示上传入口；开启时要求 `upload` capability             |
-| `initialView` | `'grid' \| 'list'`                    | `'grid'`           | 弹窗初始视图                                             |
+| `defaultView` | `'grid' \| 'list'`                    | `'grid'`           | 弹窗初始视图                                             |
 | `service`     | `FilePickerAdapter`                   | 插件 `fileService` | 使用点优先的后端无关 adapter                             |
+| `disabled`    | `boolean`                             | `false`            | 禁止交互，同时继承 Form 禁用                             |
+| `readonly`    | `boolean`                             | `false`            | 只读展示，不打开弹窗或清空                               |
+| `size`        | `Size`                                | 继承               | 默认触发按钮尺寸                                         |
+| `allowClear`  | `boolean`                             | `true`             | 显示外层清空按钮                                         |
 
-`fileTypes` 的运行时非法值会被忽略，重复值会去重；`all` 不是 `FileType`。显式空数组表示不允许任何业务类型，组件不调用 `list/listGroups`，禁止选择、确认和上传，并立即清理外部值。`accept` 不能改变这些业务约束。
+`fileTypes` 的运行时非法值会被忽略，重复值会去重；`all` 不是 `FileType`。显式空数组表示不允许任何业务类型，组件不调用 `list/listGroups`，禁止选择、确认和上传，并以空选择显示；不回写父模型。`accept` 不能改变这些业务约束。
 
 ## Events
 
-| 事件                | 参数                                  | 时机                                            |
-| ------------------- | ------------------------------------- | ----------------------------------------------- |
-| `update:modelValue` | `FileItem \| FileItem[] \| undefined` | 确认、外层清空，或 props 约束使原值不再合法时   |
-| `change`            | `FileItem[]`                          | 已提交值真实变化时；单选也使用数组便于统一处理  |
-| `selection-change`  | `FileItem[]`                          | 弹窗草稿真实变化时，不等同于确认                |
-| `visible-change`    | `boolean`                             | 弹窗打开或关闭                                  |
-| `upload-success`    | `FileItem`                            | 当前视图内 adapter 返回上传结果；不改变选择草稿 |
-| `upload-error`      | `unknown`                             | 当前视图内上传失败                              |
+| 事件                | 参数                                  | 时机                                           |
+| ------------------- | ------------------------------------- | ---------------------------------------------- |
+| `update:modelValue` | `FileItem \| FileItem[] \| undefined` | 确认或外层清空；不因外部回显或约束变化发出     |
+| `change`            | `FileItem \| FileItem[] \| undefined` | 已提交值真实变化时，载荷与 modelValue 相同     |
+| `confirm`           | `FileItem[]`                          | 用户显式确认，包含同值确认；媒体插入使用此事件 |
+| `clear`             | 无                                    | 用户成功清空非空提交值                         |
+| `selection-change`  | `FileItem[]`                          | 弹窗草稿真实变化时，不等同于确认               |
+| `visible-change`    | `boolean`                             | 弹窗打开或关闭                                 |
+| `upload-success`    | `FileItem`                            | 当前视图内通过校验的上传结果；不改变选择草稿   |
+| `upload-error`      | `unknown`                             | 当前视图内上传失败                             |
 
 TypeScript 声明使用 `selectionChange`、`visibleChange`、`uploadSuccess`、`uploadError`；Vue 模板使用表中的 kebab-case。
 
@@ -110,7 +116,7 @@ Picker value 只表达可以交付给业务字段的文件：
 - 类型不匹配、pending、failed、URL 为空、ID 为空和单次列表响应中的重复 ID 行只展示，不可选择或确认。
 - 外部模型和列表项使用同一资格校验。上传与业务选择完全分离：上传成功、重复 ID 或达到 limit 都不会直接改变草稿。
 
-草稿跨页保留。取消不写回；普通列表刷新和服务端元数据变化只调和草稿，不直接改变已提交 `v-model`。显式确认才提交草稿。唯一例外是 props 业务约束变化（例如 `fileTypes` 变空、移除类型、multiple/limit 收紧）或外部模型本身非法，此时组件立即执行安全校正，并对真实变化只发出一次 `update:modelValue/change`。
+草稿跨页保留。取消不写回；普通列表刷新和服务端元数据变化只调和草稿，不直接改变已提交 `v-model`。显式确认才提交草稿。props 约束变化或外部输入非法时，仅按规则归一化展示，不写回父模型。之后用户明确确认或调用 clear 时，会提交规范值；即使规范值与当前展示相同，也会完成这次写回，后续无变化的重复操作不再发出 update/change。
 
 外层清空和关闭态调用 `clear()` 只发出已提交值的 `update:modelValue/change`，不会因弹窗是否曾打开而额外发出 `selection-change`。可见态调用暴露的 `clear()` 会同时清空当前草稿和已提交值，草稿真实变化时发出一次 `selection-change`。
 
@@ -127,3 +133,11 @@ Picker value 只表达可以交付给业务字段的文件：
 - 文件名、extension 等极长元数据在网格/列表中省略；`720px` 以下类型导航横向滚动、工具栏和 footer 换行，不造成页面横向溢出。
 
 `canUpload` 只是界面能力开关，不代表后端授权。使用本组件库的应用仍需负责 API、认证、状态、路由和业务权限。
+
+## 表单与受控值
+
+`disabled`、`readonly` 默认 false；任一为 true 或外层 Form 禁用时不能打开、清空或提交。`size?: Size` 控制触发按钮，未设置时继承 Form／Arco 配置；不压缩文件浏览工作区。`allowClear` 默认 true，控制外层清空按钮。class/style 及其他原生属性落在组件根节点，不是弹层属性。
+
+回显仅更新归一化后的展示，不触发 update/change/selection-change。弹层草稿与外层字段隔离，只有正式提交才触发 change 校验。单选清空为 undefined，多选清空为 []。`confirm` 始终为数组，适合不需要保存选择值的编辑器插入命令。
+
+导出 `AFilePickerProps`、`AFilePickerExposed`、`FilePickerValue`、`FilePickerView`。defaultView 只决定初始视图。文件预览、下载和选中值只接受 HTTP(S)、相对路径和 blob URL；不渲染可执行协议或 data 文档。

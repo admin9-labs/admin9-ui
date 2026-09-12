@@ -38,3 +38,9 @@ pnpm run release:check
 该命令包含 CHANGELOG 校验、类型检查、lint、组件测试、验收应用构建和真实 tarball 隔离消费验证。输入未变化时不要重复执行完整门禁；GitHub Actions 是 pull request、`main` push 和发布的最终质量结论。
 
 发布操作见 [RELEASING.md](./RELEASING.md)。
+
+## 全组件契约验收
+
+启动验收应用后打开 `http://127.0.0.1:4174/?audit=1`。此页面集中覆盖十个组件，可切换 Arco 尺寸、中英文、明暗主题、Form 禁用、只读、窄容器和 fake service 状态。聊天滚动与流式性能场景仍在 `?component=chat`，富文本深度场景在 `?component=tiptap-editor`。
+
+真实 Arco 集成回归位于 `tests/arco-integration.spec.ts`。底层组件测试桩必须使用当前 Arco 的真实 Props/Events 接口；公开类型必须同时在隔离 tarball 夹具中验证。审查台账位于 `docs/reviews/component-library-audit.md`，不包含在发布包中。

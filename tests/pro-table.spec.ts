@@ -24,9 +24,10 @@ const TableStub = defineComponent({
     loading: Boolean,
     pagination: { type: [Object, Boolean], default: () => ({}) },
     rowKey: String,
+    selectedKeys: { type: Array, default: () => [] },
     rowSelection: { type: Object, default: undefined },
   },
-  emits: ['pageChange', 'pageSizeChange'],
+  emits: ['pageChange', 'pageSizeChange', 'update:selectedKeys', 'selectionChange'],
   setup(props, { attrs, emit, slots }) {
     return () =>
       h(
@@ -37,9 +38,7 @@ const TableStub = defineComponent({
           'data-loading': String(props.loading),
           'data-first-label': String((props.data[0] as Record<string, unknown> | undefined)?.label ?? ''),
           'data-row-key': props.rowKey,
-          'data-selected-keys': JSON.stringify(
-            (props.rowSelection as { selectedRowKeys?: (string | number)[] } | undefined)?.selectedRowKeys ?? []
-          ),
+          'data-selected-keys': JSON.stringify(props.selectedKeys),
           'data-pagination': String(props.pagination !== false),
           'data-current': String((props.pagination as { current?: number } | false).current ?? ''),
           'data-page-size': String((props.pagination as { pageSize?: number } | false).pageSize ?? ''),
@@ -70,7 +69,7 @@ const TableStub = defineComponent({
               'onClick': () => {
                 const record = (props.data[1] ?? props.data[0]) as Record<string, unknown> | undefined;
                 const key = (record?.[props.rowKey || 'id'] as string | number | undefined) ?? 2;
-                (props.rowSelection as { onChange?: (keys: (string | number)[]) => void } | undefined)?.onChange?.([key]);
+                emit('update:selectedKeys', [key]);
               },
             },
             'Select'
@@ -132,7 +131,7 @@ const TooltipStub = defineComponent({
 
 interface ProTableExposed extends ComponentPublicInstance {
   doRequest: (options?: { clearCurrentData?: boolean }) => Promise<void>;
-  refresh: (options?: boolean | { resetPage?: boolean; clearCurrentData?: boolean }) => Promise<void>;
+  refresh: (options?: { resetPage?: boolean; clearCurrentData?: boolean }) => Promise<void>;
   invalidate: () => void;
   clearSelection: () => void;
 }
@@ -362,11 +361,7 @@ describe('AProTable public contract', () => {
       .mockResolvedValueOnce({ list: [{ id: 3, label: 'Page 3' }], total: 100 })
       .mockReturnValueOnce(refreshRequest.promise);
     const refreshHandler = vi.fn(
-      async ({
-        refresh,
-      }: {
-        refresh: (options?: boolean | { resetPage?: boolean; clearCurrentData?: boolean }) => Promise<void>;
-      }) => {
+      async ({ refresh }: { refresh: (options?: { resetPage?: boolean; clearCurrentData?: boolean }) => Promise<void> }) => {
         await refresh({ resetPage: true, clearCurrentData: true });
         await handlerTail.promise;
       }
@@ -445,7 +440,7 @@ describe('AProTable public contract', () => {
         'data-contract': 'forwarded',
         onLoadingChange,
       },
-      { action: ({ record }) => h('span', { 'data-testid': 'row-action' }, `Open ${record.label}`) }
+      { actions: ({ record }) => h('span', { 'data-testid': 'row-action' }, `Open ${record.label}`) }
     );
 
     await flush();
@@ -490,7 +485,7 @@ describe('AProTable public contract', () => {
     await flush();
     expect(fetcher).toHaveBeenCalledTimes(1);
 
-    await mounted.component()?.refresh(true);
+    await mounted.component()?.refresh({ resetPage: true });
     expect(fetcher).toHaveBeenLastCalledWith({ page: 1, pageSize: 25, keyword: undefined });
   });
 
@@ -543,7 +538,7 @@ describe('AProTable public contract', () => {
     await mounted.component()?.refresh();
     expect(fetcher).toHaveBeenLastCalledWith({ page: 3, pageSize: 20, keyword: undefined });
 
-    await mounted.component()?.refresh(true);
+    await mounted.component()?.refresh({ resetPage: true });
     expect(fetcher).toHaveBeenLastCalledWith({ page: 1, pageSize: 20, keyword: undefined });
   });
 
@@ -577,7 +572,7 @@ describe('AProTable public contract', () => {
     });
   });
 
-  it('renders permitted configured actions before actions and legacy action slots', async () => {
+  it('renders permitted configured actions before the actions slot', async () => {
     const onOpen = vi.fn();
     const onEdit = vi.fn();
     const onManage = vi.fn();
@@ -595,14 +590,13 @@ describe('AProTable public contract', () => {
       },
       {
         actions: () => h('span', { 'data-testid': 'actions-slot' }, 'Extra'),
-        action: () => h('span', { 'data-testid': 'legacy-action-slot' }, 'Legacy'),
       }
     );
     await flush();
 
     const actionCell = document.querySelector('[data-testid="actions-slot"]')?.parentElement;
     expect(document.querySelector('[data-testid="table"]')?.getAttribute('data-column-count')).toBe('2');
-    expect(actionCell?.textContent).toBe('OpenEditManageExtraLegacy');
+    expect(actionCell?.textContent).toBe('OpenEditManageExtra');
     expect(permission.mock.calls.map(([name]) => name)).toEqual([
       'records.update',
       'records.delete',
@@ -673,29 +667,29 @@ describe('AProTable public contract', () => {
       .mockResolvedValueOnce({ list: [{ id: 1, label: 'Page 1' }], total: 100 })
       .mockResolvedValueOnce({ list: [{ id: 3, label: 'Page 3' }], total: 100 })
       .mockReturnValueOnce(refreshRequest.promise);
-    const onSelected = vi.fn();
-    const onSelect = vi.fn();
+    const onSelectionChangeed = vi.fn();
+    const onSelectionChange = vi.fn();
     const mounted = mountTable(fetcher, {
       'multiple': true,
-      'selectedRowKeys': [1],
+      'selectedKeys': [1],
       'selectionOptions': { onlyCurrent: true },
-      'onUpdate:selectedRowKeys': onSelected,
-      onSelect,
+      'onUpdate:selectedKeys': onSelectionChangeed,
+      onSelectionChange,
     });
     await flush();
 
     document.querySelector<HTMLButtonElement>('[data-testid="page-change"]')?.click();
     await flush();
     document.querySelector<HTMLButtonElement>('[data-testid="select-row"]')?.click();
-    onSelected.mockClear();
-    onSelect.mockClear();
+    onSelectionChangeed.mockClear();
+    onSelectionChange.mockClear();
 
     const refresh = mounted.component()?.refresh({ resetPage: true, clearCurrentData: true });
     await nextTick();
     expect(fetcher).toHaveBeenLastCalledWith({ page: 1, pageSize: 10, keyword: undefined });
     expect(document.querySelector('[data-testid="table"]')?.getAttribute('data-first-label')).toBe('');
-    expect(onSelected).toHaveBeenCalledWith([]);
-    expect(onSelect).toHaveBeenCalledWith([]);
+    expect(onSelectionChangeed).toHaveBeenCalledWith([]);
+    expect(onSelectionChange).toHaveBeenCalledWith([]);
 
     refreshRequest.resolve({ list: [{ id: 1, label: 'Reset result' }], total: 1 });
     await refresh;
@@ -711,16 +705,16 @@ describe('AProTable public contract', () => {
       ],
       total: 100,
     });
-    const onSelected = vi.fn();
-    const onSelect = vi.fn();
+    const onSelectionChangeed = vi.fn();
+    const onSelectionChange = vi.fn();
     mountTable(fetcher, {
       'rowKey': 'key',
       'pageSize': 20,
       'searchable': true,
       'multiple': true,
-      'selectedRowKeys': [1],
-      'onUpdate:selectedRowKeys': onSelected,
-      onSelect,
+      'selectedKeys': [1],
+      'onUpdate:selectedKeys': onSelectionChangeed,
+      onSelectionChange,
     });
     await flush();
 
@@ -742,16 +736,16 @@ describe('AProTable public contract', () => {
     expect(fetcher).toHaveBeenLastCalledWith({ page: 1, pageSize: 50, keyword: 'second' });
 
     document.querySelector<HTMLButtonElement>('[data-testid="select-row"]')?.click();
-    expect(onSelected).toHaveBeenCalledWith([2]);
-    expect(onSelect).toHaveBeenCalledWith([{ key: 2, label: 'Second' }]);
+    expect(onSelectionChangeed).toHaveBeenCalledWith([2]);
+    expect(onSelectionChange).toHaveBeenCalledWith([2]);
   });
 
   it('ignores selectionOptions when multiple is false', async () => {
-    const onSelected = vi.fn();
+    const onSelectionChangeed = vi.fn();
     mountTable(vi.fn().mockResolvedValue({ list: [{ id: 1 }], total: 10 }), {
-      'selectedRowKeys': [1],
+      'selectedKeys': [1],
       'selectionOptions': { showCheckedAll: true, onlyCurrent: true },
-      'onUpdate:selectedRowKeys': onSelected,
+      'onUpdate:selectedKeys': onSelectionChangeed,
     });
     await flush();
 
@@ -759,17 +753,17 @@ describe('AProTable public contract', () => {
     expect(table?.getAttribute('data-row-selection')).toBe('false');
     document.querySelector<HTMLButtonElement>('[data-testid="page-change"]')?.click();
     await flush();
-    expect(onSelected).not.toHaveBeenCalled();
+    expect(onSelectionChangeed).not.toHaveBeenCalled();
   });
 
   it('whitelists selectionOptions without allowing controlled fields to be overridden', async () => {
     mountTable(vi.fn().mockResolvedValue({ list: [{ id: 1 }], total: 1 }), {
       multiple: true,
-      selectedRowKeys: [1],
+      selectedKeys: [1],
       selectionOptions: {
         showCheckedAll: false,
         onlyCurrent: false,
-        selectedRowKeys: ['injected'],
+        selectedKeys: ['injected'],
         onChange: vi.fn(),
       },
     });
@@ -791,33 +785,33 @@ describe('AProTable public contract', () => {
         if (!initialRequest) order.push('request');
         return { list: [{ id: 1, label: 'First' }], total: 100 };
       });
-      const onSelected = vi.fn(() => order.push('selection'));
-      const onSelect = vi.fn();
+      const onSelectionChangeed = vi.fn(() => order.push('selection'));
+      const onSelectionChange = vi.fn();
       const mounted = mountTable(fetcher, {
         'multiple': true,
         'searchable': true,
-        'selectedRowKeys': [1],
+        'selectedKeys': [1],
         'selectionOptions': { onlyCurrent: true },
-        'onUpdate:selectedRowKeys': onSelected,
-        onSelect,
+        'onUpdate:selectedKeys': onSelectionChangeed,
+        onSelectionChange,
       });
       await flush();
       initialRequest = false;
       order.length = 0;
-      onSelected.mockClear();
-      onSelect.mockClear();
+      onSelectionChangeed.mockClear();
+      onSelectionChange.mockClear();
 
       if (trigger === 'page') document.querySelector<HTMLButtonElement>('[data-testid="page-change"]')?.click();
       if (trigger === 'page-size') document.querySelector<HTMLButtonElement>('[data-testid="page-size-change"]')?.click();
       if (trigger === 'search') document.querySelector<HTMLButtonElement>('[data-testid="submit-search"]')?.click();
-      if (trigger === 'reset-refresh') await mounted.component()?.refresh(true);
+      if (trigger === 'reset-refresh') await mounted.component()?.refresh({ resetPage: true });
       await flush();
 
       expect(order.slice(0, 2)).toEqual(['selection', 'request']);
-      expect(onSelected).toHaveBeenCalledOnce();
-      expect(onSelected).toHaveBeenCalledWith([]);
-      expect(onSelect).toHaveBeenCalledOnce();
-      expect(onSelect).toHaveBeenCalledWith([]);
+      expect(onSelectionChangeed).toHaveBeenCalledOnce();
+      expect(onSelectionChangeed).toHaveBeenCalledWith([]);
+      expect(onSelectionChange).toHaveBeenCalledOnce();
+      expect(onSelectionChange).toHaveBeenCalledWith([]);
     }
   );
 
@@ -827,40 +821,40 @@ describe('AProTable public contract', () => {
       .fn()
       .mockResolvedValueOnce({ list: [{ id: 1, label: 'Current' }], total: 1 })
       .mockReturnValueOnce(refreshRequest.promise);
-    const onSelected = vi.fn();
-    const onSelect = vi.fn();
+    const onSelectionChangeed = vi.fn();
+    const onSelectionChange = vi.fn();
     const mounted = mountTable(fetcher, {
       'multiple': true,
-      'selectedRowKeys': [1],
+      'selectedKeys': [1],
       'selectionOptions': { onlyCurrent: true },
-      'onUpdate:selectedRowKeys': onSelected,
-      onSelect,
+      'onUpdate:selectedKeys': onSelectionChangeed,
+      onSelectionChange,
     });
     await flush();
 
     const refresh = mounted.component()?.refresh();
     await nextTick();
-    expect(onSelected).not.toHaveBeenCalled();
-    expect(onSelect).not.toHaveBeenCalled();
+    expect(onSelectionChangeed).not.toHaveBeenCalled();
+    expect(onSelectionChange).not.toHaveBeenCalled();
 
     refreshRequest.resolve({ list: [{ id: 1, label: 'Current' }], total: 1 });
     await refresh;
     await flush();
-    expect(onSelected).not.toHaveBeenCalled();
-    expect(onSelect).not.toHaveBeenCalled();
+    expect(onSelectionChangeed).not.toHaveBeenCalled();
+    expect(onSelectionChange).not.toHaveBeenCalled();
   });
 
   it('keeps cross-page keys when onlyCurrent is false', async () => {
-    const onSelected = vi.fn();
-    const onSelect = vi.fn();
+    const onSelectionChangeed = vi.fn();
+    const onSelectionChange = vi.fn();
     mountTable(
       vi.fn(async ({ page }) => ({ list: [{ id: page, label: `Page ${page}` }], total: 100 })),
       {
         'multiple': true,
-        'selectedRowKeys': [1],
+        'selectedKeys': [1],
         'selectionOptions': { onlyCurrent: false },
-        'onUpdate:selectedRowKeys': onSelected,
-        onSelect,
+        'onUpdate:selectedKeys': onSelectionChangeed,
+        onSelectionChange,
       }
     );
     await flush();
@@ -868,58 +862,58 @@ describe('AProTable public contract', () => {
     document.querySelector<HTMLButtonElement>('[data-testid="page-change"]')?.click();
     await flush();
     expect(document.querySelector('[data-testid="table"]')?.getAttribute('data-selected-keys')).toBe('[1]');
-    expect(onSelected).not.toHaveBeenCalled();
-    expect(onSelect).not.toHaveBeenCalled();
+    expect(onSelectionChangeed).not.toHaveBeenCalled();
+    expect(onSelectionChange).not.toHaveBeenCalled();
   });
 
   it('intersects final onlyCurrent keys once and supports composite string row keys', async () => {
     const fetcher = vi.fn().mockResolvedValue({ list: [{ key: 'tenant:record:2', label: 'Second' }], total: 1 });
     const eventOrder: string[] = [];
-    const onSelected = vi.fn(() => eventOrder.push('selection'));
-    const onSelect = vi.fn(() => eventOrder.push('select'));
+    const onSelectionChangeed = vi.fn(() => eventOrder.push('selection'));
+    const onSelectionChange = vi.fn(() => eventOrder.push('select'));
     const onDataChange = vi.fn(() => eventOrder.push('data'));
     const controlledProps = reactive<Record<string, unknown>>({
       rowKey: 'key',
       multiple: true,
-      selectedRowKeys: ['tenant:record:1', 'tenant:record:2'],
+      selectedKeys: ['tenant:record:1', 'tenant:record:2'],
       selectionOptions: { onlyCurrent: true },
-      onSelect,
+      onSelectionChange,
       onDataChange,
     });
-    controlledProps['onUpdate:selectedRowKeys'] = (keys: (string | number)[]) => {
-      onSelected(keys);
-      controlledProps.selectedRowKeys = keys;
+    controlledProps['onUpdate:selectedKeys'] = (keys: (string | number)[]) => {
+      onSelectionChangeed(keys);
+      controlledProps.selectedKeys = keys;
     };
     const mounted = mountTable(fetcher, controlledProps);
     await flush();
 
-    expect(onSelected).toHaveBeenCalledOnce();
-    expect(onSelected).toHaveBeenCalledWith(['tenant:record:2']);
-    expect(onSelect).toHaveBeenCalledOnce();
-    expect(onSelect).toHaveBeenCalledWith([{ key: 'tenant:record:2', label: 'Second' }]);
+    expect(onSelectionChangeed).toHaveBeenCalledOnce();
+    expect(onSelectionChangeed).toHaveBeenCalledWith(['tenant:record:2']);
+    expect(onSelectionChange).toHaveBeenCalledOnce();
+    expect(onSelectionChange).toHaveBeenCalledWith(['tenant:record:2']);
     expect(onDataChange).toHaveBeenCalledOnce();
     expect(eventOrder).toEqual(['selection', 'select', 'data']);
 
-    onSelected.mockClear();
-    onSelect.mockClear();
+    onSelectionChangeed.mockClear();
+    onSelectionChange.mockClear();
     onDataChange.mockClear();
     await mounted.component()?.refresh();
     document.querySelector<HTMLButtonElement>('[data-testid="select-row"]')?.click();
-    expect(onSelected).not.toHaveBeenCalled();
-    expect(onSelect).not.toHaveBeenCalled();
+    expect(onSelectionChangeed).not.toHaveBeenCalled();
+    expect(onSelectionChange).not.toHaveBeenCalled();
   });
 
   it('renders an empty state and always clears loading after a failed refresh', async () => {
     const fetcher = vi.fn().mockResolvedValueOnce({ list: [], total: 0 }).mockRejectedValueOnce(new Error('request_failed'));
-    const onSelected = vi.fn();
-    const onSelect = vi.fn();
+    const onSelectionChangeed = vi.fn();
+    const onSelectionChange = vi.fn();
     const onError = vi.fn();
     const onLoadingChange = vi.fn();
     const onDataChange = vi.fn();
     const mounted = mountTable(fetcher, {
-      'selectedRowKeys': [1],
-      'onUpdate:selectedRowKeys': onSelected,
-      onSelect,
+      'selectedKeys': [1],
+      'onUpdate:selectedKeys': onSelectionChangeed,
+      onSelectionChange,
       onError,
       onLoadingChange,
       onDataChange,
@@ -930,8 +924,8 @@ describe('AProTable public contract', () => {
 
     expect(document.querySelector('[data-testid="empty"]')).not.toBeNull();
     mounted.component()?.clearSelection();
-    expect(onSelected).toHaveBeenCalledWith([]);
-    expect(onSelect).toHaveBeenCalledWith([]);
+    expect(onSelectionChangeed).toHaveBeenCalledWith([]);
+    expect(onSelectionChange).toHaveBeenCalledWith([]);
 
     const refresh = mounted.component()?.refresh();
     await nextTick();
@@ -1016,7 +1010,7 @@ describe('AProTable public contract', () => {
     const onError = vi.fn();
     const mounted = mountTable(fetcher, {
       multiple: true,
-      selectedRowKeys: [3],
+      selectedKeys: [3],
       onLoadingChange,
       onDataChange,
       onError,

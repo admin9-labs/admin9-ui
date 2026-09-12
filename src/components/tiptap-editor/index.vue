@@ -1,6 +1,6 @@
 <script setup lang="ts" generic="F extends TiptapValueFormat = 'html'">
-  import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, toRefs, watch, type Ref } from 'vue';
-  import { Message } from '@arco-design/web-vue';
+  import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, toRef, toRefs, watch, type Ref } from 'vue';
+  import { FormItem, Message, useFormItem } from '@arco-design/web-vue';
   import { Extension, isNodeEmpty, type Editor } from '@tiptap/core';
   import CharacterCount from '@tiptap/extension-character-count';
   import Placeholder from '@tiptap/extension-placeholder';
@@ -24,6 +24,7 @@
   import TextFormatToolbar from './text-format-toolbar.vue';
   import { Audio, BlockImage, InlineImage, isSafeMediaUrl, type TiptapMediaNodeName, Video } from './media-node';
   import type {
+    ATiptapEditorExposed,
     TiptapContentError,
     TiptapDocument,
     TiptapEditorValue,
@@ -90,7 +91,7 @@
   }>();
 
   const valueFormat = props.valueFormat ?? 'html';
-  const { readonly, disabled, canUploadImage, canUploadVideo, canUploadAudio, showWordCount, maxLength } = toRefs(props);
+  const { readonly, canUploadImage, canUploadVideo, canUploadAudio, showWordCount, maxLength } = toRefs(props);
   const readContent = (currentEditor: Editor, value: unknown, phase: TiptapContentError['phase']) => {
     if (value === undefined) {
       return valueFormat === 'json' ? parseTiptapDocument({ type: 'doc', content: [] }, currentEditor) : '';
@@ -111,7 +112,18 @@
   const { t } = useI18n();
   const globalOptions = inject(admin9UIOptionsKey, undefined);
   const resolvedFileService = computed(() => props.service ?? globalOptions?.fileService);
-  const isEditable = computed(() => !props.disabled && !props.readonly);
+  const { mergedDisabled, mergedError, eventHandlers } = useFormItem({ disabled: toRef(props, 'disabled') });
+  const interactionDisabled = computed(() => Boolean(mergedDisabled.value));
+  const isEditable = computed(() => !interactionDisabled.value && !props.readonly);
+  const editorAttributes = computed(() => ({
+    'class': 'a9-tiptap-editor__prose',
+    'role': 'textbox',
+    'aria-multiline': 'true',
+    'aria-label': props.placeholder || t('admin9Ui.tiptapEditor.ariaLabel'),
+    'aria-disabled': String(interactionDisabled.value),
+    'aria-readonly': String(props.readonly),
+    'aria-invalid': String(Boolean(mergedError.value)),
+  }));
   const linkPopupVisible = ref(false);
   const tablePopupVisible = ref(false);
   const tableRows = ref(1);
@@ -348,10 +360,10 @@
       BlockImage.configure({ getDefaultDisplay: () => props.defaultImageDisplay }),
       InlineImage.configure({ getDefaultDisplay: () => props.defaultImageDisplay }),
       Video.configure({
-        getPlaybackTabIndex: () => (props.readonly && !props.disabled ? undefined : -1),
+        getPlaybackTabIndex: () => (props.readonly && !interactionDisabled.value ? undefined : -1),
       }),
       Audio.configure({
-        getPlaybackTabIndex: () => (props.readonly && !props.disabled ? undefined : -1),
+        getPlaybackTabIndex: () => (props.readonly && !interactionDisabled.value ? undefined : -1),
       }),
       Placeholder.configure({
         placeholder: () => props.placeholder || t('admin9Ui.tiptapEditor.placeholder'),
@@ -397,12 +409,7 @@
         const position = view.posAtCoords({ left: event.clientX, top: event.clientY });
         return uploads.insert(files, 'drop', position?.pos);
       },
-      attributes: {
-        'class': 'a9-tiptap-editor__prose',
-        'role': 'textbox',
-        'aria-multiline': 'true',
-        'aria-label': props.placeholder || t('admin9Ui.tiptapEditor.ariaLabel'),
-      },
+      attributes: () => editorAttributes.value,
     },
     onUpdate: ({ editor: currentEditor }) => {
       let content: string | TiptapDocument;
@@ -413,6 +420,8 @@
         valueFormat === 'json' ? (getDocumentSnapshot(currentEditor.state.doc) as TiptapEditorValue<F>) : value;
       emit('update:modelValue', value);
       emit('change', changeValue);
+      eventHandlers.value?.onInput?.();
+      eventHandlers.value?.onChange?.();
     },
     onSelectionUpdate: ({ editor: currentEditor }) => syncSelectedMedia(currentEditor),
     onTransaction: ({ editor: currentEditor }) => {
@@ -422,10 +431,12 @@
     onFocus: () => {
       isFocused.value = true;
       emit('focus');
+      eventHandlers.value?.onFocus?.();
     },
     onBlur: () => {
       isFocused.value = false;
       emit('blur');
+      eventHandlers.value?.onBlur?.();
     },
   });
 
@@ -970,7 +981,7 @@
     editor.value ? getDocumentSnapshot(editor.value.state.doc) : { type: 'doc', content: [{ type: 'paragraph' }] };
 
   const getImageUploadState = () => uploads.state();
-  defineExpose({ focus, clear, getHTML, getJSON, getImageUploadState });
+  defineExpose<ATiptapEditorExposed>({ focus, clear, getHTML, getJSON, getImageUploadState });
 
   watch(
     () => props.modelValue,
@@ -990,11 +1001,14 @@
       }
     }
   );
+  watch(editorAttributes, (attributes) => {
+    editor.value?.setOptions({ editorProps: { attributes } });
+  });
   watch(isEditable, (value) => {
     if (!value) uploads.pause();
     if (!value) tablePopupVisible.value = false;
     const currentEditor = editor.value;
-    currentEditor?.setEditable(value);
+    currentEditor?.setEditable(value, false);
     if (!value && currentEditor) clearNodeSelection(currentEditor);
     if (!value) selectedMedia.value = undefined;
     uploads.sync();
@@ -1023,714 +1037,724 @@
   <div
     class="a9-tiptap-editor"
     :class="{
-      'is-disabled': props.disabled,
+      'is-disabled': interactionDisabled,
+      'is-error': mergedError,
       'is-readonly': props.readonly,
       'is-focused': isFocused,
     }"
     :style="editorStyle"
   >
-    <div v-if="!readonly" class="a9-tiptap-editor__toolbar" role="toolbar" :aria-label="t('admin9Ui.tiptapEditor.toolbar')">
-      <a-dropdown trigger="click" @select="setBlock">
-        <a-button class="a9-tiptap-editor__block-menu" size="small" :disabled="disabled">
-          {{ blockLabel }}
-          <icon-down />
-        </a-button>
-        <template #content>
-          <a-doption value="paragraph">{{ t('admin9Ui.tiptapEditor.paragraph') }}</a-doption>
-          <a-doption value="heading-1">{{ t('admin9Ui.tiptapEditor.heading1') }}</a-doption>
-          <a-doption value="heading-2">{{ t('admin9Ui.tiptapEditor.heading2') }}</a-doption>
-          <a-doption value="heading-3">{{ t('admin9Ui.tiptapEditor.heading3') }}</a-doption>
-        </template>
-      </a-dropdown>
+    <FormItem no-style :disabled="interactionDisabled" :validate-trigger="[]">
+      <div v-if="!readonly" class="a9-tiptap-editor__toolbar" role="toolbar" :aria-label="t('admin9Ui.tiptapEditor.toolbar')">
+        <a-dropdown trigger="click" @select="setBlock">
+          <a-button class="a9-tiptap-editor__block-menu" size="small" :disabled="interactionDisabled">
+            {{ blockLabel }}
+            <icon-down />
+          </a-button>
+          <template #content>
+            <a-doption value="paragraph">{{ t('admin9Ui.tiptapEditor.paragraph') }}</a-doption>
+            <a-doption value="heading-1">{{ t('admin9Ui.tiptapEditor.heading1') }}</a-doption>
+            <a-doption value="heading-2">{{ t('admin9Ui.tiptapEditor.heading2') }}</a-doption>
+            <a-doption value="heading-3">{{ t('admin9Ui.tiptapEditor.heading3') }}</a-doption>
+          </template>
+        </a-dropdown>
 
-      <span class="a9-tiptap-editor__divider" aria-hidden="true" />
+        <span class="a9-tiptap-editor__divider" aria-hidden="true" />
 
-      <TextFormatToolbar :editor="editor" :disabled="disabled" />
-      <a-tooltip :content="t('admin9Ui.tiptapEditor.bold')">
-        <a-button
-          size="small"
-          :type="editor?.isActive('bold') ? 'primary' : 'text'"
-          :disabled="disabled"
-          :aria-label="t('admin9Ui.tiptapEditor.bold')"
-          :aria-pressed="editor?.isActive('bold')"
-          @click="editor?.chain().focus().toggleBold().run()"
-        >
-          <template #icon><icon-bold /></template>
-        </a-button>
-      </a-tooltip>
-      <a-tooltip :content="t('admin9Ui.tiptapEditor.italic')">
-        <a-button
-          size="small"
-          :type="editor?.isActive('italic') ? 'primary' : 'text'"
-          :disabled="disabled"
-          :aria-label="t('admin9Ui.tiptapEditor.italic')"
-          :aria-pressed="editor?.isActive('italic')"
-          @click="editor?.chain().focus().toggleItalic().run()"
-        >
-          <template #icon><icon-italic /></template>
-        </a-button>
-      </a-tooltip>
-      <a-tooltip :content="t('admin9Ui.tiptapEditor.underline')">
-        <a-button
-          size="small"
-          :type="editor?.isActive('underline') ? 'primary' : 'text'"
-          :disabled="disabled"
-          :aria-label="t('admin9Ui.tiptapEditor.underline')"
-          :aria-pressed="editor?.isActive('underline')"
-          @click="editor?.chain().focus().toggleUnderline().run()"
-        >
-          <template #icon><icon-underline /></template>
-        </a-button>
-      </a-tooltip>
-      <a-tooltip :content="t('admin9Ui.tiptapEditor.strike')">
-        <a-button
-          size="small"
-          :type="editor?.isActive('strike') ? 'primary' : 'text'"
-          :disabled="disabled"
-          :aria-label="t('admin9Ui.tiptapEditor.strike')"
-          :aria-pressed="editor?.isActive('strike')"
-          @click="editor?.chain().focus().toggleStrike().run()"
-        >
-          <template #icon><icon-strikethrough /></template>
-        </a-button>
-      </a-tooltip>
-
-      <span class="a9-tiptap-editor__divider" aria-hidden="true" />
-
-      <a-tooltip :content="t('admin9Ui.tiptapEditor.bulletList')">
-        <a-button
-          size="small"
-          :type="editor?.isActive('bulletList') ? 'primary' : 'text'"
-          :disabled="disabled"
-          :aria-label="t('admin9Ui.tiptapEditor.bulletList')"
-          :aria-pressed="editor?.isActive('bulletList')"
-          @click="editor?.chain().focus().toggleBulletList().run()"
-        >
-          <template #icon><icon-unordered-list /></template>
-        </a-button>
-      </a-tooltip>
-      <a-tooltip :content="t('admin9Ui.tiptapEditor.orderedList')">
-        <a-button
-          size="small"
-          :type="editor?.isActive('orderedList') ? 'primary' : 'text'"
-          :disabled="disabled"
-          :aria-label="t('admin9Ui.tiptapEditor.orderedList')"
-          :aria-pressed="editor?.isActive('orderedList')"
-          @click="editor?.chain().focus().toggleOrderedList().run()"
-        >
-          <template #icon><icon-ordered-list /></template>
-        </a-button>
-      </a-tooltip>
-      <a-tooltip :content="t('admin9Ui.tiptapEditor.blockquote')">
-        <a-button
-          size="small"
-          :type="editor?.isActive('blockquote') ? 'primary' : 'text'"
-          :disabled="disabled"
-          :aria-label="t('admin9Ui.tiptapEditor.blockquote')"
-          :aria-pressed="editor?.isActive('blockquote')"
-          @click="editor?.chain().focus().toggleBlockquote().run()"
-        >
-          <template #icon><icon-quote /></template>
-        </a-button>
-      </a-tooltip>
-      <a-tooltip :content="t('admin9Ui.tiptapEditor.horizontalRule')">
-        <a-button
-          size="small"
-          type="text"
-          :disabled="disabled"
-          :aria-label="t('admin9Ui.tiptapEditor.horizontalRule')"
-          @click="editor?.chain().focus().setHorizontalRule().run()"
-        >
-          <template #icon><icon-minus /></template>
-        </a-button>
-      </a-tooltip>
-
-      <a-popover v-model:popup-visible="linkPopupVisible" trigger="click" position="bottom" :disabled="disabled">
-        <a-tooltip :content="t('admin9Ui.tiptapEditor.link')">
+        <TextFormatToolbar :editor="editor" :disabled="interactionDisabled" />
+        <a-tooltip :content="t('admin9Ui.tiptapEditor.bold')">
           <a-button
             size="small"
-            :type="editor?.isActive('link') ? 'primary' : 'text'"
-            :disabled="disabled"
-            :aria-label="t('admin9Ui.tiptapEditor.link')"
-            :aria-pressed="editor?.isActive('link')"
-            @click="prepareLink"
+            :type="editor?.isActive('bold') ? 'primary' : 'text'"
+            :disabled="interactionDisabled"
+            :aria-label="t('admin9Ui.tiptapEditor.bold')"
+            :aria-pressed="editor?.isActive('bold')"
+            @click="editor?.chain().focus().toggleBold().run()"
           >
-            <template #icon><icon-link /></template>
+            <template #icon><icon-bold /></template>
           </a-button>
         </a-tooltip>
-        <template #content>
-          <div class="a9-tiptap-editor__link-panel">
-            <a-input
-              v-model="linkText"
-              :aria-label="t('admin9Ui.tiptapEditor.linkText')"
-              :placeholder="t('admin9Ui.tiptapEditor.linkText')"
-            />
-            <a-input
-              v-model="linkHref"
-              :aria-label="t('admin9Ui.tiptapEditor.link')"
-              :placeholder="t('admin9Ui.tiptapEditor.linkPlaceholder')"
-              allow-clear
-              @press-enter="applyLink"
-            />
-            <div class="a9-tiptap-editor__link-actions">
-              <a-button v-if="linkHref" size="small" @click="openLink">{{ t('admin9Ui.tiptapEditor.openLink') }}</a-button>
-              <a-button v-if="editor?.isActive('link')" size="small" status="danger" @click="removeLink">
-                {{ t('admin9Ui.tiptapEditor.removeLink') }}
-              </a-button>
-              <a-button size="small" type="primary" @click="applyLink">
-                {{ t('admin9Ui.tiptapEditor.apply') }}
-              </a-button>
-            </div>
-          </div>
-        </template>
-      </a-popover>
-
-      <a-tooltip :content="t('admin9Ui.tiptapEditor.clearFormat')">
-        <a-button
-          size="small"
-          type="text"
-          :disabled="disabled"
-          :aria-label="t('admin9Ui.tiptapEditor.clearFormat')"
-          @mousedown.prevent
-          @click="clearTextFormat"
-        >
-          <template #icon><icon-eraser /></template>
-        </a-button>
-      </a-tooltip>
-      <AFilePicker
-        v-if="resolvedFileService"
-        v-model="attachmentValue"
-        :service="resolvedFileService"
-        :file-types="['document', 'archive', 'other']"
-        multiple
-        :can-upload="props.canUploadAttachment"
-        @change="insertAttachments"
-      >
-        <template #trigger="{ open }">
-          <a-tooltip :content="t('admin9Ui.tiptapEditor.attachment')">
-            <a-button
-              size="small"
-              type="text"
-              :disabled="disabled"
-              :aria-label="t('admin9Ui.tiptapEditor.attachment')"
-              @mousedown.prevent
-              @click="open"
-            >
-              <template #icon><icon-attachment /></template>
-            </a-button>
-          </a-tooltip>
-        </template>
-      </AFilePicker>
-
-      <a-tooltip
-        v-if="resolvedFileService"
-        v-model:popup-visible="imagePickerTooltipVisible"
-        :content="t('admin9Ui.tiptapEditor.image')"
-      >
-        <AFilePicker
-          v-model="imagePickerValue"
-          class="a9-tiptap-editor__media-picker"
-          data-media-type="image"
-          :file-types="['image']"
-          :service="resolvedFileService"
-          :can-upload="canUploadImage"
-          @change="insertImagesFromPicker"
-          @visible-change="onMediaPickerVisibleChange"
-        >
-          <template #trigger="{ open, disabled: pickerDisabled }">
-            <a-button
-              size="small"
-              type="text"
-              :disabled="disabled || pickerDisabled"
-              :aria-label="t('admin9Ui.tiptapEditor.image')"
-              @mousedown.prevent
-              @click="open"
-            >
-              <template #icon><icon-image /></template>
-            </a-button>
-          </template>
-        </AFilePicker>
-      </a-tooltip>
-
-      <a-tooltip
-        v-if="resolvedFileService"
-        v-model:popup-visible="videoPickerTooltipVisible"
-        :content="t('admin9Ui.tiptapEditor.video')"
-      >
-        <AFilePicker
-          v-model="videoPickerValue"
-          class="a9-tiptap-editor__media-picker"
-          data-media-type="video"
-          :file-types="['video']"
-          :service="resolvedFileService"
-          :can-upload="canUploadVideo"
-          @change="insertVideosFromPicker"
-          @visible-change="onMediaPickerVisibleChange"
-        >
-          <template #trigger="{ open, disabled: pickerDisabled }">
-            <a-button
-              size="small"
-              type="text"
-              :disabled="disabled || pickerDisabled"
-              :aria-label="t('admin9Ui.tiptapEditor.video')"
-              @mousedown.prevent
-              @click="open"
-            >
-              <template #icon><icon-video-camera /></template>
-            </a-button>
-          </template>
-        </AFilePicker>
-      </a-tooltip>
-
-      <a-tooltip
-        v-if="resolvedFileService"
-        v-model:popup-visible="audioPickerTooltipVisible"
-        :content="t('admin9Ui.tiptapEditor.audio')"
-      >
-        <AFilePicker
-          v-model="audioPickerValue"
-          class="a9-tiptap-editor__media-picker"
-          data-media-type="audio"
-          :file-types="['audio']"
-          :service="resolvedFileService"
-          :can-upload="canUploadAudio"
-          @change="insertAudiosFromPicker"
-          @visible-change="onMediaPickerVisibleChange"
-        >
-          <template #trigger="{ open, disabled: pickerDisabled }">
-            <a-button
-              size="small"
-              type="text"
-              :disabled="disabled || pickerDisabled"
-              :aria-label="t('admin9Ui.tiptapEditor.audio')"
-              @mousedown.prevent
-              @click="open"
-            >
-              <template #icon><icon-sound /></template>
-            </a-button>
-          </template>
-        </AFilePicker>
-      </a-tooltip>
-
-      <a-popover
-        v-if="!editor?.isActive('table')"
-        v-model:popup-visible="tablePopupVisible"
-        trigger="click"
-        position="bottom"
-        :disabled="disabled"
-      >
-        <a-button
-          ref="tableTriggerRef"
-          size="small"
-          type="text"
-          :disabled="disabled"
-          :aria-label="t('admin9Ui.tiptapEditor.table')"
-          :aria-expanded="tablePopupVisible"
-          aria-haspopup="dialog"
-          @mousedown.prevent
-          @keydown.down.prevent="focusTablePicker"
-          @keydown.enter.prevent="focusTablePicker"
-          @keydown.space.prevent="focusTablePicker"
-        >
-          <template #icon><icon-apps /></template>
-        </a-button>
-        <template #content>
-          <div
-            ref="tablePickerRef"
-            class="a9-tiptap-editor__table-picker"
-            role="dialog"
-            :aria-label="t('admin9Ui.tiptapEditor.table')"
-            @keydown="onTablePickerKeydown"
-          >
-            <div class="a9-tiptap-editor__table-size" aria-live="polite">{{ tableSizeLabel }}</div>
-            <div class="a9-tiptap-editor__table-grid">
-              <template v-for="row in 8" :key="row">
-                <button
-                  v-for="column in 10"
-                  :key="column"
-                  type="button"
-                  class="a9-tiptap-editor__table-cell"
-                  :class="{ 'is-selected': row <= tableRows && column <= tableColumns }"
-                  :tabindex="row === tableRows && column === tableColumns ? 0 : -1"
-                  :aria-label="t('admin9Ui.tiptapEditor.tableSize', { rows: row, columns: column })"
-                  :data-table-size="`${row}-${column}`"
-                  @mouseenter="previewTable(row, column)"
-                  @focus="previewTable(row, column)"
-                  @mousedown.prevent
-                  @click="insertTable(row, column)"
-                />
-              </template>
-            </div>
-            <a-button
-              size="small"
-              @click="
-                tablePopupVisible = false;
-                tableTextVisible = true;
-              "
-              >{{ t('admin9Ui.tiptapEditor.pasteTable') }}</a-button
-            >
-          </div>
-        </template>
-      </a-popover>
-      <a-dropdown v-else trigger="click" @select="runTableAction">
-        <a-tooltip :content="t('admin9Ui.tiptapEditor.table')">
+        <a-tooltip :content="t('admin9Ui.tiptapEditor.italic')">
           <a-button
             size="small"
-            :type="editor?.isActive('table') ? 'primary' : 'text'"
-            :disabled="disabled"
+            :type="editor?.isActive('italic') ? 'primary' : 'text'"
+            :disabled="interactionDisabled"
+            :aria-label="t('admin9Ui.tiptapEditor.italic')"
+            :aria-pressed="editor?.isActive('italic')"
+            @click="editor?.chain().focus().toggleItalic().run()"
+          >
+            <template #icon><icon-italic /></template>
+          </a-button>
+        </a-tooltip>
+        <a-tooltip :content="t('admin9Ui.tiptapEditor.underline')">
+          <a-button
+            size="small"
+            :type="editor?.isActive('underline') ? 'primary' : 'text'"
+            :disabled="interactionDisabled"
+            :aria-label="t('admin9Ui.tiptapEditor.underline')"
+            :aria-pressed="editor?.isActive('underline')"
+            @click="editor?.chain().focus().toggleUnderline().run()"
+          >
+            <template #icon><icon-underline /></template>
+          </a-button>
+        </a-tooltip>
+        <a-tooltip :content="t('admin9Ui.tiptapEditor.strike')">
+          <a-button
+            size="small"
+            :type="editor?.isActive('strike') ? 'primary' : 'text'"
+            :disabled="interactionDisabled"
+            :aria-label="t('admin9Ui.tiptapEditor.strike')"
+            :aria-pressed="editor?.isActive('strike')"
+            @click="editor?.chain().focus().toggleStrike().run()"
+          >
+            <template #icon><icon-strikethrough /></template>
+          </a-button>
+        </a-tooltip>
+
+        <span class="a9-tiptap-editor__divider" aria-hidden="true" />
+
+        <a-tooltip :content="t('admin9Ui.tiptapEditor.bulletList')">
+          <a-button
+            size="small"
+            :type="editor?.isActive('bulletList') ? 'primary' : 'text'"
+            :disabled="interactionDisabled"
+            :aria-label="t('admin9Ui.tiptapEditor.bulletList')"
+            :aria-pressed="editor?.isActive('bulletList')"
+            @click="editor?.chain().focus().toggleBulletList().run()"
+          >
+            <template #icon><icon-unordered-list /></template>
+          </a-button>
+        </a-tooltip>
+        <a-tooltip :content="t('admin9Ui.tiptapEditor.orderedList')">
+          <a-button
+            size="small"
+            :type="editor?.isActive('orderedList') ? 'primary' : 'text'"
+            :disabled="interactionDisabled"
+            :aria-label="t('admin9Ui.tiptapEditor.orderedList')"
+            :aria-pressed="editor?.isActive('orderedList')"
+            @click="editor?.chain().focus().toggleOrderedList().run()"
+          >
+            <template #icon><icon-ordered-list /></template>
+          </a-button>
+        </a-tooltip>
+        <a-tooltip :content="t('admin9Ui.tiptapEditor.blockquote')">
+          <a-button
+            size="small"
+            :type="editor?.isActive('blockquote') ? 'primary' : 'text'"
+            :disabled="interactionDisabled"
+            :aria-label="t('admin9Ui.tiptapEditor.blockquote')"
+            :aria-pressed="editor?.isActive('blockquote')"
+            @click="editor?.chain().focus().toggleBlockquote().run()"
+          >
+            <template #icon><icon-quote /></template>
+          </a-button>
+        </a-tooltip>
+        <a-tooltip :content="t('admin9Ui.tiptapEditor.horizontalRule')">
+          <a-button
+            size="small"
+            type="text"
+            :disabled="interactionDisabled"
+            :aria-label="t('admin9Ui.tiptapEditor.horizontalRule')"
+            @click="editor?.chain().focus().setHorizontalRule().run()"
+          >
+            <template #icon><icon-minus /></template>
+          </a-button>
+        </a-tooltip>
+
+        <a-popover v-model:popup-visible="linkPopupVisible" trigger="click" position="bottom" :disabled="interactionDisabled">
+          <a-tooltip :content="t('admin9Ui.tiptapEditor.link')">
+            <a-button
+              size="small"
+              :type="editor?.isActive('link') ? 'primary' : 'text'"
+              :disabled="interactionDisabled"
+              :aria-label="t('admin9Ui.tiptapEditor.link')"
+              :aria-pressed="editor?.isActive('link')"
+              @click="prepareLink"
+            >
+              <template #icon><icon-link /></template>
+            </a-button>
+          </a-tooltip>
+          <template #content>
+            <div class="a9-tiptap-editor__link-panel">
+              <a-input
+                v-model="linkText"
+                :aria-label="t('admin9Ui.tiptapEditor.linkText')"
+                :placeholder="t('admin9Ui.tiptapEditor.linkText')"
+              />
+              <a-input
+                v-model="linkHref"
+                :aria-label="t('admin9Ui.tiptapEditor.link')"
+                :placeholder="t('admin9Ui.tiptapEditor.linkPlaceholder')"
+                allow-clear
+                @press-enter="applyLink"
+              />
+              <div class="a9-tiptap-editor__link-actions">
+                <a-button v-if="linkHref" size="small" @click="openLink">{{ t('admin9Ui.tiptapEditor.openLink') }}</a-button>
+                <a-button v-if="editor?.isActive('link')" size="small" status="danger" @click="removeLink">
+                  {{ t('admin9Ui.tiptapEditor.removeLink') }}
+                </a-button>
+                <a-button size="small" type="primary" @click="applyLink">
+                  {{ t('admin9Ui.tiptapEditor.apply') }}
+                </a-button>
+              </div>
+            </div>
+          </template>
+        </a-popover>
+
+        <a-tooltip :content="t('admin9Ui.tiptapEditor.clearFormat')">
+          <a-button
+            size="small"
+            type="text"
+            :disabled="interactionDisabled"
+            :aria-label="t('admin9Ui.tiptapEditor.clearFormat')"
+            @mousedown.prevent
+            @click="clearTextFormat"
+          >
+            <template #icon><icon-eraser /></template>
+          </a-button>
+        </a-tooltip>
+        <AFilePicker
+          v-if="resolvedFileService"
+          v-model="attachmentValue"
+          :service="resolvedFileService"
+          :file-types="['document', 'archive', 'other']"
+          multiple
+          :can-upload="props.canUploadAttachment"
+          @confirm="insertAttachments"
+        >
+          <template #trigger="{ open }">
+            <a-tooltip :content="t('admin9Ui.tiptapEditor.attachment')">
+              <a-button
+                size="small"
+                type="text"
+                :disabled="interactionDisabled"
+                :aria-label="t('admin9Ui.tiptapEditor.attachment')"
+                @mousedown.prevent
+                @click="open"
+              >
+                <template #icon><icon-attachment /></template>
+              </a-button>
+            </a-tooltip>
+          </template>
+        </AFilePicker>
+
+        <a-tooltip
+          v-if="resolvedFileService"
+          v-model:popup-visible="imagePickerTooltipVisible"
+          :content="t('admin9Ui.tiptapEditor.image')"
+        >
+          <AFilePicker
+            v-model="imagePickerValue"
+            class="a9-tiptap-editor__media-picker"
+            data-media-type="image"
+            :file-types="['image']"
+            :service="resolvedFileService"
+            :can-upload="canUploadImage"
+            @confirm="insertImagesFromPicker"
+            @visible-change="onMediaPickerVisibleChange"
+          >
+            <template #trigger="{ open, disabled: pickerDisabled }">
+              <a-button
+                size="small"
+                type="text"
+                :disabled="interactionDisabled || pickerDisabled"
+                :aria-label="t('admin9Ui.tiptapEditor.image')"
+                @mousedown.prevent
+                @click="open"
+              >
+                <template #icon><icon-image /></template>
+              </a-button>
+            </template>
+          </AFilePicker>
+        </a-tooltip>
+
+        <a-tooltip
+          v-if="resolvedFileService"
+          v-model:popup-visible="videoPickerTooltipVisible"
+          :content="t('admin9Ui.tiptapEditor.video')"
+        >
+          <AFilePicker
+            v-model="videoPickerValue"
+            class="a9-tiptap-editor__media-picker"
+            data-media-type="video"
+            :file-types="['video']"
+            :service="resolvedFileService"
+            :can-upload="canUploadVideo"
+            @confirm="insertVideosFromPicker"
+            @visible-change="onMediaPickerVisibleChange"
+          >
+            <template #trigger="{ open, disabled: pickerDisabled }">
+              <a-button
+                size="small"
+                type="text"
+                :disabled="interactionDisabled || pickerDisabled"
+                :aria-label="t('admin9Ui.tiptapEditor.video')"
+                @mousedown.prevent
+                @click="open"
+              >
+                <template #icon><icon-video-camera /></template>
+              </a-button>
+            </template>
+          </AFilePicker>
+        </a-tooltip>
+
+        <a-tooltip
+          v-if="resolvedFileService"
+          v-model:popup-visible="audioPickerTooltipVisible"
+          :content="t('admin9Ui.tiptapEditor.audio')"
+        >
+          <AFilePicker
+            v-model="audioPickerValue"
+            class="a9-tiptap-editor__media-picker"
+            data-media-type="audio"
+            :file-types="['audio']"
+            :service="resolvedFileService"
+            :can-upload="canUploadAudio"
+            @confirm="insertAudiosFromPicker"
+            @visible-change="onMediaPickerVisibleChange"
+          >
+            <template #trigger="{ open, disabled: pickerDisabled }">
+              <a-button
+                size="small"
+                type="text"
+                :disabled="interactionDisabled || pickerDisabled"
+                :aria-label="t('admin9Ui.tiptapEditor.audio')"
+                @mousedown.prevent
+                @click="open"
+              >
+                <template #icon><icon-sound /></template>
+              </a-button>
+            </template>
+          </AFilePicker>
+        </a-tooltip>
+
+        <a-popover
+          v-if="!editor?.isActive('table')"
+          v-model:popup-visible="tablePopupVisible"
+          trigger="click"
+          position="bottom"
+          :disabled="interactionDisabled"
+        >
+          <a-button
+            ref="tableTriggerRef"
+            size="small"
+            type="text"
+            :disabled="interactionDisabled"
             :aria-label="t('admin9Ui.tiptapEditor.table')"
-            :aria-pressed="editor?.isActive('table')"
+            :aria-expanded="tablePopupVisible"
+            aria-haspopup="dialog"
+            @mousedown.prevent
+            @keydown.down.prevent="focusTablePicker"
+            @keydown.enter.prevent="focusTablePicker"
+            @keydown.space.prevent="focusTablePicker"
           >
             <template #icon><icon-apps /></template>
           </a-button>
-        </a-tooltip>
-        <template #content>
-          <template v-if="editor?.isActive('table')">
-            <a-doption value="add-row-before">{{ t('admin9Ui.tiptapEditor.addRowBefore') }}</a-doption>
-            <a-doption value="add-row-after">{{ t('admin9Ui.tiptapEditor.addRowAfter') }}</a-doption>
-            <a-doption value="delete-row">{{ t('admin9Ui.tiptapEditor.deleteRow') }}</a-doption>
-            <a-doption value="add-column-before">{{ t('admin9Ui.tiptapEditor.addColumnBefore') }}</a-doption>
-            <a-doption value="add-column-after">{{ t('admin9Ui.tiptapEditor.addColumnAfter') }}</a-doption>
-            <a-doption value="delete-column">{{ t('admin9Ui.tiptapEditor.deleteColumn') }}</a-doption>
-            <a-doption value="toggle-header-row">{{ t('admin9Ui.tiptapEditor.toggleHeaderRow') }}</a-doption>
-            <a-doption value="merge-cells" :disabled="!editor?.can().mergeCells()">{{
-              t('admin9Ui.tiptapEditor.mergeCells')
-            }}</a-doption>
-            <a-doption value="split-cell" :disabled="!editor?.can().splitCell()">{{
-              t('admin9Ui.tiptapEditor.splitCell')
-            }}</a-doption>
-            <a-doption value="delete-table">{{ t('admin9Ui.tiptapEditor.deleteTable') }}</a-doption>
+          <template #content>
+            <div
+              ref="tablePickerRef"
+              class="a9-tiptap-editor__table-picker"
+              role="dialog"
+              :aria-label="t('admin9Ui.tiptapEditor.table')"
+              @keydown="onTablePickerKeydown"
+            >
+              <div class="a9-tiptap-editor__table-size" aria-live="polite">{{ tableSizeLabel }}</div>
+              <div class="a9-tiptap-editor__table-grid">
+                <template v-for="row in 8" :key="row">
+                  <button
+                    v-for="column in 10"
+                    :key="column"
+                    type="button"
+                    class="a9-tiptap-editor__table-cell"
+                    :class="{ 'is-selected': row <= tableRows && column <= tableColumns }"
+                    :tabindex="row === tableRows && column === tableColumns ? 0 : -1"
+                    :aria-label="t('admin9Ui.tiptapEditor.tableSize', { rows: row, columns: column })"
+                    :data-table-size="`${row}-${column}`"
+                    @mouseenter="previewTable(row, column)"
+                    @focus="previewTable(row, column)"
+                    @mousedown.prevent
+                    @click="insertTable(row, column)"
+                  />
+                </template>
+              </div>
+              <a-button
+                size="small"
+                @click="
+                  tablePopupVisible = false;
+                  tableTextVisible = true;
+                "
+                >{{ t('admin9Ui.tiptapEditor.pasteTable') }}</a-button
+              >
+            </div>
           </template>
-        </template>
-      </a-dropdown>
-
-      <span class="a9-tiptap-editor__divider" aria-hidden="true" />
-
-      <a-tooltip :content="t('admin9Ui.tiptapEditor.alignLeft')">
-        <a-button
-          size="small"
-          :type="editor?.isActive({ textAlign: 'left' }) ? 'primary' : 'text'"
-          :disabled="disabled"
-          :aria-label="t('admin9Ui.tiptapEditor.alignLeft')"
-          :aria-pressed="editor?.isActive({ textAlign: 'left' })"
-          @click="editor?.chain().focus().setTextAlign('left').run()"
-        >
-          <template #icon><icon-align-left /></template>
-        </a-button>
-      </a-tooltip>
-      <a-tooltip :content="t('admin9Ui.tiptapEditor.alignCenter')">
-        <a-button
-          size="small"
-          :type="editor?.isActive({ textAlign: 'center' }) ? 'primary' : 'text'"
-          :disabled="disabled"
-          :aria-label="t('admin9Ui.tiptapEditor.alignCenter')"
-          :aria-pressed="editor?.isActive({ textAlign: 'center' })"
-          @click="editor?.chain().focus().setTextAlign('center').run()"
-        >
-          <template #icon><icon-align-center /></template>
-        </a-button>
-      </a-tooltip>
-      <a-tooltip :content="t('admin9Ui.tiptapEditor.alignRight')">
-        <a-button
-          size="small"
-          :type="editor?.isActive({ textAlign: 'right' }) ? 'primary' : 'text'"
-          :disabled="disabled"
-          :aria-label="t('admin9Ui.tiptapEditor.alignRight')"
-          :aria-pressed="editor?.isActive({ textAlign: 'right' })"
-          @click="editor?.chain().focus().setTextAlign('right').run()"
-        >
-          <template #icon><icon-align-right /></template>
-        </a-button>
-      </a-tooltip>
-
-      <span class="a9-tiptap-editor__toolbar-spacer" />
-
-      <a-tooltip :content="t('admin9Ui.tiptapEditor.undo')">
-        <a-button
-          size="small"
-          type="text"
-          :disabled="disabled || !editor?.can().chain().focus().undo().run()"
-          :aria-label="t('admin9Ui.tiptapEditor.undo')"
-          @click="editor?.chain().focus().undo().run()"
-        >
-          <template #icon><icon-undo /></template>
-        </a-button>
-      </a-tooltip>
-      <a-tooltip :content="t('admin9Ui.tiptapEditor.redo')">
-        <a-button
-          size="small"
-          type="text"
-          :disabled="disabled || !editor?.can().chain().focus().redo().run()"
-          :aria-label="t('admin9Ui.tiptapEditor.redo')"
-          @click="editor?.chain().focus().redo().run()"
-        >
-          <template #icon><icon-redo /></template>
-        </a-button>
-      </a-tooltip>
-    </div>
-
-    <a-modal
-      v-model:visible="tableTextVisible"
-      :title="t('admin9Ui.tiptapEditor.pasteTable')"
-      :ok-button-props="{ disabled: !tableTextRows.length || !isEditable }"
-      :on-before-ok="insertTableText"
-    >
-      <a-textarea
-        v-model="tableText"
-        :aria-label="t('admin9Ui.tiptapEditor.pasteTable')"
-        :placeholder="t('admin9Ui.tiptapEditor.pasteTablePlaceholder')"
-        :auto-size="{ minRows: 4, maxRows: 10 }"
-      />
-      <p>{{ t('admin9Ui.tiptapEditor.tableSize', { rows: tableTextRows.length, columns: tableTextRows[0]?.length ?? 0 }) }}</p>
-    </a-modal>
-
-    <div ref="contentRef" class="a9-tiptap-editor__content" role="region" :aria-label="t('admin9Ui.tiptapEditor.contentArea')">
-      <EditorContent :editor="editor" />
-    </div>
-
-    <MediaBubbleMenu
-      v-if="editor && bubbleMenuReady"
-      :editor="editor"
-      plugin-key="a9TiptapMediaBubbleMenu"
-      class="a9-tiptap-editor__media-bubble"
-      :options="mediaBubbleOptions"
-      :append-to="appendMediaBubbleToBody"
-      :should-show="shouldShowMediaBubble"
-      :get-referenced-virtual-element="getMediaBubbleVirtualElement"
-      :update-delay="0"
-      :resize-delay="0"
-    >
-      <div
-        v-if="selectedMedia"
-        ref="mediaToolbarRef"
-        class="a9-tiptap-editor__media-toolbar"
-        role="toolbar"
-        :aria-label="t('admin9Ui.tiptapEditor.mediaToolbar')"
-        :data-selected-media="selectedMedia.type"
-        @mousedown.prevent
-      >
-        <span class="a9-tiptap-editor__media-toolbar-label">
-          {{ selectedMediaLabel }}
-        </span>
-
-        <template v-if="selectedMedia.type === 'blockImage' || selectedMedia.type === 'video'">
-          <span class="a9-tiptap-editor__media-toolbar-group" :aria-label="t('admin9Ui.tiptapEditor.mediaWidth')">
+        </a-popover>
+        <a-dropdown v-else trigger="click" @select="runTableAction">
+          <a-tooltip :content="t('admin9Ui.tiptapEditor.table')">
             <a-button
-              v-for="width in blockWidths"
+              size="small"
+              :type="editor?.isActive('table') ? 'primary' : 'text'"
+              :disabled="interactionDisabled"
+              :aria-label="t('admin9Ui.tiptapEditor.table')"
+              :aria-pressed="editor?.isActive('table')"
+            >
+              <template #icon><icon-apps /></template>
+            </a-button>
+          </a-tooltip>
+          <template #content>
+            <template v-if="editor?.isActive('table')">
+              <a-doption value="add-row-before">{{ t('admin9Ui.tiptapEditor.addRowBefore') }}</a-doption>
+              <a-doption value="add-row-after">{{ t('admin9Ui.tiptapEditor.addRowAfter') }}</a-doption>
+              <a-doption value="delete-row">{{ t('admin9Ui.tiptapEditor.deleteRow') }}</a-doption>
+              <a-doption value="add-column-before">{{ t('admin9Ui.tiptapEditor.addColumnBefore') }}</a-doption>
+              <a-doption value="add-column-after">{{ t('admin9Ui.tiptapEditor.addColumnAfter') }}</a-doption>
+              <a-doption value="delete-column">{{ t('admin9Ui.tiptapEditor.deleteColumn') }}</a-doption>
+              <a-doption value="toggle-header-row">{{ t('admin9Ui.tiptapEditor.toggleHeaderRow') }}</a-doption>
+              <a-doption value="merge-cells" :disabled="!editor?.can().mergeCells()">{{
+                t('admin9Ui.tiptapEditor.mergeCells')
+              }}</a-doption>
+              <a-doption value="split-cell" :disabled="!editor?.can().splitCell()">{{
+                t('admin9Ui.tiptapEditor.splitCell')
+              }}</a-doption>
+              <a-doption value="delete-table">{{ t('admin9Ui.tiptapEditor.deleteTable') }}</a-doption>
+            </template>
+          </template>
+        </a-dropdown>
+
+        <span class="a9-tiptap-editor__divider" aria-hidden="true" />
+
+        <a-tooltip :content="t('admin9Ui.tiptapEditor.alignLeft')">
+          <a-button
+            size="small"
+            :type="editor?.isActive({ textAlign: 'left' }) ? 'primary' : 'text'"
+            :disabled="interactionDisabled"
+            :aria-label="t('admin9Ui.tiptapEditor.alignLeft')"
+            :aria-pressed="editor?.isActive({ textAlign: 'left' })"
+            @click="editor?.chain().focus().setTextAlign('left').run()"
+          >
+            <template #icon><icon-align-left /></template>
+          </a-button>
+        </a-tooltip>
+        <a-tooltip :content="t('admin9Ui.tiptapEditor.alignCenter')">
+          <a-button
+            size="small"
+            :type="editor?.isActive({ textAlign: 'center' }) ? 'primary' : 'text'"
+            :disabled="interactionDisabled"
+            :aria-label="t('admin9Ui.tiptapEditor.alignCenter')"
+            :aria-pressed="editor?.isActive({ textAlign: 'center' })"
+            @click="editor?.chain().focus().setTextAlign('center').run()"
+          >
+            <template #icon><icon-align-center /></template>
+          </a-button>
+        </a-tooltip>
+        <a-tooltip :content="t('admin9Ui.tiptapEditor.alignRight')">
+          <a-button
+            size="small"
+            :type="editor?.isActive({ textAlign: 'right' }) ? 'primary' : 'text'"
+            :disabled="interactionDisabled"
+            :aria-label="t('admin9Ui.tiptapEditor.alignRight')"
+            :aria-pressed="editor?.isActive({ textAlign: 'right' })"
+            @click="editor?.chain().focus().setTextAlign('right').run()"
+          >
+            <template #icon><icon-align-right /></template>
+          </a-button>
+        </a-tooltip>
+
+        <span class="a9-tiptap-editor__toolbar-spacer" />
+
+        <a-tooltip :content="t('admin9Ui.tiptapEditor.undo')">
+          <a-button
+            size="small"
+            type="text"
+            :disabled="interactionDisabled || !editor?.can().chain().focus().undo().run()"
+            :aria-label="t('admin9Ui.tiptapEditor.undo')"
+            @click="editor?.chain().focus().undo().run()"
+          >
+            <template #icon><icon-undo /></template>
+          </a-button>
+        </a-tooltip>
+        <a-tooltip :content="t('admin9Ui.tiptapEditor.redo')">
+          <a-button
+            size="small"
+            type="text"
+            :disabled="interactionDisabled || !editor?.can().chain().focus().redo().run()"
+            :aria-label="t('admin9Ui.tiptapEditor.redo')"
+            @click="editor?.chain().focus().redo().run()"
+          >
+            <template #icon><icon-redo /></template>
+          </a-button>
+        </a-tooltip>
+      </div>
+
+      <a-modal
+        v-model:visible="tableTextVisible"
+        :title="t('admin9Ui.tiptapEditor.pasteTable')"
+        :ok-button-props="{ disabled: !tableTextRows.length || !isEditable }"
+        :on-before-ok="insertTableText"
+      >
+        <a-textarea
+          v-model="tableText"
+          :aria-label="t('admin9Ui.tiptapEditor.pasteTable')"
+          :placeholder="t('admin9Ui.tiptapEditor.pasteTablePlaceholder')"
+          :auto-size="{ minRows: 4, maxRows: 10 }"
+        />
+        <p>{{
+          t('admin9Ui.tiptapEditor.tableSize', { rows: tableTextRows.length, columns: tableTextRows[0]?.length ?? 0 })
+        }}</p>
+      </a-modal>
+
+      <div
+        ref="contentRef"
+        class="a9-tiptap-editor__content"
+        role="region"
+        :aria-label="t('admin9Ui.tiptapEditor.contentArea')"
+      >
+        <EditorContent :editor="editor" />
+      </div>
+
+      <MediaBubbleMenu
+        v-if="editor && bubbleMenuReady"
+        :editor="editor"
+        plugin-key="a9TiptapMediaBubbleMenu"
+        class="a9-tiptap-editor__media-bubble"
+        :options="mediaBubbleOptions"
+        :append-to="appendMediaBubbleToBody"
+        :should-show="shouldShowMediaBubble"
+        :get-referenced-virtual-element="getMediaBubbleVirtualElement"
+        :update-delay="0"
+        :resize-delay="0"
+      >
+        <div
+          v-if="selectedMedia"
+          ref="mediaToolbarRef"
+          class="a9-tiptap-editor__media-toolbar"
+          role="toolbar"
+          :aria-label="t('admin9Ui.tiptapEditor.mediaToolbar')"
+          :data-selected-media="selectedMedia.type"
+          @mousedown.prevent
+        >
+          <span class="a9-tiptap-editor__media-toolbar-label">
+            {{ selectedMediaLabel }}
+          </span>
+
+          <template v-if="selectedMedia.type === 'blockImage' || selectedMedia.type === 'video'">
+            <span class="a9-tiptap-editor__media-toolbar-group" :aria-label="t('admin9Ui.tiptapEditor.mediaWidth')">
+              <a-button
+                v-for="width in blockWidths"
+                :key="width"
+                size="mini"
+                :type="selectedMedia.attrs.width === width ? 'primary' : 'text'"
+                :aria-label="blockWidthLabel(width)"
+                :aria-pressed="selectedMedia.attrs.width === width"
+                :data-media-width="width"
+                @mousedown.prevent
+                @click="updateSelectedMedia({ width })"
+              >
+                {{ blockWidthLabel(width) }}
+              </a-button>
+            </span>
+
+            <a-tooltip v-if="canResetSelectedMediaSize" :content="t('admin9Ui.tiptapEditor.resetSize')">
+              <a-button
+                size="mini"
+                type="text"
+                :aria-label="t('admin9Ui.tiptapEditor.resetSize')"
+                data-media-reset-size
+                @mousedown.prevent
+                @click="resetSelectedMediaSize"
+              >
+                <template #icon><icon-original-size /></template>
+              </a-button>
+            </a-tooltip>
+          </template>
+
+          <span
+            v-if="selectedMedia.type === 'audio'"
+            class="a9-tiptap-editor__media-toolbar-group"
+            :aria-label="t('admin9Ui.tiptapEditor.audioWidth')"
+          >
+            <a-button
+              v-for="width in audioWidths"
               :key="width"
               size="mini"
               :type="selectedMedia.attrs.width === width ? 'primary' : 'text'"
-              :aria-label="blockWidthLabel(width)"
+              :aria-label="audioWidthLabel(width)"
               :aria-pressed="selectedMedia.attrs.width === width"
               :data-media-width="width"
               @mousedown.prevent
               @click="updateSelectedMedia({ width })"
             >
-              {{ blockWidthLabel(width) }}
+              {{ audioWidthLabel(width) }}
             </a-button>
           </span>
 
-          <a-tooltip v-if="canResetSelectedMediaSize" :content="t('admin9Ui.tiptapEditor.resetSize')">
-            <a-button
-              size="mini"
-              type="text"
-              :aria-label="t('admin9Ui.tiptapEditor.resetSize')"
-              data-media-reset-size
-              @mousedown.prevent
-              @click="resetSelectedMediaSize"
+          <span
+            v-if="selectedMedia.type === 'blockImage' || selectedMedia.type === 'video' || selectedMedia.type === 'audio'"
+            class="a9-tiptap-editor__media-toolbar-group"
+            :aria-label="t('admin9Ui.tiptapEditor.mediaAlign')"
+          >
+            <a-tooltip
+              v-for="align in mediaAlignments"
+              :key="align"
+              :content="t(`admin9Ui.tiptapEditor.align${align.charAt(0).toUpperCase()}${align.slice(1)}`)"
             >
-              <template #icon><icon-original-size /></template>
-            </a-button>
-          </a-tooltip>
-        </template>
-
-        <span
-          v-if="selectedMedia.type === 'audio'"
-          class="a9-tiptap-editor__media-toolbar-group"
-          :aria-label="t('admin9Ui.tiptapEditor.audioWidth')"
-        >
-          <a-button
-            v-for="width in audioWidths"
-            :key="width"
-            size="mini"
-            :type="selectedMedia.attrs.width === width ? 'primary' : 'text'"
-            :aria-label="audioWidthLabel(width)"
-            :aria-pressed="selectedMedia.attrs.width === width"
-            :data-media-width="width"
-            @mousedown.prevent
-            @click="updateSelectedMedia({ width })"
-          >
-            {{ audioWidthLabel(width) }}
-          </a-button>
-        </span>
-
-        <span
-          v-if="selectedMedia.type === 'blockImage' || selectedMedia.type === 'video' || selectedMedia.type === 'audio'"
-          class="a9-tiptap-editor__media-toolbar-group"
-          :aria-label="t('admin9Ui.tiptapEditor.mediaAlign')"
-        >
-          <a-tooltip
-            v-for="align in mediaAlignments"
-            :key="align"
-            :content="t(`admin9Ui.tiptapEditor.align${align.charAt(0).toUpperCase()}${align.slice(1)}`)"
-          >
-            <a-button
-              size="mini"
-              :type="selectedMedia.attrs.align === align ? 'primary' : 'text'"
-              :aria-label="t(`admin9Ui.tiptapEditor.align${align.charAt(0).toUpperCase()}${align.slice(1)}`)"
-              :aria-pressed="selectedMedia.attrs.align === align"
-              :data-media-align="align"
-              @mousedown.prevent
-              @click="updateSelectedMedia({ align })"
-            >
-              <template #icon>
-                <icon-align-left v-if="align === 'left'" />
-                <icon-align-center v-else-if="align === 'center'" />
-                <icon-align-right v-else />
-              </template>
-            </a-button>
-          </a-tooltip>
-        </span>
-
-        <span
-          v-if="selectedMedia.type === 'inlineImage'"
-          class="a9-tiptap-editor__media-toolbar-group"
-          :aria-label="t('admin9Ui.tiptapEditor.inlineImageSize')"
-        >
-          <a-button
-            v-for="size in inlineSizes"
-            :key="size"
-            size="mini"
-            :type="selectedMedia.attrs.size === size ? 'primary' : 'text'"
-            :aria-label="inlineSizeLabel(size)"
-            :aria-pressed="selectedMedia.attrs.size === size"
-            :data-media-size="size"
-            @mousedown.prevent
-            @click="updateSelectedMedia({ size })"
-          >
-            {{ inlineSizeLabel(size) }}
-          </a-button>
-        </span>
-
-        <template v-if="selectedMedia.type === 'blockImage' || selectedMedia.type === 'inlineImage'">
-          <a-popover v-model:popup-visible="altPopupVisible" trigger="click" position="bottom">
-            <a-tooltip :content="t('admin9Ui.tiptapEditor.altText')">
               <a-button
                 size="mini"
-                type="text"
-                :aria-label="t('admin9Ui.tiptapEditor.altText')"
+                :type="selectedMedia.attrs.align === align ? 'primary' : 'text'"
+                :aria-label="t(`admin9Ui.tiptapEditor.align${align.charAt(0).toUpperCase()}${align.slice(1)}`)"
+                :aria-pressed="selectedMedia.attrs.align === align"
+                :data-media-align="align"
                 @mousedown.prevent
-                @click="altPopupVisible = true"
+                @click="updateSelectedMedia({ align })"
               >
-                <template #icon><icon-edit /></template>
+                <template #icon>
+                  <icon-align-left v-if="align === 'left'" />
+                  <icon-align-center v-else-if="align === 'center'" />
+                  <icon-align-right v-else />
+                </template>
               </a-button>
             </a-tooltip>
-            <template #content>
-              <div class="a9-tiptap-editor__alt-popover" @mousedown.stop>
-                <strong class="a9-tiptap-editor__alt-popover-title">{{ t('admin9Ui.tiptapEditor.altText') }}</strong>
-                <div class="a9-tiptap-editor__alt-popover-fields">
-                  <a-input
-                    v-model="altDraft"
-                    size="small"
-                    :placeholder="t('admin9Ui.tiptapEditor.altPlaceholder')"
-                    :aria-label="t('admin9Ui.tiptapEditor.altText')"
-                    @press-enter="applyAltText"
-                  />
-                  <a-button
-                    size="small"
-                    type="primary"
-                    :aria-label="t('admin9Ui.tiptapEditor.applyAlt')"
-                    @mousedown.prevent
-                    @click="applyAltText"
-                  >
-                    {{ t('admin9Ui.tiptapEditor.apply') }}
-                  </a-button>
-                </div>
-              </div>
-            </template>
-          </a-popover>
-          <a-tooltip
-            :content="
-              selectedMedia.type === 'blockImage'
-                ? t('admin9Ui.tiptapEditor.convertInline')
-                : t('admin9Ui.tiptapEditor.convertBlock')
-            "
+          </span>
+
+          <span
+            v-if="selectedMedia.type === 'inlineImage'"
+            class="a9-tiptap-editor__media-toolbar-group"
+            :aria-label="t('admin9Ui.tiptapEditor.inlineImageSize')"
           >
             <a-button
+              v-for="size in inlineSizes"
+              :key="size"
               size="mini"
-              type="text"
-              :aria-label="
+              :type="selectedMedia.attrs.size === size ? 'primary' : 'text'"
+              :aria-label="inlineSizeLabel(size)"
+              :aria-pressed="selectedMedia.attrs.size === size"
+              :data-media-size="size"
+              @mousedown.prevent
+              @click="updateSelectedMedia({ size })"
+            >
+              {{ inlineSizeLabel(size) }}
+            </a-button>
+          </span>
+
+          <template v-if="selectedMedia.type === 'blockImage' || selectedMedia.type === 'inlineImage'">
+            <a-popover v-model:popup-visible="altPopupVisible" trigger="click" position="bottom">
+              <a-tooltip :content="t('admin9Ui.tiptapEditor.altText')">
+                <a-button
+                  size="mini"
+                  type="text"
+                  :aria-label="t('admin9Ui.tiptapEditor.altText')"
+                  @mousedown.prevent
+                  @click="altPopupVisible = true"
+                >
+                  <template #icon><icon-edit /></template>
+                </a-button>
+              </a-tooltip>
+              <template #content>
+                <div class="a9-tiptap-editor__alt-popover" @mousedown.stop>
+                  <strong class="a9-tiptap-editor__alt-popover-title">{{ t('admin9Ui.tiptapEditor.altText') }}</strong>
+                  <div class="a9-tiptap-editor__alt-popover-fields">
+                    <a-input
+                      v-model="altDraft"
+                      size="small"
+                      :placeholder="t('admin9Ui.tiptapEditor.altPlaceholder')"
+                      :aria-label="t('admin9Ui.tiptapEditor.altText')"
+                      @press-enter="applyAltText"
+                    />
+                    <a-button
+                      size="small"
+                      type="primary"
+                      :aria-label="t('admin9Ui.tiptapEditor.applyAlt')"
+                      @mousedown.prevent
+                      @click="applyAltText"
+                    >
+                      {{ t('admin9Ui.tiptapEditor.apply') }}
+                    </a-button>
+                  </div>
+                </div>
+              </template>
+            </a-popover>
+            <a-tooltip
+              :content="
                 selectedMedia.type === 'blockImage'
                   ? t('admin9Ui.tiptapEditor.convertInline')
                   : t('admin9Ui.tiptapEditor.convertBlock')
               "
-              @mousedown.prevent
-              @click="convertSelectedImage"
             >
-              <template #icon><icon-swap /></template>
-            </a-button>
-          </a-tooltip>
-        </template>
-
-        <AFilePicker
-          v-if="resolvedFileService"
-          v-model="replacementPickerValue"
-          class="a9-tiptap-editor__media-picker a9-tiptap-editor__replacement-picker"
-          data-media-replace
-          :file-types="[
-            selectedMedia.type === 'blockImage' || selectedMedia.type === 'inlineImage' ? 'image' : selectedMedia.type,
-          ]"
-          :service="resolvedFileService"
-          :can-upload="
-            selectedMedia.type === 'blockImage' || selectedMedia.type === 'inlineImage'
-              ? canUploadImage
-              : selectedMedia.type === 'video'
-              ? canUploadVideo
-              : canUploadAudio
-          "
-          @change="replaceSelectedMediaFromPicker"
-          @visible-change="onMediaPickerVisibleChange"
-        >
-          <template #trigger="{ open, disabled: pickerDisabled }">
-            <a-tooltip v-model:popup-visible="replacePickerTooltipVisible" :content="replaceMediaLabel">
               <a-button
                 size="mini"
                 type="text"
-                :disabled="disabled || pickerDisabled"
-                :aria-label="replaceMediaLabel"
+                :aria-label="
+                  selectedMedia.type === 'blockImage'
+                    ? t('admin9Ui.tiptapEditor.convertInline')
+                    : t('admin9Ui.tiptapEditor.convertBlock')
+                "
                 @mousedown.prevent
-                @click="open"
+                @click="convertSelectedImage"
               >
-                <template #icon><icon-refresh /></template>
+                <template #icon><icon-swap /></template>
               </a-button>
             </a-tooltip>
           </template>
-        </AFilePicker>
 
-        <a-tooltip :content="deleteMediaLabel">
-          <a-button
-            size="mini"
-            type="text"
-            status="danger"
-            :aria-label="deleteMediaLabel"
-            @mousedown.prevent
-            @click="deleteSelectedMedia"
+          <AFilePicker
+            v-if="resolvedFileService"
+            v-model="replacementPickerValue"
+            class="a9-tiptap-editor__media-picker a9-tiptap-editor__replacement-picker"
+            data-media-replace
+            :file-types="[
+              selectedMedia.type === 'blockImage' || selectedMedia.type === 'inlineImage' ? 'image' : selectedMedia.type,
+            ]"
+            :service="resolvedFileService"
+            :can-upload="
+              selectedMedia.type === 'blockImage' || selectedMedia.type === 'inlineImage'
+                ? canUploadImage
+                : selectedMedia.type === 'video'
+                ? canUploadVideo
+                : canUploadAudio
+            "
+            @confirm="replaceSelectedMediaFromPicker"
+            @visible-change="onMediaPickerVisibleChange"
           >
-            <template #icon><icon-delete /></template>
-          </a-button>
-        </a-tooltip>
-      </div>
-    </MediaBubbleMenu>
+            <template #trigger="{ open, disabled: pickerDisabled }">
+              <a-tooltip v-model:popup-visible="replacePickerTooltipVisible" :content="replaceMediaLabel">
+                <a-button
+                  size="mini"
+                  type="text"
+                  :disabled="interactionDisabled || pickerDisabled"
+                  :aria-label="replaceMediaLabel"
+                  @mousedown.prevent
+                  @click="open"
+                >
+                  <template #icon><icon-refresh /></template>
+                </a-button>
+              </a-tooltip>
+            </template>
+          </AFilePicker>
 
-    <div v-if="showWordCount" class="a9-tiptap-editor__footer">
-      <span>
-        {{
-          maxLength > 0
-            ? t('admin9Ui.tiptapEditor.characterLimit', { count: characterCount, limit: maxLength })
-            : t('admin9Ui.tiptapEditor.characterCount', { count: characterCount })
-        }}
-      </span>
-    </div>
+          <a-tooltip :content="deleteMediaLabel">
+            <a-button
+              size="mini"
+              type="text"
+              status="danger"
+              :aria-label="deleteMediaLabel"
+              @mousedown.prevent
+              @click="deleteSelectedMedia"
+            >
+              <template #icon><icon-delete /></template>
+            </a-button>
+          </a-tooltip>
+        </div>
+      </MediaBubbleMenu>
+
+      <div v-if="showWordCount" class="a9-tiptap-editor__footer">
+        <span>
+          {{
+            maxLength > 0
+              ? t('admin9Ui.tiptapEditor.characterLimit', { count: characterCount, limit: maxLength })
+              : t('admin9Ui.tiptapEditor.characterCount', { count: characterCount })
+          }}
+        </span>
+      </div>
+    </FormItem>
   </div>
 </template>
 
@@ -1759,6 +1783,8 @@
   .a9-tiptap-editor {
     display: flex;
     flex-direction: column;
+    box-sizing: border-box;
+    width: 100%;
     min-width: 0;
     overflow: hidden;
     background: var(--color-bg-2);
@@ -1769,6 +1795,10 @@
     &.is-focused:not(.is-disabled, .is-readonly) {
       border-color: rgb(var(--primary-6));
       box-shadow: 0 0 0 2px rgb(var(--primary-6) / 10%);
+    }
+
+    &.is-error {
+      border-color: rgb(var(--danger-6));
     }
 
     &.is-disabled {
@@ -1796,6 +1826,7 @@
     }
   }
 
+  .a9-tiptap-editor__toolbar :deep(.a9-text-format-size.arco-btn-size-small),
   .a9-tiptap-editor__block-menu.arco-btn-size-small {
     width: auto;
     min-width: 86px;

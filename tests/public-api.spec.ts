@@ -13,8 +13,8 @@ import type {
   CoordinateValue,
   FilePickerAdapter,
   AFilterFormProps,
-  Action,
-  Slot,
+  ProTableAction,
+  ProTableActionSlot,
   AProTableEmits,
   AProTableExposed,
   AProTableProps,
@@ -121,12 +121,12 @@ describe('package public API', () => {
     const params: ProTableFetcherParams = { page: 1, pageSize: 10 };
     const result: ProTableFetcherResult<Row> = await fetcher(params);
     const permission: ProTablePermission = (name) => name === 'records.update';
-    const action: Action<Row> = {
+    const action: ProTableAction<Row> = {
       label: 'Edit',
       permissions: ['records.update'],
       onClick: vi.fn(),
     };
-    const slot: Slot<Row> = {
+    const slot: ProTableActionSlot<Row> = {
       record: { id: 1 },
       column: { dataIndex: 'actions' },
       rowIndex: 0,

@@ -31,19 +31,20 @@
 
 ## Props
 
-| Prop            | 类型                           | 默认值      | 说明                           |
-| --------------- | ------------------------------ | ----------- | ------------------------------ |
-| `modelValue`    | `CoordinateValue \| undefined` | `undefined` | 已提交坐标，纬度在前、经度在后 |
-| `apiKey`        | `string`                       | 必填        | 腾讯地图 JavaScript API GL Key |
-| `center`        | `CoordinateValue`              | 北京中关村  | 无已选值时的地图中心           |
-| `zoom`          | `number`                       | `15`        | 初始缩放级别，限制为 3 到 20   |
-| `precision`     | `number`                       | `6`         | 坐标小数位，限制为 0 到 10     |
-| `height`        | `number \| string`             | `420`       | 地图高度；数字按 px 处理       |
-| `placeholder`   | `string`                       | locale 文案 | 外部输入框占位文本             |
-| `allowClear`    | `boolean`                      | `false`     | 是否允许清空已提交坐标         |
-| `disabled`      | `boolean`                      | `false`     | 禁用组件                       |
-| `readonly`      | `boolean`                      | `false`     | 只读显示，不允许打开或清空     |
-| `searchEnabled` | `boolean`                      | `true`      | 是否显示腾讯地点搜索           |
+| Prop          | 类型                           | 默认值      | 说明                           |
+| ------------- | ------------------------------ | ----------- | ------------------------------ |
+| `modelValue`  | `CoordinateValue \| undefined` | `undefined` | 已提交坐标，纬度在前、经度在后 |
+| `apiKey`      | `string`                       | 必填        | 腾讯地图 JavaScript API GL Key |
+| `center`      | `CoordinateValue`              | 北京中关村  | 无已选值时的地图中心           |
+| `zoom`        | `number`                       | `15`        | 初始缩放级别，限制为 3 到 20   |
+| `precision`   | `number`                       | `6`         | 坐标小数位，限制为 0 到 10     |
+| `height`      | `number \| string`             | `420`       | 地图高度；数字按 px 处理       |
+| `placeholder` | `string`                       | locale 文案 | 外部输入框占位文本             |
+| `allowClear`  | `boolean`                      | `false`     | 是否允许清空已提交坐标         |
+| `disabled`    | `boolean`                      | `false`     | 禁用组件                       |
+| `readonly`    | `boolean`                      | `false`     | 只读显示，不允许打开或清空     |
+| `allowSearch` | `boolean`                      | `true`      | 是否显示腾讯地点搜索           |
+| `size`        | `Size`                         | 继承        | 输入触发器尺寸                 |
 
 ## Events
 
@@ -75,3 +76,11 @@
 - `open(): void`
 - `close(): void`
 - `clear(): void`
+
+## 表单与实例方法
+
+`size?: Size` 控制输入触发器，未设置时继承 Form／Arco 配置；地图工作区由 height 控制。disabled 同时继承外层 Form，readonly 不允许打开或清空。触发输入支持 Enter／ArrowDown 打开，弹窗关闭后恢复触发器焦点。
+
+公开 `open()`、`close()`、`clear()`、`focus()`、`blur()`，类型为 `ACoordinatePickerExposed`；Props 为 `ACoordinatePickerProps`。确认实际改变坐标时触发字段 change 校验，弹窗搜索和经纬度草稿不触发外层校验。原生输入属性透传到默认 Input，class/style 位于根节点；自定义 trigger 自行接管输入可访问名称。
+
+外部模型替换会关闭当前草稿，避免旧草稿覆盖新值。打开期间 apiKey、allowSearch 或 zoom 变化会重新初始化地图实例；空搜索立即结束加载并使旧响应失效。SDK 在页面级共享，apiKey 用于首次由组件加载 SDK；如果宿主已加载 SDK，则沿用宿主的配置。更换已加载 SDK 的 Key 需要宿主重新载入页面，销毁地图实例不会重置 SDK 凭据。

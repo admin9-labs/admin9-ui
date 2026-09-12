@@ -93,6 +93,22 @@ describe('AFileUploader', () => {
     latestCustomRequest = undefined;
   });
 
+  it('classifies non-string adapter URLs as invalid results', async () => {
+    const uploader = mountUploader({
+      upload: async () => validItem('invalid-url', 'image.png', { url: 42 as unknown as string }),
+    });
+    const result = await uploader.upload([new File(['image'], 'image.png')]);
+    expect(result.failed[0].reason).toBe('invalid-result');
+  });
+
+  it('rejects executable URLs returned by an upload adapter', async () => {
+    // eslint-disable-next-line no-script-url -- Adversarial adapter result must be rejected.
+    const uploader = mountUploader({ upload: async () => validItem('unsafe', 'unsafe.png', { url: 'javascript:alert(1)' }) });
+    const result = await uploader.upload([new File(['image'], 'unsafe.png')]);
+    expect(result.succeeded).toEqual([]);
+    expect(result.failed[0].reason).toBe('invalid-result');
+  });
+
   it('uploads a local batch through the single-file capability and keeps partial success', async () => {
     const complete = vi.fn<(result: FileUploadBatchResult) => void>();
     const service: FileUploadCapability = {
@@ -254,7 +270,7 @@ describe('AFileUploader', () => {
     };
     const uploader = mountUploader(
       service,
-      { maxFiles: 2, maxFileSize: 4 },
+      { limit: 2, maxFileSize: 4 },
       { onComplete: complete as (...args: never[]) => void }
     );
 

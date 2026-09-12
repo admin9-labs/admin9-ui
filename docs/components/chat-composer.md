@@ -56,16 +56,18 @@
 
 ## Props、Events、方法
 
-| 属性           | 类型                                     | 默认值                       | 说明                                   |
-| -------------- | ---------------------------------------- | ---------------------------- | -------------------------------------- |
-| modelValue     | `string`                                 | 必填                         | 受控文本                               |
-| size           | `'small' \| 'medium' \| 'large'`         | `'large'`                    | Card 密度及默认操作按钮尺寸            |
-| generating     | `boolean`                                | `false`                      | 禁止发送，主按钮变为停止；仍可编辑草稿 |
-| disabled       | `boolean`                                | `false`                      | 禁用输入及默认按钮，优先级最高         |
-| submitDisabled | `boolean`                                | `false`                      | 仅禁止发送，不禁用输入和停止           |
-| placeholder    | `string`                                 | 国际化默认文案               | 输入提示及可访问名称                   |
-| autoSize       | `{ minRows?: number; maxRows?: number }` | `{ minRows: 2, maxRows: 6 }` | 输入行数范围                           |
-| maxLength      | `number`                                 | 不限制                       | 输入及提交长度限制                     |
+| 属性            | 类型                                                | 默认值                       | 说明                                   |
+| --------------- | --------------------------------------------------- | ---------------------------- | -------------------------------------- |
+| modelValue      | `string`                                            | 必填                         | 受控文本                               |
+| size            | `'mini' \| 'small' \| 'medium' \| 'large'`          | `'large'`                    | Card 密度及默认操作按钮尺寸            |
+| generating      | `boolean`                                           | `false`                      | 禁止发送，主按钮变为停止；仍可编辑草稿 |
+| disabled        | `boolean`                                           | `false`                      | 禁用输入及默认按钮，优先级最高         |
+| submitDisabled  | `boolean`                                           | `false`                      | 仅禁止发送，不禁用输入和停止           |
+| placeholder     | `string`                                            | 国际化默认文案               | 输入提示及可访问名称                   |
+| autoSize        | `boolean \| { minRows?: number; maxRows?: number }` | `{ minRows: 2, maxRows: 6 }` | 输入行数范围                           |
+| maxLength       | `number`                                            | 不限制                       | 输入及提交长度限制                     |
+| `readonly`      | `boolean`                                           | `false`                      | 禁止输入、发送和停止                   |
+| `textareaAttrs` | `TextareaHTMLAttributes`                            | -                            | 原生 textarea 属性，含自定义可访问名称 |
 
 | 事件              | 参数            | 说明             |
 | ----------------- | --------------- | ---------------- |
@@ -102,9 +104,9 @@
 
 ## 插槽组合
 
-`header`、`attachments`、`toolbar` 均接收 `{ size, disabled, submitDisabled, generating }`。自定义控件由应用根据这些状态和尺寸呈现。
+`header`、`attachments`、`toolbar` 均接收 `{ size, disabled, readonly, submitDisabled, generating }`。自定义控件由应用根据这些状态和尺寸呈现。
 
-`action` 插槽额外提供 `{ canSubmit, activate }`，用于替换默认发送／停止按钮。按钮禁用条件为 `disabled || (!generating && !canSubmit)`，点击调用 `activate()`，仍经过空白、长度、禁用和生成状态守卫。组件不会自动执行请求。
+`action` 插槽额外提供 `{ canSubmit, activate }`，用于替换默认发送／停止按钮。按钮禁用条件为 `disabled || readonly || (!generating && !canSubmit)`，点击调用 `activate()`，仍经过空白、长度、禁用和生成状态守卫。组件不会自动执行请求。
 
 ```vue
 <AChatComposer v-model="draft" :generating="generating" :submit-disabled="uploading" @submit="submit" @stop="stop">
@@ -156,3 +158,13 @@
 ```
 
 高度和消息区布局属于应用；组件库不提供会话容器、抽屉、请求或状态管理。需要展示模型、权限或更多工具时，通过 `toolbar` 或 `action` 插槽组合，组件不定义业务字段。
+
+## 原生输入与表单集成
+
+`readonly?: boolean` 默认 false，阻止输入、发送和停止；`textareaAttrs?: TextareaHTMLAttributes` 用于 id、name、aria-label、aria-describedby 等原生 textarea 属性，显式 aria-label 优先于默认文案。class/style 仍作用于组合根节点。
+
+转发 Arco Textarea 的 `input(value, event)`、`change(value, event)`、`focus(event)`、`blur(event)`；change 保持官方输入提交语义，与发送事件 submit 分离。实例提供 focus()/blur()，类型为 AChatComposerExposed。
+
+disabled 继承 Form，作用于输入、默认按钮和自定义 action 的 activate 守卫。所有作用域插槽额外提供 readonly。size 使用官方 Size；显式值、Form 尺寸优先，组合布局最终默认 large。mini 内边距为 6/8px，按钮为 Arco mini，输入字号保持 14px。
+
+maxLength 未设置或小于等于 0 时不限制文本长度。组件将负值归一化为 Arco Textarea 的无限制值 0，再统一用于输入和提交校验。autoSize 支持 false／true 或行数配置对象，默认仍为 2–6 行。

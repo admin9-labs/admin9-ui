@@ -1,10 +1,10 @@
 <script setup lang="ts" generic="T extends object = Record<string, unknown>">
-  import { computed, ref, shallowRef, watch, useSlots } from 'vue';
+  import { computed, onBeforeUnmount, ref, shallowRef, watch, useSlots } from 'vue';
   import { useI18n } from 'vue-i18n';
-  import type { TableColumnData } from '@arco-design/web-vue';
+  import type { Size, TableColumnData } from '@arco-design/web-vue';
   import { useLoading } from '../../hooks';
   import type {
-    Action,
+    ProTableAction,
     AProTableEmits,
     ProTablePaginationOptions,
     ProTableFetcher,
@@ -34,6 +34,7 @@
   const props = withDefaults(
     defineProps<{
       columns: TableColumnData[];
+      size?: Size;
       /** 行 key 字段名，默认 'id'（不硬编码，由调用方决定） */
       rowKey?: string;
       /** 数据获取函数，注入式（库不调具体后端） */
@@ -55,14 +56,14 @@
       surface?: boolean;
       /** 是否显式追加 action 列 */
       showAction?: boolean;
-      /** 配置式行操作，按声明顺序渲染在 actions/action 插槽之前 */
-      actions?: Action<T>[];
+      /** 配置式行操作，按声明顺序渲染在 actions 插槽之前 */
+      actions?: ProTableAction<T>[];
       /** 单项权限判断；权限数组中任一权限通过即可显示操作 */
       permission?: ProTablePermission;
-      /** 多选模式（开启后通过 v-model:selectedRowKeys 受控） */
+      /** 多选模式（开启后通过 v-model:selectedKeys 受控） */
       multiple?: boolean;
-      /** 选中行 key 数组（v-model:selectedRowKeys） */
-      selectedRowKeys?: ProTableRowKey[];
+      /** 选中行 key 数组（v-model:selectedKeys） */
+      selectedKeys?: ProTableRowKey[];
       /** 允许消费方配置的多选展示和当前页行为 */
       selectionOptions?: ProTableSelectionOptions;
     }>(),
@@ -76,7 +77,7 @@
       showAction: false,
       actions: () => [],
       multiple: false,
-      selectedRowKeys: () => [],
+      selectedKeys: () => [],
     }
   );
 
@@ -116,11 +117,12 @@
   let invalidatedThrough = 0;
   let requestLoading = false;
   let refreshHandlerLoading = false;
+  let disposed = false;
 
   /** action 列内部标识，避免调用方已自带 action 列时重复追加 */
   const ACTION_COLUMN_KEY = 'a9-pro-table-action';
 
-  const canUseAction = (action: Action<T>) => {
+  const canUseAction = (action: ProTableAction<T>) => {
     if (!action.permissions || (Array.isArray(action.permissions) && action.permissions.length === 0)) return true;
     const { permission } = props;
     if (!permission) return false;
@@ -129,9 +131,7 @@
   };
 
   const visibleActions = computed(() => props.actions.filter(canUseAction));
-  const hasActionContent = computed(
-    () => props.showAction || visibleActions.value.length > 0 || Boolean(slots.actions) || Boolean(slots.action)
-  );
+  const hasActionContent = computed(() => props.showAction || visibleActions.value.length > 0 || Boolean(slots.actions));
 
   /** 最终列：有配置式操作或操作插槽时自动追加，并保留 showAction 显式控制。 */
   const mergedColumns = computed<TableColumnData[]>(() => {
@@ -156,13 +156,9 @@
   const getRowKey = (row: T) => (row as Record<string, unknown>)[props.rowKey] as ProTableRowKey;
   const emitSelection = (keys: ProTableRowKey[]) => {
     const nextKeys = [...keys];
-    if (isSameSelection(props.selectedRowKeys, nextKeys)) return;
-    emit('update:selectedRowKeys', nextKeys);
-    const selectedKeys = new Set(nextKeys);
-    emit(
-      'select',
-      data.value.filter((row) => selectedKeys.has(getRowKey(row)))
-    );
+    if (isSameSelection(props.selectedKeys, nextKeys)) return;
+    emit('update:selectedKeys', nextKeys);
+    emit('selectionChange', nextKeys);
   };
   const clearOnlyCurrentSelection = () => {
     if (props.multiple && props.selectionOptions?.onlyCurrent) emitSelection([]);
@@ -170,20 +166,18 @@
   const reconcileOnlyCurrentSelection = () => {
     if (!props.multiple || !props.selectionOptions?.onlyCurrent) return;
     const currentKeys = new Set(data.value.map(getRowKey));
-    emitSelection(props.selectedRowKeys.filter((key) => currentKeys.has(key)));
+    emitSelection(props.selectedKeys.filter((key) => currentKeys.has(key)));
   };
   const rowSelection = computed(() => {
     if (!props.multiple) return undefined;
     return {
-      selectedRowKeys: props.selectedRowKeys,
       showCheckedAll: props.selectionOptions?.showCheckedAll,
       onlyCurrent: props.selectionOptions?.onlyCurrent,
-      onChange: (keys: ProTableRowKey[]) => emitSelection(keys),
     };
   });
 
   const updateLoading = (value: boolean) => {
-    if (loading.value === value) return;
+    if (disposed || loading.value === value) return;
     setLoading(value);
     emit('loadingChange', value);
   };
@@ -205,6 +199,7 @@
   };
 
   const doRequest = async ({ clearCurrentData = false }: ProTableRequestOptions = {}): Promise<void> => {
+    if (disposed) return;
     const request = latestRequest + 1;
     latestRequest = request;
     if (clearCurrentData) data.value = [];
@@ -264,9 +259,8 @@
     fetchDataFromUi();
   };
 
-  /** 重新拉取数据；兼容 boolean，并支持一次应用重置页码和清空当前数据。 */
-  const refresh = (options: boolean | ProTableRefreshOptions = false) => {
-    const { resetPage = false, clearCurrentData = false } = typeof options === 'boolean' ? { resetPage: options } : options;
+  /** 重新拉取数据，可同时重置页码和清空当前数据。 */
+  const refresh = ({ resetPage = false, clearCurrentData = false }: ProTableRefreshOptions = {}) => {
     if (resetPage) {
       clearOnlyCurrentSelection();
       paginationState.value.current = 1;
@@ -291,10 +285,27 @@
     }
   };
 
-  /** 清空多选（受控：通知父组件清空 selectedRowKeys） */
+  /** 清空多选（受控：通知父组件清空 selectedKeys） */
+  const onSelect = (keys: ProTableRowKey[], key: ProTableRowKey, record: T) => emit('select', keys, key, record);
+  const onSelectAll = (checked: boolean) => emit('selectAll', checked);
   const clearSelection = () => emitSelection([]);
 
-  watch(() => props.fetcher, fetchDataFromUi, { immediate: true });
+  watch(
+    () => [props.fetcher, props.pageSize, props.pagination] as const,
+    (value, previous) => {
+      if (previous && (value[1] !== previous[1] || value[2] !== previous[2])) {
+        paginationState.value.current = 1;
+        paginationState.value.pageSize = props.pageSize;
+        clearOnlyCurrentSelection();
+      }
+      fetchDataFromUi();
+    },
+    { immediate: true }
+  );
+  onBeforeUnmount(() => {
+    disposed = true;
+    invalidate();
+  });
 
   defineExpose({ doRequest, refresh, invalidate, clearSelection });
 </script>
@@ -313,13 +324,17 @@
           v-if="searchable"
           v-model="keyword"
           class="a9-pro-table__search"
+          :size="size"
           :placeholder="t('admin9Ui.proTable.searchPlaceholder')"
           allow-clear
           @search="handleSearch"
+          @press-enter="handleSearch"
+          @clear="handleSearch"
         />
         <a-tooltip v-if="showRefresh" :content="t('admin9Ui.proTable.refresh')">
           <a-button
             class="a9-pro-table__refresh"
+            :size="size"
             shape="circle"
             :loading="loading"
             :disabled="loading"
@@ -336,12 +351,17 @@
     <a-table
       v-bind="$attrs"
       :columns="mergedColumns"
+      :size="size"
       :data="data"
       :loading="loading"
       :pagination="tablePagination"
       :row-key="rowKey"
       :row-selection="rowSelection"
-      :bordered="false"
+      :selected-keys="selectedKeys"
+      :bordered="$attrs.bordered ?? false"
+      @update:selected-keys="emitSelection"
+      @select="onSelect"
+      @select-all="onSelectAll"
       @page-change="onPageChange"
       @page-size-change="onPageSizeChange"
     >
@@ -358,7 +378,6 @@
             {{ action.label }}
           </a-button>
           <slot name="actions" v-bind="scoped" />
-          <slot name="action" v-bind="scoped" />
         </a-space>
       </template>
       <template
@@ -453,10 +472,7 @@
     }
 
     &__refresh {
-      flex: 0 0 32px;
-      width: 32px;
-      height: 32px;
-      padding: 0;
+      flex: none;
     }
 
     @media (width <= 575px) {

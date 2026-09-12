@@ -144,6 +144,22 @@ describe('AChatComposer', () => {
     activate?.();
     expect(stop).toHaveBeenCalledOnce();
   });
+  it('does not truncate input when the declared unlimited limit is negative', async () => {
+    state.maxLength = -1;
+    await nextTick();
+    input().value = 'Complete text';
+    input().dispatchEvent(new Event('input', { bubbles: true }));
+    expect(update).toHaveBeenCalledWith('Complete text');
+  });
+
+  it('treats a zero character limit as unlimited like Arco Textarea', async () => {
+    state.modelValue = 'Unlimited';
+    state.maxLength = 0;
+    await nextTick();
+    key();
+    expect(submit).toHaveBeenCalledWith('Unlimited');
+  });
+
   it('rejects externally supplied overlong text and accepts the exact limit', async () => {
     state.maxLength = 2;
     state.modelValue = '三个字';
@@ -202,7 +218,7 @@ describe('AChatComposer', () => {
     expect(stop).toHaveBeenCalledOnce();
     expect(submit).not.toHaveBeenCalled();
     expect(document.querySelector('[data-toolbar-slot]')?.getAttribute('data-toolbar-slot')).toBe(
-      JSON.stringify({ size: 'large', disabled: false, submitDisabled: true, generating: true })
+      JSON.stringify({ size: 'large', disabled: false, readonly: false, submitDisabled: true, generating: true })
     );
   });
   it('separates submit restriction from overall disabled state', async () => {

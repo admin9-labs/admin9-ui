@@ -61,7 +61,7 @@ describe('AChatComposer style contract', () => {
     const actionDeclarations = composerSource.match(/&__action\s*{([^}]*)}/)?.[1];
 
     expect(composerSource).toContain('shape="circle"');
-    expect(composerSource).toContain(':size="size"');
+    expect(composerSource).toContain(':size="resolvedSize"');
     expect(actionDeclarations).toContain('flex: none;');
     expect(actionDeclarations).not.toContain('width:');
     expect(actionDeclarations).not.toContain('height:');

@@ -1,7 +1,24 @@
 <script setup lang="ts">
-  import { computed, nextTick, onBeforeUnmount, ref, useAttrs, watch, type CSSProperties, type HTMLAttributes } from 'vue';
+  import {
+    computed,
+    nextTick,
+    onBeforeUnmount,
+    ref,
+    toRef,
+    useAttrs,
+    watch,
+    type CSSProperties,
+    type HTMLAttributes,
+  } from 'vue';
+  import { FormItem, useFormItem } from '@arco-design/web-vue';
   import { useI18n } from 'vue-i18n';
-  import type { CoordinateSelection, CoordinateValue, TencentMapSuggestion } from './types';
+  import type {
+    ACoordinatePickerProps,
+    ACoordinatePickerExposed,
+    CoordinateSelection,
+    CoordinateValue,
+    TencentMapSuggestion,
+  } from './types';
   import {
     loadTencentMap,
     readTencentLatLng,
@@ -10,20 +27,6 @@
     type TencentMultiMarkerLike,
     type TencentSuggestionLike,
   } from './tencent-map';
-
-  interface ACoordinatePickerProps {
-    modelValue?: CoordinateValue;
-    apiKey: string;
-    center?: CoordinateValue;
-    zoom?: number;
-    precision?: number;
-    height?: number | string;
-    placeholder?: string;
-    allowClear?: boolean;
-    disabled?: boolean;
-    readonly?: boolean;
-    searchEnabled?: boolean;
-  }
 
   defineOptions({ name: 'ACoordinatePicker', inheritAttrs: false });
 
@@ -37,7 +40,7 @@
     allowClear: false,
     disabled: false,
     readonly: false,
-    searchEnabled: true,
+    allowSearch: true,
   });
 
   const emit = defineEmits<{
@@ -59,8 +62,13 @@
     }) => unknown;
   }>();
 
+  const { mergedDisabled, mergedSize, eventHandlers } = useFormItem({
+    disabled: toRef(props, 'disabled'),
+    size: toRef(props, 'size'),
+  });
   const { t } = useI18n();
   const attrs = useAttrs();
+  const triggerRef = ref<{ focus(): void; blur(): void }>();
   const visible = ref(false);
   const mapContainerRef = ref<HTMLElement>();
   const mapLoading = ref(false);
@@ -80,7 +88,7 @@
   let mapGeneration = 0;
   let searchGeneration = 0;
 
-  const interactionDisabled = computed(() => props.disabled || props.readonly);
+  const interactionDisabled = computed(() => mergedDisabled.value || props.readonly);
   const normalizedPrecision = computed(() => Math.min(10, Math.max(0, Math.trunc(props.precision))));
   const coordinateStep = computed(() => 1 / 10 ** normalizedPrecision.value);
   const mapHeight = computed(() => (typeof props.height === 'number' ? `${props.height}px` : props.height));
@@ -169,10 +177,10 @@
     const generation = mapGeneration;
     mapLoading.value = true;
     try {
-      const sdk = await loadTencentMap(props.apiKey.trim(), { requireSuggestion: props.searchEnabled });
+      const sdk = await loadTencentMap(props.apiKey.trim(), { requireSuggestion: props.allowSearch });
       if (generation !== mapGeneration || !visible.value) return;
       await nextTick();
-      if (!mapContainerRef.value) return;
+      if (generation !== mapGeneration || !visible.value || !mapContainerRef.value) return;
 
       tencentMap = sdk;
       const initialCenter = normalizeCoordinate(draft.value) ||
@@ -234,6 +242,7 @@
     if (interactionDisabled.value || !normalizeCoordinate(props.modelValue)) return;
     emit('update:modelValue', undefined);
     emit('change', undefined);
+    eventHandlers.value?.onChange?.();
     emit('clear');
   };
 
@@ -252,6 +261,7 @@
     if (interactionDisabled.value) return;
     searchGeneration += 1;
     const generation = searchGeneration;
+    searchLoading.value = false;
     const normalizedKeyword = keyword.trim();
     searchKeyword.value = normalizedKeyword;
     searchError.value = '';
@@ -306,6 +316,7 @@
     if (!coordinatesEqual(normalizeCoordinate(props.modelValue), value)) {
       emit('update:modelValue', value);
       emit('change', value);
+      eventHandlers.value?.onChange?.();
     }
     emit('confirm', { ...draft.value });
     close();
@@ -328,20 +339,44 @@
     { flush: 'post' }
   );
 
+  watch(
+    () => [props.apiKey, props.allowSearch, props.zoom] as const,
+    () => {
+      if (visible.value) initializeMap();
+    }
+  );
+  watch(
+    () => props.modelValue,
+    () => {
+      if (visible.value) close();
+    },
+    { deep: true }
+  );
+
   onBeforeUnmount(destroyMap);
-  defineExpose({ open, close, clear });
+  defineExpose<ACoordinatePickerExposed>({
+    open,
+    close,
+    clear,
+    focus: () => triggerRef.value?.focus(),
+    blur: () => triggerRef.value?.blur(),
+  });
 </script>
 
 <template>
   <div v-bind="rootAttrs" class="a9-coordinate-picker">
     <slot name="trigger" :open="open" :clear="clear" :value="normalizeCoordinate(modelValue)" :disabled="interactionDisabled">
       <a-input
+        ref="triggerRef"
+        :size="mergedSize"
         v-bind="forwardedInputAttrs"
         :model-value="displayValue"
         :placeholder="placeholder || t('admin9Ui.coordinatePicker.placeholder')"
-        :disabled="disabled"
+        :disabled="mergedDisabled"
         :readonly="true"
         class="a9-coordinate-picker__trigger"
+        @keydown.enter.prevent="open"
+        @keydown.down.prevent="open"
         @click="open"
       >
         <template v-if="allowClear && displayValue && !interactionDisabled" #suffix>
@@ -355,7 +390,7 @@
           </button>
         </template>
         <template #append>
-          <a-button type="primary" :disabled="interactionDisabled" @click.stop="open">
+          <a-button type="primary" :disabled="interactionDisabled" :size="mergedSize" @click.stop="open">
             {{ t('admin9Ui.coordinatePicker.choose') }}
           </a-button>
         </template>
@@ -375,90 +410,96 @@
       modal-class="a9-coordinate-picker__modal"
       @ok="handleConfirm"
       @cancel="close"
+      @close="triggerRef?.focus()"
     >
-      <div class="a9-coordinate-picker__workspace">
-        <aside class="a9-coordinate-picker__sidebar">
-          <div v-if="searchEnabled" class="a9-coordinate-picker__search">
-            <a-input-search
-              v-model="searchKeyword"
-              :placeholder="t('admin9Ui.coordinatePicker.searchPlaceholder')"
-              :loading="searchLoading"
-              :disabled="interactionDisabled"
-              search-button
-              @search="handleSearch"
-            />
-            <a-alert v-if="searchError" type="warning">{{ searchError }}</a-alert>
-            <div class="a9-coordinate-picker__results" :aria-label="t('admin9Ui.coordinatePicker.searchResults')">
-              <button
-                v-for="(suggestion, index) in suggestions"
-                :key="suggestion.id || `${suggestion.title}-${index}`"
-                type="button"
-                class="a9-coordinate-picker__result"
+      <FormItem no-style :validate-trigger="[]">
+        <div class="a9-coordinate-picker__workspace">
+          <aside class="a9-coordinate-picker__sidebar">
+            <div v-if="allowSearch" class="a9-coordinate-picker__search">
+              <a-input-search
+                v-model="searchKeyword"
+                :placeholder="t('admin9Ui.coordinatePicker.searchPlaceholder')"
+                :loading="searchLoading"
                 :disabled="interactionDisabled"
-                :class="{
-                  'is-selected':
-                    draft?.source === 'search' &&
-                    draft.latitude === suggestion.location.latitude &&
-                    draft.longitude === suggestion.location.longitude,
-                }"
-                @click="selectSuggestion(suggestion)"
-              >
-                <strong>{{ suggestion.title }}</strong>
-                <span v-if="suggestion.address">{{ suggestion.address }}</span>
-                <small v-if="suggestion.category">{{ suggestion.category }}</small>
-              </button>
-              <a-empty
-                v-if="searchKeyword && !searchLoading && !searchError && suggestions.length === 0"
-                :description="t('admin9Ui.coordinatePicker.noResults')"
+                search-button
+                @search="handleSearch"
+                @press-enter="handleSearch()"
               />
+              <a-alert v-if="searchError" type="warning">{{ searchError }}</a-alert>
+              <div class="a9-coordinate-picker__results" :aria-label="t('admin9Ui.coordinatePicker.searchResults')">
+                <button
+                  v-for="(suggestion, index) in suggestions"
+                  :key="suggestion.id || `${suggestion.title}-${index}`"
+                  type="button"
+                  class="a9-coordinate-picker__result"
+                  :disabled="interactionDisabled"
+                  :class="{
+                    'is-selected':
+                      draft?.source === 'search' &&
+                      draft.latitude === suggestion.location.latitude &&
+                      draft.longitude === suggestion.location.longitude,
+                  }"
+                  @click="selectSuggestion(suggestion)"
+                >
+                  <strong>{{ suggestion.title }}</strong>
+                  <span v-if="suggestion.address">{{ suggestion.address }}</span>
+                  <small v-if="suggestion.category">{{ suggestion.category }}</small>
+                </button>
+                <a-empty
+                  v-if="searchKeyword && !searchLoading && !searchError && suggestions.length === 0"
+                  :description="t('admin9Ui.coordinatePicker.noResults')"
+                />
+              </div>
             </div>
-          </div>
 
-          <div class="a9-coordinate-picker__coordinates">
-            <div class="a9-coordinate-picker__coordinate-field">
-              <label>{{ t('admin9Ui.coordinatePicker.latitude') }}</label>
-              <a-input-number
-                v-model="latitudeInput"
-                :min="-90"
-                :max="90"
-                :precision="normalizedPrecision"
-                :step="coordinateStep"
-                :disabled="interactionDisabled"
-                hide-button
-                @change="handleManualCoordinate"
-              />
+            <div class="a9-coordinate-picker__coordinates">
+              <div class="a9-coordinate-picker__coordinate-field">
+                <label>{{ t('admin9Ui.coordinatePicker.latitude') }}</label>
+                <a-input-number
+                  v-model="latitudeInput"
+                  :aria-label="t('admin9Ui.coordinatePicker.latitude')"
+                  :min="-90"
+                  :max="90"
+                  :precision="normalizedPrecision"
+                  :step="coordinateStep"
+                  :disabled="interactionDisabled"
+                  hide-button
+                  @change="handleManualCoordinate"
+                />
+              </div>
+              <div class="a9-coordinate-picker__coordinate-field">
+                <label>{{ t('admin9Ui.coordinatePicker.longitude') }}</label>
+                <a-input-number
+                  v-model="longitudeInput"
+                  :aria-label="t('admin9Ui.coordinatePicker.longitude')"
+                  :min="-180"
+                  :max="180"
+                  :precision="normalizedPrecision"
+                  :step="coordinateStep"
+                  :disabled="interactionDisabled"
+                  hide-button
+                  @change="handleManualCoordinate"
+                />
+              </div>
+              <p>{{ t('admin9Ui.coordinatePicker.mapHint') }}</p>
             </div>
-            <div class="a9-coordinate-picker__coordinate-field">
-              <label>{{ t('admin9Ui.coordinatePicker.longitude') }}</label>
-              <a-input-number
-                v-model="longitudeInput"
-                :min="-180"
-                :max="180"
-                :precision="normalizedPrecision"
-                :step="coordinateStep"
-                :disabled="interactionDisabled"
-                hide-button
-                @change="handleManualCoordinate"
-              />
-            </div>
-            <p>{{ t('admin9Ui.coordinatePicker.mapHint') }}</p>
-          </div>
-        </aside>
+          </aside>
 
-        <div class="a9-coordinate-picker__map-shell" :style="mapStyle">
-          <div ref="mapContainerRef" class="a9-coordinate-picker__map" />
-          <div v-if="mapLoading" class="a9-coordinate-picker__map-state">
-            <a-spin :tip="t('admin9Ui.coordinatePicker.mapLoading')" />
-          </div>
-          <div v-else-if="mapError" class="a9-coordinate-picker__map-state">
-            <a-result status="warning" :title="mapError">
-              <template v-if="apiKey" #extra>
-                <a-button size="small" @click="initializeMap">{{ t('admin9Ui.coordinatePicker.retry') }}</a-button>
-              </template>
-            </a-result>
+          <div class="a9-coordinate-picker__map-shell" :style="mapStyle">
+            <div ref="mapContainerRef" class="a9-coordinate-picker__map" />
+            <div v-if="mapLoading" class="a9-coordinate-picker__map-state">
+              <a-spin :tip="t('admin9Ui.coordinatePicker.mapLoading')" />
+            </div>
+            <div v-else-if="mapError" class="a9-coordinate-picker__map-state">
+              <a-result status="warning" :title="mapError">
+                <template v-if="apiKey" #extra>
+                  <a-button size="small" @click="initializeMap">{{ t('admin9Ui.coordinatePicker.retry') }}</a-button>
+                </template>
+              </a-result>
+            </div>
           </div>
         </div>
-      </div>
+      </FormItem>
     </a-modal>
   </div>
 </template>

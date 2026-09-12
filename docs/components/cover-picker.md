@@ -8,14 +8,12 @@
 
 ```vue
 <script setup lang="ts">
-  import { reactive, ref } from 'vue';
-  import type { FormInstance } from '@arco-design/web-vue';
+  import { reactive } from 'vue';
   import { ACoverPicker } from '@admin9-labs/admin9-ui';
   import type { CoverPickerValue, FilePickerAdapter } from '@admin9-labs/admin9-ui';
 
   defineProps<{ fileService: FilePickerAdapter }>();
 
-  const formRef = ref<FormInstance>();
   const form = reactive<{ cover: CoverPickerValue }>({
     cover: { mode: 'single', images: [null] },
   });
@@ -27,13 +25,12 @@
       },
     },
   ];
-  const revalidateCover = () => formRef.value?.validateField('cover');
 </script>
 
 <template>
-  <a-form ref="formRef" :model="form">
+  <a-form :model="form">
     <a-form-item field="cover" label="展示封面" :rules="coverRules">
-      <ACoverPicker v-model="form.cover" :service="fileService" can-upload @change="revalidateCover" />
+      <ACoverPicker v-model="form.cover" :service="fileService" can-upload />
     </a-form-item>
   </a-form>
 </template>
@@ -45,7 +42,7 @@
 
 ```ts
 export type CoverMode = 'single' | 'triple' | 'none';
-export type CoverPickerSize = 'small' | 'medium' | 'large';
+export type CoverPickerSize = 'mini' | 'small' | 'medium' | 'large';
 
 export type CoverPickerValue =
   | { mode: 'none'; images: [] }
@@ -57,14 +54,15 @@ export type CoverPickerValue =
 
 ## Props
 
-| Prop | 类型 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `modelValue` | `CoverPickerValue` | `{ mode: 'single', images: [null] }` | 受控封面值 |
-| `size` | `CoverPickerSize` | `'medium'` | 封面格、图标和操作按钮尺寸 |
-| `service` | `FilePickerAdapter` | 插件 `fileService` | 使用点优先的后端无关 adapter |
-| `canUpload` | `boolean` | `false` | 在文件选择弹窗显示上传入口 |
-| `accept` | `string` | `'image/*'` | 原生文件选择提示，不代替后端校验 |
-| `disabled` | `boolean` | `false` | 禁用模式切换、选择、替换和移除；同时继承外层 Arco 表单的禁用状态 |
+| Prop         | 类型                | 默认值                               | 说明                                                             |
+| ------------ | ------------------- | ------------------------------------ | ---------------------------------------------------------------- |
+| `modelValue` | `CoverPickerValue`  | `{ mode: 'single', images: [null] }` | 受控封面值                                                       |
+| `size`       | `CoverPickerSize`   | `'medium'`                           | 封面格、图标和操作按钮尺寸                                       |
+| `service`    | `FilePickerAdapter` | 插件 `fileService`                   | 使用点优先的后端无关 adapter                                     |
+| `canUpload`  | `boolean`           | `false`                              | 在文件选择弹窗显示上传入口                                       |
+| `accept`     | `string`            | `'image/*'`                          | 原生文件选择提示，不代替后端校验                                 |
+| `disabled`   | `boolean`           | `false`                              | 禁用模式切换、选择、替换和移除；同时继承外层 Arco 表单的禁用状态 |
+| `readonly`   | `boolean`           | `false`                              | 禁止模式切换、选择和移除                                         |
 
 ## 尺寸
 
@@ -72,25 +70,25 @@ export type CoverPickerValue =
 <ACoverPicker v-model="cover" size="small" :service="fileService" />
 ```
 
-| 项目 | small | medium（默认） | large |
-| --- | --- | --- | --- |
-| 单格最大尺寸 | 120 × 90px | 160 × 120px | 200 × 150px |
-| 三图最大宽度 | 384px | 504px | 624px |
-| 加号／失败占位图标 | 26px | 34px | 42px |
-| 替换图标背景直径 | 24px | 28px | 32px |
-| 移除按钮 Arco size | mini | mini | small |
+| 项目               | small      | medium（默认） | large       |
+| ------------------ | ---------- | -------------- | ----------- |
+| 单格最大尺寸       | 120 × 90px | 160 × 120px    | 200 × 150px |
+| 三图最大宽度       | 384px      | 504px          | 624px       |
+| 加号／失败占位图标 | 26px       | 34px           | 42px        |
+| 替换图标背景直径   | 24px       | 28px           | 32px        |
+| 移除按钮 Arco size | mini       | mini           | small       |
 
 图片间距始终为 `12px`，窄容器内按 `4:3` 等比例缩小。模式选项和文件弹窗保持原有尺寸。动态切换 `size` 不会关闭弹窗、清空选择或触发值变更事件。
 
 ## Events
 
-| 事件 | 参数 | 时机 |
-| --- | --- | --- |
-| `update:modelValue` | `CoverPickerValue` | 封面值真实变化或外部值被安全校正时 |
-| `change` | `CoverPickerValue` | 与 `update:modelValue` 同次触发，便于表单重新校验 |
-| `visible-change` | `boolean` | 内部文件选择弹窗打开或关闭 |
-| `upload-success` | `FileItem` | 文件上传成功；不会自动填入封面位置 |
-| `upload-error` | `unknown` | 文件上传失败 |
+| 事件                | 参数               | 时机                                              |
+| ------------------- | ------------------ | ------------------------------------------------- |
+| `update:modelValue` | `CoverPickerValue` | 用户提交的封面值真实变化时                        |
+| `change`            | `CoverPickerValue` | 与 `update:modelValue` 同次触发，便于表单重新校验 |
+| `visible-change`    | `boolean`          | 内部文件选择弹窗打开或关闭                        |
+| `upload-success`    | `FileItem`         | 文件上传成功；不会自动填入封面位置                |
+| `upload-error`      | `unknown`          | 文件上传失败                                      |
 
 TypeScript 声明使用 `visibleChange`、`uploadSuccess`、`uploadError`；Vue 模板使用表中的 kebab-case。
 
@@ -111,3 +109,11 @@ TypeScript 声明使用 `visibleChange`、`uploadSuccess`、`uploadError`；Vue 
 预览优先使用 `thumbnail`，加载失败后回退 `url`，再次失败则显示占位。预览框固定为 `4:3` 并使用 `object-fit: cover`，不会限制、裁剪或改写原文件。
 
 `canUpload` 只是界面能力开关。adapter 和后端仍需校验文件内容、MIME、扩展名、大小、身份、资源归属和权限。
+
+## 表单与受控值
+
+`readonly?: boolean` 默认 false，与继承的 Form disabled 一起阻止模式切换、选择与移除。用户正式提交封面后触发字段 change 校验，无须额外调用 validateField。外部不合法输入仅归一化展示，不回写父模型或触发 change；下一次用户确认会提交规范后的完整封面值，即使所选图片与展示相同。上传成功只表示文件准备就绪，不自动改变封面。
+
+CoverPickerSize 使用官方 Size，增加 mini（封面最大宽 88px、添加图标 20px、替换图标 20px）；显式 size 优先，其次 Form，组合布局最终默认 medium。单独使用时封面格保持该布局默认值；Arco 模式控件仍可继承 ConfigProvider。该差异用于区分图片画布尺寸与输入控件高度。
+
+组件无额外公开方法或插槽；class/style 和原生根属性附在封面根节点，内部文件选择器不作为公共实例 API。

@@ -35,7 +35,6 @@ export type { ACoverPickerProps, CoverMode, CoverPickerSize, CoverPickerValue } 
 // 服务接口契约（供 App 实现 adapter 时 import 类型）
 export type {
   Admin9UIPluginOptions,
-  Admin9UIOptions,
   FileType,
   FileGroup,
   FileItem,
@@ -58,6 +57,11 @@ export type {
   FileUploadTaskStatus,
 } from './components/file-uploader/types';
 
+export type { AIconPickerProps, AIconPickerExposed } from './components/icon-picker/types';
+export type { ACoordinatePickerProps, ACoordinatePickerExposed } from './components/coordinate-picker/types';
+
+export type { AFilePickerProps, AFilePickerExposed, FilePickerValue, FilePickerView } from './components/file-picker/types';
+
 // locale（供 App 合并进宿主 vue-i18n）
 export { messages, localePrefix } from './locale';
 
@@ -66,6 +70,7 @@ export { arcoIconNames } from './components/icon-picker/icon-names';
 
 export type {
   ATiptapEditorProps,
+  ATiptapEditorExposed,
   TiptapValueFormat,
   TiptapDocument,
   TiptapContentError,
@@ -89,11 +94,11 @@ export type {
   TencentMapSuggestion,
 } from './components/coordinate-picker/types';
 
-export type { AFilterFormProps } from './components/filter-form/types';
+export type { AFilterFormProps, AFilterFormExposed } from './components/filter-form/types';
 
 export type {
-  Action,
-  Slot,
+  ProTableAction,
+  ProTableActionSlot,
   AProTableEmits,
   AProTableExposed,
   AProTableProps,

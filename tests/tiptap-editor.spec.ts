@@ -46,7 +46,7 @@ vi.mock('../src/components/file-picker/index.vue', async () => {
         modelValue: Object,
         fileTypes: { type: Array, default: () => ['image'] },
       },
-      emits: ['change', 'update:modelValue', 'visible-change'],
+      emits: ['confirm', 'update:modelValue', 'visible-change'],
       setup(props, { attrs, emit, slots }) {
         return () => {
           const mediaType = (props.fileTypes?.[0] ?? 'image') as keyof typeof selectedMedia;
@@ -103,7 +103,7 @@ vi.mock('../src/components/file-picker/index.vue', async () => {
                 {
                   class: 'media-picker-confirm',
                   onClick: () => {
-                    emit('change', [attrs['data-media-replace'] !== undefined ? replacementItem : selectedItem]);
+                    emit('confirm', [attrs['data-media-replace'] !== undefined ? replacementItem : selectedItem]);
                     emit('update:modelValue', selectedItem);
                   },
                 },
@@ -114,7 +114,7 @@ vi.mock('../src/components/file-picker/index.vue', async () => {
                 {
                   class: 'media-picker-mixed',
                   onClick: () =>
-                    emit('change', [
+                    emit('confirm', [
                       ...invalidItems,
                       attrs['data-media-replace'] !== undefined ? replacementItem : selectedItem,
                     ]),
@@ -125,7 +125,7 @@ vi.mock('../src/components/file-picker/index.vue', async () => {
                 'button',
                 {
                   class: 'media-picker-invalid',
-                  onClick: () => emit('change', invalidItems),
+                  onClick: () => emit('confirm', invalidItems),
                 },
                 'Confirm invalid media'
               ),
@@ -134,7 +134,7 @@ vi.mock('../src/components/file-picker/index.vue', async () => {
                 {
                   class: 'media-picker-clear',
                   onClick: () => {
-                    emit('change', []);
+                    emit('confirm', []);
                     emit('update:modelValue', undefined);
                   },
                 },

@@ -28,9 +28,9 @@
 | 导出                                       | 定位                            | 数据依赖                 |
 | ------------------------------------------ | ------------------------------- | ------------------------ |
 | default `Admin9UI`                         | 全局组件注册与默认 service 注入 | 可选文件 adapter         |
-| `AChatMessageList` | 消息、Markdown 和滚动跟随 | 受控消息数组 |
-| `AChatComposer` | 文本输入、发送及停止 | 受控输入与生成状态 |
-| `ACoverPicker` | 单图、三图及无封面选择 | `FilePickerAdapter` |
+| `AChatMessageList`                         | 消息、Markdown 和滚动跟随       | 受控消息数组             |
+| `AChatComposer`                            | 文本输入、发送及停止            | 受控输入与生成状态       |
+| `ACoverPicker`                             | 单图、三图及无封面选择          | `FilePickerAdapter`      |
 | `ACoordinatePicker`                        | 腾讯地图坐标搜索与点选          | 应用提供腾讯地图 API Key |
 | `AFilePicker`                              | 表单级文件浏览与选择            | `FilePickerAdapter`      |
 | `AFileUploader`                            | 本地批量上传队列                | `FileUploadCapability`   |
@@ -43,7 +43,7 @@
 | `arcoIconNames`                            | 图标名清单                      | Arco 图标                |
 | `@admin9-labs/admin9-ui/styles`            | 组件统一样式入口                | 无                       |
 
-`Admin9UIPluginOptions` 专指 `app.use(Admin9UI, options)` 的插件配置对象。`Admin9UIOptions` 是弃用的兼容别名。
+`Admin9UIPluginOptions` 专指 `app.use(Admin9UI, options)` 的插件配置对象。只保留该插件配置类型。
 
 组件采用 `A` 前缀以保持与 Arco 生态一致。全局安装检测到同名组件时会提示冲突；需要隔离时，应用可以按需导入并使用本地别名。
 
@@ -142,3 +142,13 @@ Vue、Arco Design Vue 和 vue-i18n 是 peer dependencies。Tiptap 和 Markdown-i
 - `0.x` 阶段的公共导出仍可能演进，不兼容调整必须记录在 CHANGELOG；
 - `A` 前缀可能与 Arco 后续组件重名，当前通过安装时检测提示风险；
 - CommonJS 入口仅在持续消费验证通过时保留，无法可靠交付时应通过新版本明确移除。
+
+## 公共 API 一致性约定
+
+以本仓库固定版本的 Arco Design Vue 发行源码为参照。相同概念优先复用官方名称、类型和事件语义；组合组件特有的结构值、确认流程、上传队列及编辑器文档模型保留明确的领域契约。
+
+受控模型回显不自动回写父组件，不触发用户 change。用户提交先更新模型再报告 change；选择草稿与正式提交分离。表单控件通过 Arco 公开 useFormItem 衔接禁用、尺寸、错误和校验，弹层内部编辑不提前校验外层字段。
+
+尺寸仅在有明确布局语义时提供，采用官方 Size 可选值。输入触发器不设置阻断宿主继承的固定默认值；复合布局可以保留有说明的独立默认密度。公共类型使用组件或领域前缀，不提供历史兼容别名。
+
+本库只包装必要能力；所有属性透传须在组件文档列明作用目标与组件拥有的保留字段。公开方法、事件载荷及 slot 参数必须与运行时一致，真实 Arco 组件测试和最终安装包消费验证共同覆盖公共契约。

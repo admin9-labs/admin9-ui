@@ -91,18 +91,28 @@
 | `cols`      | `number \| ResponsiveValue` | `{ xs: 1, sm: 1, md: 2, lg: 3, xl: 3, xxl: 3 }` | 每行最多字段数                           |
 | `fieldFlex` | `Record<string, number>`    | `{}`                                            | 按字段名设置同行宽度权重，未配置时为 `1` |
 | `loading`   | `boolean`                   | `false`                                         | 查询按钮加载状态                         |
+| `size`      | `Size`                      | 继承 Arco 配置                                  | 同时控制内部表单／表格与操作区控件       |
+| `disabled`  | `boolean`                   | `false`                                         | 禁用表单与查询／重置操作                 |
 
 数字 `cols` 在所有断点保持固定；响应式对象沿用 Arco Grid 的 `xs/sm/md/lg/xl/xxl` 规则。列数必须是正整数。
 
 ## Events
 
-| 事件     | 参数                      | 时机                                                   |
-| -------- | ------------------------- | ------------------------------------------------------ |
-| `search` | `Record<string, unknown>` | 点击查询或按 Enter，且 Arco Form 校验成功              |
-| `reset`  | 无                        | 点击重置；组件清除校验状态，但不修改模型或自动发起查询 |
+| 事件     | 参数                      | 时机                                                             |
+| -------- | ------------------------- | ---------------------------------------------------------------- |
+| `search` | `Record<string, unknown>` | 点击查询或按 Enter，且 Arco Form 校验成功                        |
+| `reset`  | 无                        | 点击重置；组件恢复 FormItem 挂载时初值并清除校验；不自动发起查询 |
 
-筛选项的业务默认值和重置后的查询时机由列表页决定。组件不会调用 `resetFields`。折叠状态由组件内部管理：字段超过两行时提供展开与收起，提交校验失败时自动展开，确保错误字段可见。
+筛选项的业务默认值和重置后的查询时机由列表页决定。组件先调用 `resetFields`，再发出 reset；应用可在 reset 回调中应用自己的业务默认值。折叠状态由组件内部管理：字段超过两行时提供展开与收起，提交校验失败时自动展开，确保错误字段可见。
 
 ## 插槽
 
 默认插槽只放筛选字段。建议直接放置 `a-form-item`；每个顶层节点按一个字段位置计算，字段内容仍可使用任意 Arco 表单控件。
+
+## Form 集成
+
+`submit`、`submit-success`、`submit-failed` 沿用 Arco Form 载荷；成功时额外发出筛选语义的 `search`，失败时展开隐藏字段。监听官方事件不会覆盖组件内部处理。
+
+透传 Form 的 size/disabled，操作按钮同步响应。layout、labelAlign、labelColProps、wrapperColProps、autoLabelWidth 由筛选布局管理。其他未声明属性交给内部 Form。
+
+实例提供 `validate`、`validateField`、`resetFields`、`clearValidate`、`setFields`、`scrollToField`，签名沿用 Arco Form；类型为 `AFilterFormExposed`。

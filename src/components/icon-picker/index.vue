@@ -1,29 +1,10 @@
 <script setup lang="ts">
-  import { computed, nextTick, ref, useAttrs, watch, type HTMLAttributes } from 'vue';
+  import { computed, nextTick, ref, toRef, useAttrs, watch, type HTMLAttributes } from 'vue';
+  import { FormItem, useFormItem } from '@arco-design/web-vue';
   import { useI18n } from 'vue-i18n';
   import { arcoIconCategories, isIconInCategory, type ArcoIconCategoryKey } from './icon-categories';
+  import type { AIconPickerProps, AIconPickerExposed } from './types';
   import { arcoIconNames } from './icon-names';
-
-  /**
-   * AIconPicker —— 图标选择器，替换菜单管理的手敲 `<a-input>`。
-   *
-   * 形态：a-popover + 网格（非弹窗），表单内轻量交互。
-   * - 触发器：只读 a-input，左侧前缀渲染当前选中图标（<component :is="modelValue">），右侧 clear。
-   * - popover 内容：顶部搜索框 + 官方分类导航 + 图标网格。
-   * - cell：<component :is="item.pascal"> 预览 + a-tooltip 显示名字，点击 emit kebab + 关闭。
-   * - 渲染依赖宿主 app.use(ArcoVueIcon) 已全局注册的 icon-* 组件，库不打包 SVG。
-   *
-   * 产出值用 kebab（'icon-dashboard'），兼容现有数据与菜单 meta.icon 渲染机制（h(compile(`<${name}/>`))）。
-   */
-  interface AIconPickerProps {
-    /** 图标名（kebab: 'icon-dashboard' 或 Pascal: 'IconDashboard'） */
-    modelValue?: string;
-    allowClear?: boolean;
-    placeholder?: string;
-    size?: 'small' | 'medium' | 'large';
-    disabled?: boolean;
-    readonly?: boolean;
-  }
 
   defineOptions({ name: 'AIconPicker', inheritAttrs: false });
 
@@ -31,7 +12,7 @@
     modelValue: '',
     allowClear: false,
     placeholder: '',
-    size: 'medium',
+    size: undefined,
     disabled: false,
     readonly: false,
   });
@@ -46,6 +27,10 @@
     icon?: (slotProps: { iconName: string; componentName: string; selected: boolean }) => unknown;
   }>();
 
+  const { mergedDisabled, mergedSize, eventHandlers } = useFormItem({
+    disabled: toRef(props, 'disabled'),
+    size: toRef(props, 'size'),
+  });
   const { t } = useI18n();
   const attrs = useAttrs();
 
@@ -57,7 +42,7 @@
   const searchRef = ref<{ focus?: () => void; $el?: HTMLElement }>();
   const panelRef = ref<HTMLElement>();
   const gridRef = ref<HTMLElement>();
-  const interactionDisabled = computed(() => props.disabled || props.readonly);
+  const interactionDisabled = computed(() => mergedDisabled.value || props.readonly);
   const rootAttrs = computed<HTMLAttributes>(() => ({
     class: attrs.class as HTMLAttributes['class'],
     style: attrs.style as HTMLAttributes['style'],
@@ -111,9 +96,10 @@
     props.modelValue === item.kebab || props.modelValue === item.pascal;
 
   const handleClear = () => {
-    if (interactionDisabled.value) return;
+    if (interactionDisabled.value || !props.modelValue) return;
     emit('update:modelValue', undefined);
     emit('change', undefined);
+    eventHandlers.value?.onChange?.();
     emit('clear');
   };
 
@@ -146,8 +132,11 @@
 
   const handleSelect = (kebab: string) => {
     if (interactionDisabled.value) return;
-    emit('update:modelValue', kebab);
-    emit('change', kebab);
+    if (selectedIcon.value?.kebab !== kebab) {
+      emit('update:modelValue', kebab);
+      emit('change', kebab);
+      eventHandlers.value?.onChange?.();
+    }
     closePopover(true);
   };
 
@@ -215,8 +204,15 @@
     else keyword.value = '';
   });
 
+  watch(interactionDisabled, (disabled) => {
+    if (disabled) closePopover();
+  });
   watch(filtered, () => {
     focusedIconIndex.value = 0;
+  });
+  defineExpose<AIconPickerExposed>({
+    focus: focusTrigger,
+    blur: () => triggerRef.value?.$el?.querySelector<HTMLInputElement>('input')?.blur(),
   });
 </script>
 
@@ -227,8 +223,8 @@
         ref="triggerRef"
         :model-value="modelValue"
         :placeholder="triggerPlaceholder"
-        :size="size"
-        :disabled="disabled"
+        :size="mergedSize"
+        :disabled="mergedDisabled"
         :input-attrs="{
           ...forwardedInputAttrs,
           'role': 'combobox',
@@ -262,62 +258,64 @@
       </a-input>
     </div>
     <template #content>
-      <div ref="panelRef" class="a9-icon-picker__panel" @keydown.capture="handlePanelKeydown">
-        <a-input-search
-          ref="searchRef"
-          v-model="keyword"
-          :placeholder="t('admin9Ui.iconPicker.searchPlaceholder')"
-          :input-attrs="{ 'data-icon-search': 'true' }"
-          allow-clear
-        />
-        <div class="a9-icon-picker__body">
-          <div class="a9-icon-picker__categories" role="group" :aria-label="t('admin9Ui.iconPicker.categoryLabel')">
-            <button
-              v-for="category in categories"
-              :key="category.key"
-              type="button"
-              class="a9-icon-picker__category"
-              :class="{ 'is-active': !hasKeyword && activeCategory === category.key }"
-              :aria-pressed="!hasKeyword && activeCategory === category.key"
-              :data-category="category.key"
-              @click="handleCategoryChange(category.key)"
-            >
-              <span>{{ category.label }}</span>
-              <span class="a9-icon-picker__category-count">{{ category.count }}</span>
-            </button>
-          </div>
-          <div class="a9-icon-picker__results">
-            <div class="a9-icon-picker__result-heading">
-              <span>{{ resultTitle }}</span>
-              <span>{{ filtered.length }}</span>
+      <FormItem no-style :validate-trigger="[]">
+        <div ref="panelRef" class="a9-icon-picker__panel" @keydown.capture="handlePanelKeydown">
+          <a-input-search
+            ref="searchRef"
+            v-model="keyword"
+            :placeholder="t('admin9Ui.iconPicker.searchPlaceholder')"
+            :input-attrs="{ 'data-icon-search': 'true' }"
+            allow-clear
+          />
+          <div class="a9-icon-picker__body">
+            <div class="a9-icon-picker__categories" role="group" :aria-label="t('admin9Ui.iconPicker.categoryLabel')">
+              <button
+                v-for="category in categories"
+                :key="category.key"
+                type="button"
+                class="a9-icon-picker__category"
+                :class="{ 'is-active': !hasKeyword && activeCategory === category.key }"
+                :aria-pressed="!hasKeyword && activeCategory === category.key"
+                :data-category="category.key"
+                @click="handleCategoryChange(category.key)"
+              >
+                <span>{{ category.label }}</span>
+                <span class="a9-icon-picker__category-count">{{ category.count }}</span>
+              </button>
             </div>
-            <div ref="gridRef" class="a9-icon-picker__grid" role="listbox" :aria-label="resultTitle">
-              <a-tooltip v-for="(item, index) in filtered" :key="item.kebab" :content="item.kebab" position="top">
-                <button
-                  type="button"
-                  role="option"
-                  class="a9-icon-picker__cell"
-                  :class="{ 'is-active': isActive(item) }"
-                  :aria-label="item.kebab"
-                  :aria-selected="isActive(item)"
-                  :tabindex="focusedIconIndex === index ? 0 : -1"
-                  :data-icon-index="index"
-                  @focus="focusedIconIndex = index"
-                  @keydown="handleGridKeydown($event, index)"
-                  @click="handleSelect(item.kebab)"
-                >
-                  <slot name="icon" :icon-name="item.kebab" :component-name="item.pascal" :selected="isActive(item)">
-                    <component :is="item.pascal" />
-                  </slot>
-                </button>
-              </a-tooltip>
-              <div v-if="!filtered.length" class="a9-icon-picker__empty">
-                {{ t('admin9Ui.iconPicker.empty') }}
+            <div class="a9-icon-picker__results">
+              <div class="a9-icon-picker__result-heading">
+                <span>{{ resultTitle }}</span>
+                <span>{{ filtered.length }}</span>
+              </div>
+              <div ref="gridRef" class="a9-icon-picker__grid" role="listbox" :aria-label="resultTitle">
+                <a-tooltip v-for="(item, index) in filtered" :key="item.kebab" :content="item.kebab" position="top">
+                  <button
+                    type="button"
+                    role="option"
+                    class="a9-icon-picker__cell"
+                    :class="{ 'is-active': isActive(item) }"
+                    :aria-label="item.kebab"
+                    :aria-selected="isActive(item)"
+                    :tabindex="focusedIconIndex === index ? 0 : -1"
+                    :data-icon-index="index"
+                    @focus="focusedIconIndex = index"
+                    @keydown="handleGridKeydown($event, index)"
+                    @click="handleSelect(item.kebab)"
+                  >
+                    <slot name="icon" :icon-name="item.kebab" :component-name="item.pascal" :selected="isActive(item)">
+                      <component :is="item.pascal" />
+                    </slot>
+                  </button>
+                </a-tooltip>
+                <div v-if="!filtered.length" class="a9-icon-picker__empty">
+                  {{ t('admin9Ui.iconPicker.empty') }}
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </FormItem>
     </template>
   </a-popover>
 </template>

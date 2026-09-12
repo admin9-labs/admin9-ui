@@ -1,16 +1,16 @@
-import type { TableData } from '@arco-design/web-vue';
+import type { Size, TableData } from '@arco-design/web-vue';
 import type { VNodeChild } from 'vue';
 
 export type ProTableRowKey = string | number;
 export type ProTablePermission = (permission: string) => boolean;
 
-export interface Action<T = TableData> {
+export interface ProTableAction<T = TableData> {
   label: string;
   onClick(record: T): void;
   permissions?: string | string[];
 }
 
-export interface Slot<T = TableData> {
+export interface ProTableActionSlot<T = TableData> {
   record: T;
   column: import('@arco-design/web-vue').TableColumnData;
   rowIndex: number;
@@ -44,7 +44,7 @@ export interface ProTableRefreshOptions {
 }
 
 export interface ProTableRefreshContext {
-  refresh(options?: boolean | ProTableRefreshOptions): Promise<void>;
+  refresh(options?: ProTableRefreshOptions): Promise<void>;
 }
 
 export type ProTableRefreshHandler = (context: ProTableRefreshContext) => void | Promise<void>;
@@ -70,6 +70,7 @@ export interface ProTableDataChange<T = TableData> {
 }
 
 export interface AProTableProps<T = TableData> {
+  size?: Size;
   columns: import('@arco-design/web-vue').TableColumnData[];
   rowKey?: string;
   fetcher: ProTableFetcher<T>;
@@ -82,16 +83,18 @@ export interface AProTableProps<T = TableData> {
   refreshHandler?: ProTableRefreshHandler;
   surface?: boolean;
   showAction?: boolean;
-  actions?: Action<T>[];
+  actions?: ProTableAction<T>[];
   permission?: ProTablePermission;
   multiple?: boolean;
-  selectedRowKeys?: ProTableRowKey[];
+  selectedKeys?: ProTableRowKey[];
   selectionOptions?: ProTableSelectionOptions;
 }
 
 export interface AProTableEmits<T = TableData> {
-  (e: 'update:selectedRowKeys', keys: ProTableRowKey[]): void;
-  (e: 'select', rows: T[]): void;
+  (e: 'update:selectedKeys', keys: ProTableRowKey[]): void;
+  (e: 'selectionChange', keys: ProTableRowKey[]): void;
+  (e: 'select', keys: ProTableRowKey[], key: ProTableRowKey, record: T): void;
+  (e: 'selectAll', checked: boolean): void;
   (e: 'error', error: unknown): void;
   (e: 'loadingChange', loading: boolean): void;
   (e: 'dataChange', payload: ProTableDataChange<T>): void;
@@ -102,15 +105,13 @@ export interface AProTableSlots<T = TableData> {
   'toolbar-left'?(): VNodeChild;
   'toolbar-right'?(): VNodeChild;
   'before-table'?(): VNodeChild;
-  actions?(scope: Slot<T>): VNodeChild;
-  action?(scope: Slot<T>): VNodeChild;
+  actions?(scope: ProTableActionSlot<T>): VNodeChild;
   footer?(scope: ProTableFooterSlot<T>): VNodeChild;
   popover?(): VNodeChild;
 }
 
 export interface AProTableExposed {
   doRequest(options?: ProTableRequestOptions): Promise<void>;
-  refresh(resetPage?: boolean): Promise<void>;
   refresh(options?: ProTableRefreshOptions): Promise<void>;
   invalidate(): void;
   clearSelection(): void;

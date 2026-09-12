@@ -1,3 +1,4 @@
+import type { Size } from '@arco-design/web-vue';
 import type { FileItem, FileType, FileUploadCapability } from '../../services/types';
 
 export type FileUploadTaskStatus = 'pending' | 'uploading' | 'succeeded' | 'failed' | 'cancelled';
@@ -34,10 +35,11 @@ export interface AFileUploaderProps {
   groupId?: string | null;
   accept?: string;
   multiple?: boolean;
-  maxFiles?: number;
+  limit?: number;
   maxFileSize?: number;
   buttonText?: string;
   disabled?: boolean;
+  size?: Size;
 }
 
 export interface AFileUploaderExposed {

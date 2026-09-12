@@ -462,13 +462,13 @@ describe('AFilePicker', () => {
     expect(document.querySelectorAll('.a9-file-picker__type-button')).toHaveLength(3);
   });
 
-  it('treats an empty allowed set as zero matches and clears the external value once', async () => {
+  it('treats an empty allowed set as zero matches without mutating the external value', async () => {
     const service = makeService();
     const { emitted } = mountPicker({ service, props: { fileTypes: [], modelValue: image, accept: '*/*', canUpload: true } });
     await flush();
 
-    expect(emitted['update:modelValue']).toEqual([[undefined]]);
-    expect(emitted.change).toEqual([[[]]]);
+    expect(emitted['update:modelValue']).toBeUndefined();
+    expect(emitted.change).toBeUndefined();
     click('[data-testid="file-picker-trigger"]');
     await flush();
     expect(service.list).not.toHaveBeenCalled();
@@ -495,7 +495,7 @@ describe('AFilePicker', () => {
 
     fileTypes.value = [];
     await flush();
-    expect(emitted['update:modelValue']).toEqual([[undefined]]);
+    expect(emitted['update:modelValue']).toBeUndefined();
     expect(document.querySelector('[data-file-id="image-1"]')).toBeNull();
 
     pending.resolve(result([image]));
@@ -747,26 +747,66 @@ describe('AFilePicker', () => {
     confirmButton?.click();
     await flush();
     expect(emitted['update:modelValue']).toEqual([[changedImage]]);
-    expect(emitted.change).toEqual([[[changedImage]]]);
+    expect(emitted.change).toEqual([[changedImage]]);
   });
 
-  it('sanitizes external model updates, duplicate ids and limits without repeated corrections', async () => {
+  it('displays non-string adapter URLs as unavailable without throwing', async () => {
+    const invalid = { ...image, url: 42 as unknown as string };
+    const mounted = mountDynamic(
+      shallowRef(makeService({ list: async () => result([invalid]) })),
+      ref(undefined),
+      ref<readonly FileType[]>(['image'])
+    );
+    click('[data-testid="file-picker-trigger"]');
+    await flush();
+    expect(mounted.errors).toEqual([]);
+    expect(document.querySelector('[data-file-id="image-1"]')?.classList.contains('is-disabled')).toBe(true);
+  });
+
+  it('commits the visible constrained value on confirmation without requiring another selection', async () => {
+    const { emitted } = mountPicker({
+      service: makeService(),
+      props: { multiple: true, limit: 1, modelValue: [image, video] },
+    });
+    await flush();
+    expect(emitted['update:modelValue']).toBeUndefined();
+    click('[data-testid="file-picker-trigger"]');
+    await flush();
+    click('.a9-file-picker__footer-actions button:last-child');
+    await flush();
+    expect(emitted['update:modelValue']).toEqual([[[image]]]);
+    expect(emitted.change).toEqual([[[image]]]);
+    click('[data-testid="file-picker-trigger"]');
+    await flush();
+    click('.a9-file-picker__footer-actions button:last-child');
+    expect(emitted['update:modelValue']).toHaveLength(1);
+  });
+
+  it('clears an externally supplied value that is no longer eligible', async () => {
+    const { emitted, vm } = mountPicker({ service: makeService(), props: { fileTypes: ['image'], modelValue: video } });
+    await flush();
+    expect(emitted['update:modelValue']).toBeUndefined();
+    (vm as unknown as { clear(): void }).clear();
+    expect(emitted['update:modelValue']).toEqual([[undefined]]);
+    expect(emitted.change).toEqual([[undefined]]);
+    (vm as unknown as { clear(): void }).clear();
+    expect(emitted['update:modelValue']).toHaveLength(1);
+  });
+
+  it('normalizes external models for display without writing back or emitting user changes', async () => {
     const service = shallowRef(makeService());
     const model = ref<FileItem | FileItem[] | undefined>([image, { ...image }, implicitReady, video]);
     const fileTypes = ref<readonly FileType[]>(['image', 'document']);
     const { emitted } = mountDynamic(service, model, fileTypes, { multiple: true, limit: 2 });
     await flush();
-
-    expect(emitted['update:modelValue']).toEqual([[[implicitReady]]]);
-    expect(emitted.change).toEqual([[[implicitReady]]]);
-
+    expect(emitted['update:modelValue']).toBeUndefined();
+    expect(emitted.change).toBeUndefined();
+    expect(document.querySelector('[data-testid="file-picker-trigger"]')?.textContent).toContain('(1)');
     model.value = [image, implicitReady, video];
     await flush();
-    expect(emitted['update:modelValue']?.at(-1)?.[0]).toEqual([image, implicitReady]);
-    const correctionCount = emitted['update:modelValue']?.length;
-    model.value = [image, implicitReady, video];
-    await flush();
-    expect(emitted['update:modelValue']).toHaveLength(correctionCount ?? 0);
+    expect(document.querySelector('[data-testid="file-picker-trigger"]')?.textContent).toContain('(2)');
+    expect(emitted['update:modelValue']).toBeUndefined();
+    expect(emitted.change).toBeUndefined();
   });
 
   it('does not repeat draft events for equal external writeback or unchanged refreshes', async () => {
@@ -919,7 +959,8 @@ describe('AFilePicker', () => {
     click('[data-testid="file-picker-upload"]');
     await flush();
 
-    expect(emitted.uploadSuccess).toHaveLength(3);
+    expect(emitted.uploadSuccess).toBeUndefined();
+    expect(emitted.uploadError).toHaveLength(3);
     expect(emitted.selectionChange).toBeUndefined();
   });
 

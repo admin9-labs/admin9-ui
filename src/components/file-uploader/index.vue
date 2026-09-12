@@ -1,7 +1,8 @@
 <script setup lang="ts">
-  import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-  import type { RequestOption, UploadRequest } from '@arco-design/web-vue';
+  import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, toRef, watch } from 'vue';
+  import { useFormItem, type RequestOption, type UploadRequest } from '@arco-design/web-vue';
   import { useI18n } from 'vue-i18n';
+  import safeFileUrl from '../../internal/file-url';
   import admin9UIOptionsKey from '../../internal/options';
   import type { FileItem, FileType, FileUploadCapability } from '../../services/types';
   import type {
@@ -31,7 +32,7 @@
     groupId: null,
     accept: undefined,
     multiple: true,
-    maxFiles: 0,
+    limit: 0,
     maxFileSize: 0,
     buttonText: '',
     disabled: false,
@@ -75,7 +76,8 @@
   const uploading = computed(() =>
     internalTasks.value.some((task) => task.status === 'pending' || task.status === 'uploading')
   );
-  const disabled = computed(() => props.disabled || !props.fileType);
+  const { mergedDisabled, mergedSize } = useFormItem({ disabled: toRef(props, 'disabled'), size: toRef(props, 'size') });
+  const disabled = computed(() => mergedDisabled.value || !props.fileType);
   const triggerLabel = computed(() => props.buttonText || t('admin9Ui.fileUploader.upload'));
   const summary = computed(() => {
     const succeeded = internalTasks.value.filter((task) => task.status === 'succeeded').length;
@@ -96,7 +98,7 @@
     failureReason: task.failureReason,
   });
   const tasks = computed<readonly FileUploadTask[]>(() => internalTasks.value.map(snapshotTask));
-  const notifyTasks = () => emit('tasksChange', internalTasks.value.map(snapshotTask));
+  const notifyTasks = () => mounted.value && emit('tasksChange', internalTasks.value.map(snapshotTask));
   const findTask = (taskId: string) => internalTasks.value.find((task) => task.id === taskId);
   const isActive = (task: InternalTask) => task.status === 'pending' || task.status === 'uploading';
   const normalizeProgress = (percent: number) => (Number.isFinite(percent) ? Math.min(100, Math.max(0, percent)) : undefined);
@@ -107,8 +109,7 @@
       return createError('requires a stable non-empty FileItem id.');
     if (item.type !== fileType) return createError('received a FileItem with a mismatched type.');
     if (item.status !== undefined && item.status !== 'ready') return createError('received a FileItem that is not ready.');
-    if (typeof item.url !== 'string' || item.url.trim().length === 0)
-      return createError('received a FileItem without a usable URL.');
+    if (!safeFileUrl(item.url)) return createError('received a FileItem without a usable URL.');
     const duplicate = internalTasks.value.some(
       (task) => task.id !== taskId && task.status === 'succeeded' && task.item?.id === item.id
     );
@@ -151,7 +152,7 @@
   };
   const failureText = (task: FileUploadTask) => {
     if (task.failureReason === 'file-count') {
-      return t('admin9Ui.fileUploader.failure.fileCount', { max: props.maxFiles });
+      return t('admin9Ui.fileUploader.failure.fileCount', { max: props.limit });
     }
     if (task.failureReason === 'file-size') {
       return t('admin9Ui.fileUploader.failure.fileSize', { max: props.maxFileSize });
@@ -172,7 +173,17 @@
     finishBatchIfSettled();
   };
 
+  const validateTask = (task: InternalTask) => {
+    if (props.limit > 0 && internalTasks.value.indexOf(task) >= props.limit) {
+      failTask(task, 'file-count', createError(`accepts at most ${props.limit} files in one queue.`));
+    } else if (props.maxFileSize > 0 && task.file.size > props.maxFileSize) {
+      failTask(task, 'file-size', createError(`accepts files no larger than ${props.maxFileSize} bytes.`));
+    } else return true;
+    return false;
+  };
+
   const runTask = (task: InternalTask) => {
+    if (!validateTask(task)) return;
     const service = resolvedService.value;
     if (!service || typeof service.upload !== 'function') {
       failTask(task, 'upload-failed', createError('requires FileUploadCapability.'));
@@ -253,13 +264,7 @@
     panelVisible.value = true;
     batchRevision += 1;
     notifyTasks();
-    if (props.maxFiles > 0 && internalTasks.value.length > props.maxFiles) {
-      failTask(task, 'file-count', createError(`accepts at most ${props.maxFiles} files in one queue.`));
-    } else if (props.maxFileSize > 0 && file.size > props.maxFileSize) {
-      failTask(task, 'file-size', createError(`accepts files no larger than ${props.maxFileSize} bytes.`));
-    } else {
-      runTask(task);
-    }
+    runTask(task);
     return task;
   };
 
@@ -277,6 +282,10 @@
     finishBatchIfSettled();
   }
   const customUpload = (option: RequestOption): UploadRequest => {
+    if (disabled.value) {
+      option.onError(createError('is disabled.'));
+      return { abort: () => undefined };
+    }
     const { file } = option.fileItem;
     if (!file) {
       const error = createError('requires a local File.');
@@ -298,6 +307,7 @@
     return { abort: () => task && cancel(task.id) };
   };
   const retry = (taskId: string) => {
+    if (disabled.value) return;
     const task = findTask(taskId);
     if (!task || (task.status !== 'failed' && task.status !== 'cancelled')) return;
     batchRevision += 1;
@@ -339,6 +349,7 @@
     panelStyle.value = { left: `${viewportLeft - rootRect.left}px`, right: 'auto' };
   };
   const upload = (files: readonly File[]) => {
+    if (mergedDisabled.value) return Promise.reject(createError('is disabled.'));
     if (!props.fileType) return Promise.reject(createError('requires a concrete FileType.'));
     if (files.length === 0) return Promise.resolve({ succeeded: [], failed: [], cancelled: [] });
     enqueueDepth += 1;
@@ -391,7 +402,7 @@
       <template #upload-button>
         <span ref="triggerRoot" class="a9-file-uploader__trigger">
           <slot name="trigger" :disabled="disabled" :uploading="uploading">
-            <a-button type="primary" :disabled="disabled">
+            <a-button type="primary" :disabled="disabled" :size="mergedSize">
               <template #icon><icon-upload /></template>
               {{ triggerLabel }}
             </a-button>
@@ -458,6 +469,7 @@
                   type="text"
                   size="mini"
                   :aria-label="t('admin9Ui.fileUploader.retryFile', { name: task.file.name })"
+                  :disabled="disabled"
                   @click="retry(task.id)"
                 >
                   <template #icon><icon-refresh /></template>

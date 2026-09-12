@@ -141,17 +141,17 @@ JSON 使用本组件当前 Tiptap schema，支持现有文字标记、表格以�
 
 ## Events
 
-| 事件                | 参数                         | 说明                                |
-| ------------------- | ---------------------------- | ----------------------------------- |
-| `update:modelValue` | `string` 或 `TiptapDocument` | 内容变化；参数与 `valueFormat` 对应 |
-| `change`            | `string` 或 `TiptapDocument` | 内容变化；参数与 `valueFormat` 对应 |
-| `focus`             | 无                           | 编辑区获得焦点                      |
-| `blur`              | 无                           | 编辑区失去焦点                      |
-| `media-error`       | `TiptapMediaError`           | 素材校验拒绝或编辑器命令失败        |
-| `content-error`     | `TiptapContentError`         | 模型格式不匹配或 JSON 文档结构非法  |
-| `image-upload-state-change` | `TiptapImageUploadState` | 图片排队、上传、失败数量及 `canSave` |
-| `image-upload-error` | `TiptapImageUploadError` | 图片来源、文件、原因及可选底层错误 |
-| `paste-warning` | `TiptapPasteWarning` | 跳过图片的原因及数量 |
+| 事件                        | 参数                         | 说明                                 |
+| --------------------------- | ---------------------------- | ------------------------------------ |
+| `update:modelValue`         | `string` 或 `TiptapDocument` | 内容变化；参数与 `valueFormat` 对应  |
+| `change`                    | `string` 或 `TiptapDocument` | 内容变化；参数与 `valueFormat` 对应  |
+| `focus`                     | 无                           | 编辑区获得焦点                       |
+| `blur`                      | 无                           | 编辑区失去焦点                       |
+| `media-error`               | `TiptapMediaError`           | 素材校验拒绝或编辑器命令失败         |
+| `content-error`             | `TiptapContentError`         | 模型格式不匹配或 JSON 文档结构非法   |
+| `image-upload-state-change` | `TiptapImageUploadState`     | 图片排队、上传、失败数量及 `canSave` |
+| `image-upload-error`        | `TiptapImageUploadError`     | 图片来源、文件、原因及可选底层错误   |
+| `paste-warning`             | `TiptapPasteWarning`         | 跳过图片的原因及数量                 |
 
 `TiptapMediaError` 包含 `operation`、`mediaType`、`reason`、`attemptedItems` 和 `rejectedItems`；底层命令抛错时还包含 `cause`。`invalid-selection` 可能伴随部分成功，应用应以 `rejectedItems` 判断被跳过的素材；`command-failed` 表示本次有效素材未能写入或替换。
 
@@ -159,13 +159,13 @@ JSON 使用本组件当前 Tiptap schema，支持现有文字标记、表格以�
 
 ## 实例方法
 
-| 方法        | 返回             | 说明                              |
-| ----------- | ---------------- | --------------------------------- |
-| `focus()`   | `boolean`        | 聚焦编辑区                        |
-| `clear()`   | `boolean`        | 清空内容并触发模型更新            |
-| `getHTML()` | `string`         | 获取当前 HTML；空文档返回空字符串 |
-| `getJSON()` | `TiptapDocument` | 获取当前文档的独立 JSON 快照      |
-| `getImageUploadState()` | `TiptapImageUploadState` | 获取独立的图片任务状态快照 |
+| 方法                    | 返回                     | 说明                              |
+| ----------------------- | ------------------------ | --------------------------------- |
+| `focus()`               | `boolean \| undefined`   | 聚焦编辑区                        |
+| `clear()`               | `boolean \| undefined`   | 清空内容并触发模型更新            |
+| `getHTML()`             | `string`                 | 获取当前 HTML；空文档返回空字符串 |
+| `getJSON()`             | `TiptapDocument`         | 获取当前文档的独立 JSON 快照      |
+| `getImageUploadState()` | `TiptapImageUploadState` | 获取独立的图片任务状态快照        |
 
 两种模式均可调用 `getHTML()` 和 `getJSON()`。`clear()` 的事件参数遵循当前模型格式。
 
@@ -176,3 +176,11 @@ JSON 使用本组件当前 Tiptap schema，支持现有文字标记、表格以�
 编辑器会按 Tiptap schema 解析输入，但不代替服务端内容安全策略。HTML 和 JSON 都需要服务端校验；应用在公开页面渲染保存或转换得到的 HTML 前，仍需按自身允许标签、属性和 URL 协议执行可信 HTML 清洗。
 
 新增文字格式需要消费方清洗和渲染端允许相应的 `span`、`mark` 以及白名单颜色／字号属性。组件侧回填通过不等于消费方最终页面样式已验证。
+
+## 表单与公开实例契约
+
+disabled 继承 Arco Form，readonly 保留阅读及媒体播放；编辑、上传、工具栏和媒体操作共享同一禁用边界。外层字段的 input/change/focus/blur 校验与编辑操作衔接，状态切换本身不发出模型更新或 change。
+
+公开类型 `ATiptapEditorExposed` 包含 focus、clear、getHTML、getJSON、getImageUploadState。valueFormat 是实例创建时的文档格式，切换 HTML／JSON 格式需重建实例；普通模型回显不重建编辑器。组件使用 minHeight/maxHeight 定义画布，不提供整体 size。class/style 和原生根属性附在编辑器根节点。
+
+focus/clear 返回 Tiptap 命令的布尔结果；编辑器尚未就绪时返回 undefined。内部工具栏和文件选择控件不提前触发正文的 change 校验，只有正文实际更新才校验该字段；首次渲染即提供 readonly/disabled/invalid 的 ARIA 状态。

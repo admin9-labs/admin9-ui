@@ -426,7 +426,19 @@ describe('ACoverPicker', () => {
     expect(document.activeElement).toBe(originalButton);
   });
 
-  it('corrects invalid external image slots once without moving valid positions', async () => {
+  it('commits normalized slots after explicitly confirming an unchanged valid slot', async () => {
+    const { model, emitted } = mountCoverPicker({ value: { mode: 'triple', images: [images[0], pendingImage, null] } });
+    await flush();
+    expect(emitted.change).toBeUndefined();
+    click('[data-testid="cover-picker-slot-0"]');
+    await flush();
+    click('.a9-file-picker__footer-actions button:last-child');
+    await flush();
+    expect(model.value).toEqual({ mode: 'triple', images: [images[0], null, null] });
+    expect(emitted.change).toHaveLength(1);
+  });
+
+  it('displays invalid external image slots as empty without changing the parent model', async () => {
     const malformed = {
       mode: 'triple',
       images: [documentItem, pendingImage, images[2]],
@@ -434,9 +446,12 @@ describe('ACoverPicker', () => {
     const { emitted, model } = mountCoverPicker({ value: malformed });
     await flush();
 
-    expect(model.value).toEqual({ mode: 'triple', images: [null, null, images[2]] });
-    expect(emitted['update:modelValue']).toEqual([[{ mode: 'triple', images: [null, null, images[2]] }]]);
-    expect(emitted.change).toEqual([[{ mode: 'triple', images: [null, null, images[2]] }]]);
+    expect(model.value).toEqual(malformed);
+    expect(emitted['update:modelValue']).toBeUndefined();
+    expect(emitted.change).toBeUndefined();
+    expect(document.querySelector('[data-testid="cover-picker-preview-0"]')).toBeNull();
+    expect(document.querySelector('[data-testid="cover-picker-preview-1"]')).toBeNull();
+    expect(document.querySelector('[data-testid="cover-picker-preview-2"]')).not.toBeNull();
   });
 
   it('closes an active selection when disabled or externally replaced and ignores the old operation', async () => {

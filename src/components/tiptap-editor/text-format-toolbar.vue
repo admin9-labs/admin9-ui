@@ -116,6 +116,7 @@
   </a-popover>
   <a-dropdown trigger="click" @select="applySize">
     <a-button
+      class="a9-text-format-size"
       size="small"
       type="text"
       :disabled="disabled"

@@ -4,9 +4,30 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** AProTable 使用官方 `selectedKeys`、`selection-change` 和 `(keys, key, record)` 的 `select` 契约；操作插槽仅保留 `actions`，refresh 仅接受选项对象，公共 Action/Slot 改为 ProTableAction/ProTableActionSlot；删除 Admin9UIOptions 兼容别名。
+- **Breaking:** AFileUploader 的 maxFiles 改为 limit；AFilePicker 的 initialView 改为 defaultView，change 与 modelValue 同形，新增 confirm 数组事件；ACoordinatePicker 的 searchEnabled 改为 allowSearch。
+- **Breaking:** FilePicker/CoverPicker 的外部值回显不再自动回写或发出 change；FilterForm 重置恢复 FormItem 初值，并转发官方提交事件和公开 Form 方法。
+- 自定义表单控件衔接 Arco 禁用、尺寸和提交校验；补充官方 mini 尺寸、readonly、组件公共类型及 ChatComposer 原生 textarea 属性/事件。
+
+### Fixed
+
+- 文件及封面选择器在外部值需要归一化时，用户明确确认／清空会提交规范值，同时保持回显不写回和重复操作去重。
+- 富文本内部文件选择不再提前校验旧正文，初次渲染正确提供 ARIA 状态；公开 focus/clear 方法类型与实际返回值一致。
+- 负数 maxLength 先归一化为 0，避免聊天输入被底层 Textarea 截断；非字符串文件 URL 按无效 adapter 结果处理。
+
+- ChatComposer 的 maxLength 小于等于 0 时按无限制处理，autoSize 支持 Arco 的 boolean 形式。
+
+- 修复 ProTable 真实勾选未通知父组件、pageSize 更新不生效，以及表格/文件请求卸载后仍回写的问题。
+- 修复上传重试绕过文件限制、禁用时仍可通过命令上传、未验证响应被报告为上传成功的问题；文件预览和下载拒绝不安全 URL 协议。
+- 修复聊天输入框和编辑器在 FormItem 中未填满字段、原生 readonly 未生效，以及编辑器英文字号菜单文字重叠。
+- 修复文件、坐标和表格搜索未处理 Enter 的问题。
+- 修复地图空搜索加载状态残留、SDK 配置变更未重新初始化，以及 Tiptap 切换禁用状态产生伪内容变更的问题。
+
 ### Added
 
-- 新增 `ACoverPicker`，支持单图、三图和无封面模式、`small / medium / large` 三档尺寸（默认 `medium`），以固定位置选择、替换及移除图片，并复用 `AFilePicker` 的浏览与上传流程。
+- 新增 `ACoverPicker`，支持单图、三图和无封面模式、`mini / small / medium / large` 四档尺寸（未继承 Form 尺寸时默认 `medium`），以固定位置选择、替换及移除图片，并复用 `AFilePicker` 的浏览与上传流程。
 
 ## [0.20.0] - 2026-09-13
 

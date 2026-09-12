@@ -1,6 +1,7 @@
 <script setup lang="ts">
   import { computed } from 'vue';
   import { useI18n } from 'vue-i18n';
+  import safeFileUrl from './file-url';
   import type { FileItem } from '../services/types';
 
   const props = defineProps<{
@@ -9,6 +10,8 @@
     statusLabel: string;
   }>();
 
+  const url = computed(() => safeFileUrl(props.item.url));
+  const thumbnail = computed(() => safeFileUrl(props.item.thumbnail));
   const { t } = useI18n();
 
   const extension = computed(() => {
@@ -46,17 +49,17 @@
   >
     <div class="a9-file-item__visual">
       <a-image
-        v-if="item.type === 'image' && (item.thumbnail || item.url)"
-        :src="item.thumbnail || item.url || undefined"
-        :preview="available && Boolean(item.url)"
+        v-if="item.type === 'image' && (thumbnail || url)"
+        :src="thumbnail || url"
+        :preview="available && Boolean(url)"
         width="100%"
         height="100%"
         fit="cover"
         show-loader
       />
       <a-image
-        v-else-if="item.type === 'video' && item.thumbnail"
-        :src="item.thumbnail"
+        v-else-if="item.type === 'video' && thumbnail"
+        :src="thumbnail"
         :preview="false"
         width="100%"
         height="100%"
@@ -81,9 +84,9 @@
       <span v-if="meta" class="a9-file-item__meta">{{ meta }}</span>
     </div>
     <a
-      v-if="available && item.url"
+      v-if="available && url"
       class="a9-file-item__open"
-      :href="item.url"
+      :href="url"
       target="_blank"
       rel="noopener noreferrer"
       :aria-label="t('admin9Ui.filePicker.openItem', { name: item.name })"
