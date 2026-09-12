@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-09-13
+
 ### Changed
 
 - **Breaking:** AProTable 使用官方 `selectedKeys`、`selection-change` 和 `(keys, key, record)` 的 `select` 契约；操作插槽仅保留 `actions`，refresh 仅接受选项对象，公共 Action/Slot 改为 ProTableAction/ProTableActionSlot；删除 Admin9UIOptions 兼容别名。
@@ -28,6 +30,8 @@
 ### Added
 
 - 新增 `ACoverPicker`，支持单图、三图和无封面模式、`mini / small / medium / large` 四档尺寸（未继承 Form 尺寸时默认 `medium`），以固定位置选择、替换及移除图片，并复用 `AFilePicker` 的浏览与上传流程。
+
+**Full Changelog**: https://github.com/admin9-labs/admin9-ui/compare/v0.20.0...v0.21.0
 
 ## [0.20.0] - 2026-09-13
 

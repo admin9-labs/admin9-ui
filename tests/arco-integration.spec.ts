@@ -279,7 +279,9 @@ describe('real Arco 2.57 component contracts', () => {
     expect(dialog.style.display).not.toBe('none');
     disabled.value = true;
     await flush();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 50);
+    });
     expect(dialog.isConnected && dialog.style.display !== 'none').toBe(false);
   });
 
