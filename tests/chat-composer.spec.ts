@@ -2,7 +2,7 @@ import { createApp, h, nextTick, reactive, ref, type App } from 'vue';
 import { createI18n } from 'vue-i18n';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AChatComposer from '../src/components/chat-composer/index.vue';
-import type { AChatComposerExposed } from '../src/components/chat-composer/types';
+import type { AChatComposerExposed, ChatComposerSize, ChatComposerSlot } from '../src/components/chat-composer/types';
 import { messages } from '../src/locale';
 
 let app: App;
@@ -10,6 +10,7 @@ const customAction = ref(false);
 let activate: (() => void) | undefined;
 const state = reactive({
   modelValue: '',
+  size: undefined as ChatComposerSize | undefined,
   generating: false,
   disabled: false,
   submitDisabled: false,
@@ -30,7 +31,14 @@ const key = (options: KeyboardEventInit = {}) => {
 beforeEach(() => {
   customAction.value = false;
   document.body.innerHTML = '<div id="app"></div>';
-  Object.assign(state, { modelValue: '', generating: false, disabled: false, submitDisabled: false, maxLength: undefined });
+  Object.assign(state, {
+    modelValue: '',
+    size: undefined,
+    generating: false,
+    disabled: false,
+    submitDisabled: false,
+    maxLength: undefined,
+  });
   app = createApp({
     render: () =>
       h(
@@ -45,10 +53,12 @@ beforeEach(() => {
           'onStop': stop,
         },
         {
-          toolbar: (scope: Record<string, boolean>) => h('span', { 'data-slot': JSON.stringify(scope) }),
+          header: (scope: ChatComposerSlot) => h('span', { 'data-header-slot': JSON.stringify(scope) }),
+          attachments: (scope: ChatComposerSlot) => h('span', { 'data-attachments-slot': JSON.stringify(scope) }),
+          toolbar: (scope: ChatComposerSlot) => h('span', { 'data-toolbar-slot': JSON.stringify(scope) }),
           ...(customAction.value
             ? {
-                action: (scope: { disabled: boolean; generating: boolean; canSubmit: boolean; activate: () => void }) => {
+                action: (scope: ChatComposerSlot & { canSubmit: boolean; activate: () => void }) => {
                   activate = scope.activate;
                   return h(
                     'button',
@@ -67,6 +77,43 @@ beforeEach(() => {
 afterEach(() => app.unmount());
 
 describe('AChatComposer', () => {
+  it('defaults every surface to large and switches size without rebuilding or disturbing the input', async () => {
+    state.modelValue = 'draft text';
+    await nextTick();
+    const originalInput = input();
+    originalInput.focus();
+    originalInput.setSelectionRange(2, 7);
+
+    const assertSize = (size: ChatComposerSize) => {
+      expect(document.querySelector('.a9-chat-composer')?.classList.contains(`a9-chat-composer--${size}`)).toBe(true);
+      expect(button().classList.contains(`arco-btn-size-${size}`)).toBe(true);
+      ['header', 'attachments', 'toolbar'].forEach((slot) => {
+        expect(document.querySelector(`[data-${slot}-slot]`)?.getAttribute(`data-${slot}-slot`)).toContain(`"size":"${size}"`);
+      });
+    };
+
+    assertSize('large');
+    const assertInputState = () => {
+      expect(input()).toBe(originalInput);
+      expect(input().value).toBe('draft text');
+      expect(document.activeElement).toBe(originalInput);
+      expect(input().selectionStart).toBe(2);
+      expect(input().selectionEnd).toBe(7);
+    };
+    state.size = 'small';
+    await nextTick();
+    assertSize('small');
+    assertInputState();
+    state.size = 'medium';
+    await nextTick();
+    assertSize('medium');
+    assertInputState();
+    state.size = 'large';
+    await nextTick();
+    assertSize('large');
+    assertInputState();
+  });
+
   it('truncates pasted supplementary characters by code point without splitting them', async () => {
     state.maxLength = 1;
     await nextTick();
@@ -150,12 +197,12 @@ describe('AChatComposer', () => {
     expect(input().disabled).toBe(false);
     expect(key().defaultPrevented).toBe(false);
     expect(button().disabled).toBe(false);
-    expect(button().textContent).toContain('Stop generating');
+    expect(button().getAttribute('aria-label')).toBe('Stop generating');
     button().click();
     expect(stop).toHaveBeenCalledOnce();
     expect(submit).not.toHaveBeenCalled();
-    expect(document.querySelector('[data-slot]')?.getAttribute('data-slot')).toBe(
-      JSON.stringify({ disabled: false, submitDisabled: true, generating: true })
+    expect(document.querySelector('[data-toolbar-slot]')?.getAttribute('data-toolbar-slot')).toBe(
+      JSON.stringify({ size: 'large', disabled: false, submitDisabled: true, generating: true })
     );
   });
   it('separates submit restriction from overall disabled state', async () => {

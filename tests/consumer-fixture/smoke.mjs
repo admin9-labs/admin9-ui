@@ -163,6 +163,8 @@ for (const exports of [packageExports, commonJsPackage]) {
   const chatHost = window.document.createElement('div');
   window.document.body.append(chatHost);
   let submitted;
+  let toolbarSize;
+  let actionSize;
   const chatApp = createApp({
     render: () =>
       h('div', [
@@ -170,12 +172,33 @@ for (const exports of [packageExports, commonJsPackage]) {
           messages: [{ id: 'a', role: 'assistant', content: '**tarball**' }],
           style: 'height: 200px',
         }),
-        h(exports.AChatComposer, {
-          modelValue: 'consumer input',
-          onSubmit: (value) => {
-            submitted = value;
+        h(
+          exports.AChatComposer,
+          {
+            size: 'small',
+            modelValue: 'consumer input',
+            onSubmit: (value) => {
+              submitted = value;
+            },
           },
-        }),
+          {
+            toolbar: (scope) => {
+              toolbarSize = scope.size;
+              return h('span', 'Toolbar');
+            },
+            action: (scope) => {
+              actionSize = scope.size;
+              return h(
+                'button',
+                {
+                  disabled: scope.disabled || (!scope.generating && !scope.canSubmit),
+                  onClick: scope.activate,
+                },
+                'Send'
+              );
+            },
+          }
+        ),
       ]),
   });
   chatApp.use(createI18n({ legacy: false, locale: 'en-US', messages: packageExports.messages }));
@@ -183,6 +206,9 @@ for (const exports of [packageExports, commonJsPackage]) {
   await nextTick();
   assert.equal(chatHost.querySelector('strong')?.textContent, 'tarball');
   assert.ok(chatHost.querySelector('textarea')?.getAttribute('aria-label'));
+  assert.ok(chatHost.querySelector('.a9-chat-composer--small'));
+  assert.equal(toolbarSize, 'small');
+  assert.equal(actionSize, 'small');
   chatHost.querySelector('.a9-chat-composer button').click();
   assert.equal(submitted, 'consumer input');
   chatApp.unmount();

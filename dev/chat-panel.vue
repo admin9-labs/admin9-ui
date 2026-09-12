@@ -5,6 +5,7 @@
     AChatMessageList,
     AFilePicker,
     type AChatComposerExposed,
+    type ChatComposerSize,
     type ChatMessage,
     type FileItem,
   } from '../src';
@@ -12,6 +13,7 @@
 
   defineProps<{
     messages: ChatMessage[];
+    size: ChatComposerSize;
     draft: string;
     generating: boolean;
     submitDisabled: boolean;
@@ -70,6 +72,7 @@
     </AChatMessageList>
     <AChatComposer
       ref="composer"
+      :size="size"
       :model-value="draft"
       :generating="generating"
       :submit-disabled="submitDisabled"
@@ -77,7 +80,6 @@
       @submit="emit('send', $event)"
       @stop="emit('stop')"
     >
-      <template #header><a-button size="mini" @click="prompt">摘要指令</a-button></template>
       <template #attachments>
         <a-tag
           v-for="file in attachments"
@@ -92,15 +94,24 @@
           >{{ file.name }}</a-tag
         >
       </template>
-      <template #toolbar="{ disabled }">
-        <AFilePicker
-          :model-value="attachments"
-          :service="service"
-          :disabled="disabled"
-          :limit="3"
-          multiple
-          @update:model-value="emit('update:attachments', Array.isArray($event) ? $event : $event ? [$event] : [])"
-        />
+      <template #toolbar="{ disabled, size: controlSize }">
+        <a-tooltip content="选择文件">
+          <AFilePicker
+            :model-value="attachments"
+            :service="service"
+            :disabled="disabled"
+            :limit="3"
+            multiple
+            @update:model-value="emit('update:attachments', Array.isArray($event) ? $event : $event ? [$event] : [])"
+          >
+            <template #trigger="{ open }">
+              <a-button type="text" shape="circle" :size="controlSize" aria-label="选择文件" :disabled="disabled" @click="open">
+                <template #icon><icon-plus /></template>
+              </a-button>
+            </template>
+          </AFilePicker>
+        </a-tooltip>
+        <a-button type="text" :size="controlSize" :disabled="disabled" @click="prompt">摘要指令</a-button>
       </template>
     </AChatComposer>
   </div>

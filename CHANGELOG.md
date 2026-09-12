@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- `AChatComposer` 新增 `size="small | medium | large"`，统一控制 Card 密度和默认操作按钮，并通过所有作用域插槽共享当前尺寸。
+
+### Changed
+
+- `AChatComposer` 将文本区和底部工具栏融合进同一外框，使用无内框输入区与圆形发送／停止按钮，减少嵌套表单感。
+
 ## [0.19.0] - 2026-09-12
 
 ### Added

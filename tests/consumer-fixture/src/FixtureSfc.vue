@@ -5,6 +5,7 @@
     AChatComposer,
     type AChatMessageListExposed,
     type AChatComposerExposed,
+    type ChatComposerSize,
     type ChatMessage,
     AIconPicker,
     ACoordinatePicker,
@@ -37,6 +38,7 @@
   const rowActions: Action<FixtureRow>[] = [{ label: 'Edit', permissions: 'records.update', onClick: () => undefined }];
   const chatMessages = ref<ChatMessage[]>([{ id: 'a', role: 'assistant', content: '**fixture**' }]);
   const draft = ref('draft');
+  const chatComposerSize: ChatComposerSize = 'medium';
   const chatList = ref<AChatMessageListExposed>();
   const composer = ref<AChatComposerExposed>();
   const submitChat = (value: string) => {
@@ -62,10 +64,21 @@
         ><span>{{ message.id }}:{{ index }}</span></template
       >
     </AChatMessageList>
-    <AChatComposer ref="composer" v-model="draft" @submit="submitChat" @stop="chatList?.scrollToBottom()">
-      <template #toolbar="{ disabled, generating, submitDisabled }"
-        ><button :disabled="disabled || submitDisabled" @click="composer?.focus()">{{ generating }}</button></template
+    <AChatComposer
+      ref="composer"
+      v-model="draft"
+      :size="chatComposerSize"
+      @submit="submitChat"
+      @stop="chatList?.scrollToBottom()"
+    >
+      <template #toolbar="{ size, disabled, generating, submitDisabled }"
+        ><button :data-size="size" :disabled="disabled || submitDisabled" @click="composer?.focus()">{{
+          generating
+        }}</button></template
       >
+      <template #action="{ size, disabled, generating, canSubmit, activate }">
+        <button :data-size="size" :disabled="disabled || (!generating && !canSubmit)" @click="activate">Send</button>
+      </template>
     </AChatComposer>
     <AIconPicker model-value="" />
     <ATiptapEditor

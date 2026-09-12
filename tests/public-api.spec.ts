@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import * as publicApi from '../src';
 import type {
   Admin9UIPluginOptions,
+  AChatComposerProps,
+  ChatComposerSize,
   CoordinateSelection,
   CoordinateValue,
   FilePickerAdapter,
@@ -47,6 +49,13 @@ const leafKeys = (value: Record<string, unknown>, prefix = ''): string[] =>
   });
 
 describe('package public API', () => {
+  it('exports the chat composer size contract', () => {
+    const size: ChatComposerSize = 'medium';
+    const props: AChatComposerProps = { modelValue: '', size };
+
+    expect(props).toEqual({ modelValue: '', size: 'medium' });
+  });
+
   it('exports plugin installation options under the specific public name', () => {
     const fileService = { list: async () => ({ list: [], pagination: { page: 1, pageSize: 24, total: 0, hasMore: false } }) };
     const options: Admin9UIPluginOptions = { fileService };

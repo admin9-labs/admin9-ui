@@ -1,11 +1,12 @@
 <script setup lang="ts">
   import { computed, onBeforeUnmount, reactive, ref } from 'vue';
   import { useI18n } from 'vue-i18n';
-  import type { ChatMessage, FileItem } from '../src';
+  import type { ChatComposerSize, ChatMessage, FileItem } from '../src';
   import ChatPanel from './chat-panel.vue';
 
   const { locale } = useI18n();
   const messages = ref<ChatMessage[]>([]);
+  const composerSize = ref<ChatComposerSize>('large');
   const draft = ref('请展示 Markdown、代码和表格。');
   const attachments = ref<FileItem[]>([]);
   const files = reactive<Record<string, FileItem[]>>({});
@@ -121,6 +122,7 @@
   };
   const panelProps = computed(() => ({
     messages: messages.value,
+    size: composerSize.value,
     draft: draft.value,
     generating: generating.value,
     submitDisabled: submitDisabled.value,
@@ -160,6 +162,11 @@
       <a-button @click="reset">切换会话</a-button>
       <a-button @click="locale = locale === 'zh-CN' ? 'en-US' : 'zh-CN'">中 / EN</a-button>
       <a-button @click="toggleTheme">明 / 暗</a-button>
+      <a-radio-group v-model="composerSize" type="button" size="small" data-testid="chat-composer-size">
+        <a-radio value="small">Small</a-radio>
+        <a-radio value="medium">Medium</a-radio>
+        <a-radio value="large">Large</a-radio>
+      </a-radio-group>
       <a-checkbox v-model="fail">模拟生成失败</a-checkbox>
       <a-checkbox v-model="submitDisabled">模拟附件上传中</a-checkbox>
     </div>

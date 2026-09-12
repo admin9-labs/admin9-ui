@@ -22,6 +22,7 @@ export type {
   AChatMessageListExposed,
 } from './components/chat-message-list/types';
 export type {
+  ChatComposerSize,
   ChatComposerSlot,
   AChatComposerProps,
   AChatComposerSlots,
