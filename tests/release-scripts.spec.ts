@@ -363,6 +363,7 @@ describe('release command ownership', () => {
     [
       'README.md',
       'CHANGELOG.md',
+      'docs/components/cover-picker.md',
       'docs/components/coordinate-picker.md',
       'docs/components/file-picker.md',
       'docs/components/file-uploader.md',

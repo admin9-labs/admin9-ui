@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- 新增 `ACoverPicker`，支持单图、三图和无封面模式、`small / medium / large` 三档尺寸（默认 `medium`），以固定位置选择、替换及移除图片，并复用 `AFilePicker` 的浏览与上传流程。
+
 ## [0.20.0] - 2026-09-13
 
 ### Added

@@ -49,6 +49,15 @@ export default {
       cancelled: 'Cancelled',
     },
   },
+  coverPicker: {
+    modeLabel: 'Cover display mode',
+    single: 'Single image',
+    triple: 'Three images',
+    none: 'No cover',
+    selectPosition: 'Select cover image {index}',
+    replacePosition: 'Replace cover image {index}: {name}',
+    removePosition: 'Remove cover image {index}',
+  },
   filePicker: {
     title: 'Select files',
     trigger: 'Choose files',

@@ -41,6 +41,7 @@ assert.equal(packageExports.localePrefix, 'admin9Ui');
 assert.equal(localeExports.localePrefix, 'admin9Ui');
 assert.ok(packageExports.AChatMessageList);
 assert.ok(packageExports.AChatComposer);
+assert.ok(packageExports.ACoverPicker);
 assert.ok(packageExports.AIconPicker);
 assert.ok(packageExports.ACoordinatePicker);
 assert.ok(packageExports.AFilePicker);
@@ -53,6 +54,7 @@ const commonJsPackage = require('@admin9-labs/admin9-ui');
 const commonJsLocale = require('@admin9-labs/admin9-ui/locale');
 assert.ok(commonJsPackage.AChatMessageList);
 assert.ok(commonJsPackage.AChatComposer);
+assert.ok(commonJsPackage.ACoverPicker);
 assert.ok(commonJsPackage.AIconPicker);
 assert.ok(commonJsPackage.ACoordinatePicker);
 assert.ok(commonJsPackage.AFilePicker);
@@ -64,6 +66,7 @@ const cssPath = import.meta.resolve('@admin9-labs/admin9-ui/styles');
 const css = await readFile(new URL(cssPath), 'utf8');
 assert.match(css, /\.a9-chat-message-list/);
 assert.match(css, /\.a9-chat-composer/);
+assert.match(css, /\.a9-cover-picker/);
 assert.match(css, /\.a9-(coordinate|file|icon|pro|tiptap)-/);
 assert.match(css, /\.a9-tiptap-editor__media-bubble/);
 
@@ -89,6 +92,7 @@ document.body.append(host);
 const app = createApp({
   render: () =>
     h('main', [
+      h(packageExports.ACoverPicker, { modelValue: { mode: 'single', images: [null] } }),
       h(packageExports.AIconPicker, { modelValue: '' }),
       h(packageExports.ACoordinatePicker, {
         modelValue: { latitude: 27.8945, longitude: 102.2644 },
@@ -127,6 +131,7 @@ await new Promise((resolve) => setTimeout(resolve, 0));
 await nextTick();
 
 assert.ok(host.querySelector('.a9-icon-picker'), 'AIconPicker did not mount.');
+assert.ok(host.querySelector('.a9-cover-picker'), 'ACoverPicker did not mount.');
 assert.ok(host.querySelector('.a9-coordinate-picker'), 'ACoordinatePicker did not mount.');
 assert.ok(host.querySelector('.a9-pro-table'), 'AProTable did not mount.');
 assert.ok(host.querySelector('.a9-tiptap-editor'), 'ATiptapEditor did not mount.');
@@ -213,5 +218,27 @@ for (const exports of [packageExports, commonJsPackage]) {
   assert.equal(submitted, 'consumer input');
   chatApp.unmount();
   chatHost.remove();
+}
+for (const exports of [packageExports, commonJsPackage]) {
+  const coverHost = document.createElement('div');
+  document.body.append(coverHost);
+  const coverApp = createApp({
+    render: () =>
+      h('div', [undefined, 'small', 'medium', 'large'].map((size) => h(exports.ACoverPicker, { size }))),
+  });
+  coverApp.use(ArcoVue);
+  Object.entries(ArcoVueIcon).forEach(([name, component]) => coverApp.component(name, component));
+  coverApp.use(createI18n({ legacy: false, locale: 'en-US', messages: packageExports.messages }));
+  coverApp.use(exports.default, { fileService });
+  coverApp.mount(coverHost);
+  await nextTick();
+  const covers = [...coverHost.querySelectorAll('.a9-cover-picker')];
+  assert.equal(covers.length, 4);
+  ['medium', 'small', 'medium', 'large'].forEach((size, index) => {
+    assert.ok(covers[index].classList.contains(`a9-cover-picker--${size}`));
+    assert.equal(covers[index].querySelectorAll('.a9-cover-picker__slot').length, 1);
+  });
+  coverApp.unmount();
+  coverHost.remove();
 }
 await window.happyDOM.abort();

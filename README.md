@@ -42,6 +42,7 @@ app.use(Admin9UI, {
 
 ```ts
 import {
+  ACoverPicker,
   ACoordinatePicker,
   AFilePicker,
   AFileUploader,
@@ -57,6 +58,7 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 
 ## 组件
 
+- [`ACoverPicker`](./docs/components/cover-picker.md)：支持单图、三图和无封面的固定位置封面选择器
 - [`ACoordinatePicker`](./docs/components/coordinate-picker.md)：基于腾讯地图 JavaScript API GL 的表单级坐标选择器
 - [`AFilePicker`](./docs/components/file-picker.md)：支持后端分页、跨页选择和可选上传的文件选择器
 - [`AFileUploader`](./docs/components/file-uploader.md)：支持进度、取消、重试和部分成功的本地批量上传队列
@@ -71,7 +73,7 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 
 ## 集成边界
 
-- `AFilePicker` 和 `AFileUploader` 只负责选择与上传交互。文件管理页面以及删除、移动、分组、权限和业务字段由应用实现。
+- `ACoverPicker`、`AFilePicker` 和 `AFileUploader` 只负责选择与上传交互。文件管理页面以及删除、移动、分组、权限和业务字段由应用实现。
 - 文件 adapter 必须在完整数据集上筛选并分页，返回准确的总数；组件不会通过过滤当前页模拟服务端结果。
 - 上传能力开关只控制界面。应用后端仍需校验文件内容、类型、大小、身份、资源归属和操作权限。
 - `ACoordinatePicker` 的浏览器端 Key、来源白名单、额度和坐标系转换由应用管理。

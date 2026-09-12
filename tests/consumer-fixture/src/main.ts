@@ -4,6 +4,7 @@ import { createI18n } from 'vue-i18n';
 import ArcoVue from '@arco-design/web-vue';
 import * as ArcoVueIcon from '@arco-design/web-vue/es/icon';
 import Admin9UI, {
+  ACoverPicker,
   AIconPicker,
   ACoordinatePicker,
   AFilePicker,
@@ -15,6 +16,7 @@ import Admin9UI, {
   localePrefix as rootLocalePrefix,
   messages as rootMessages,
   type ATiptapEditorProps,
+  type ACoverPickerProps,
   type AFilterFormProps,
   type Action,
   type AProTableEmits,
@@ -23,6 +25,7 @@ import Admin9UI, {
   type AProTableSlots,
   type CoordinateSelection,
   type CoordinateValue,
+  type CoverPickerValue,
   type Admin9UIOptions,
   type Admin9UIPluginOptions,
   type FileItem,
@@ -73,6 +76,16 @@ const fileService: FilePickerAdapter = {
   },
 };
 const filePickerService: FilePickerAdapter = { list: fileService.list };
+const coverItem: FileItem = {
+  id: 'fixture-cover',
+  name: 'Fixture cover.png',
+  type: 'image',
+  groupId: null,
+  url: 'https://example.invalid/fixture-cover.png',
+  status: 'ready',
+};
+const coverValue: CoverPickerValue = { mode: 'single', images: [coverItem] };
+const coverPickerProps: ACoverPickerProps = { modelValue: coverValue, service: filePickerService };
 const fileUploaderService: FileUploadCapability = {
   async upload({ file, fileType, groupId, onProgress }) {
     onProgress?.(100);
@@ -185,6 +198,7 @@ const app = createApp({
   render: () =>
     h('main', [
       h(AIconPicker, { modelValue: '', allowClear: true }),
+      h(ACoverPicker, coverPickerProps),
       h(AFilterForm, filterFormProps, { default: () => h('div', 'Fixture filter') }),
       h(ACoordinatePicker, { modelValue: coordinateValue, apiKey: 'fixture-key', readonly: true }),
       h(AProTable, proTableProps),

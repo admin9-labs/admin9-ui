@@ -43,6 +43,15 @@ export default {
       cancelled: '已取消',
     },
   },
+  coverPicker: {
+    modeLabel: '封面展示方式',
+    single: '单图',
+    triple: '三图',
+    none: '无封面',
+    selectPosition: '选择第 {index} 张封面',
+    replacePosition: '替换第 {index} 张封面：{name}',
+    removePosition: '移除第 {index} 张封面',
+  },
   filePicker: {
     title: '选择文件',
     trigger: '选择文件',

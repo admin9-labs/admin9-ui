@@ -208,7 +208,8 @@ input {
   align-items: start;
 }
 
-.file-picker-workspace {
+.file-picker-workspace,
+.cover-picker-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
   gap: 28px;
@@ -326,6 +327,7 @@ input {
   .icon-workspace,
   .media-workspace,
   .file-picker-workspace,
+  .cover-picker-workspace,
   .coordinate-workspace {
     grid-template-columns: minmax(0, 1fr);
   }

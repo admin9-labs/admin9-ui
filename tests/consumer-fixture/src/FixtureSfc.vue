@@ -3,10 +3,13 @@
   import {
     AChatMessageList,
     AChatComposer,
+    ACoverPicker,
     type AChatMessageListExposed,
     type AChatComposerExposed,
     type ChatComposerSize,
     type ChatMessage,
+    type CoverPickerValue,
+    type CoverPickerSize,
     AIconPicker,
     ACoordinatePicker,
     AFilePicker,
@@ -45,6 +48,8 @@
     chatMessages.value.push({ id: `u-${chatMessages.value.length}`, role: 'user', content: value });
   };
   const attachments = ref<FileItem[]>([]);
+  const cover = ref<CoverPickerValue>({ mode: 'triple', images: [null, null, null] });
+  const coverSize: CoverPickerSize = 'small';
   const filters = reactive({ keyword: '', status: undefined as string | undefined });
   const htmlContent = ref('<p>HTML model</p>');
   const jsonContent = ref<TiptapDocument>({ type: 'doc', content: [{ type: 'paragraph' }] });
@@ -80,6 +85,7 @@
         <button :data-size="size" :disabled="disabled || (!generating && !canSubmit)" @click="activate">Send</button>
       </template>
     </AChatComposer>
+    <ACoverPicker v-model="cover" :size="coverSize" :service="filePickerService" />
     <AIconPicker model-value="" />
     <ATiptapEditor
       ref="editorRef"

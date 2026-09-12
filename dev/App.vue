@@ -3,6 +3,7 @@
   import type { TableColumnData } from '@arco-design/web-vue';
   import ChatAcceptance from './chat-acceptance.vue';
   import {
+    ACoverPicker,
     ACoordinatePicker,
     AFilePicker,
     AFileUploader,
@@ -14,6 +15,8 @@
     type FileUploadBatchResult,
     type FilePickerAdapter,
     type FileType,
+    type CoverPickerValue,
+    type CoverPickerSize,
     type CoordinateSelection,
     type CoordinateValue,
     type Action,
@@ -193,6 +196,10 @@
   const filePickerConstraint = ref<'all' | 'subset' | 'empty'>('subset');
   const filePickerMultiple = ref(true);
   const filePickerValue = ref<FileItem | FileItem[] | undefined>([]);
+  const coverPickerValue = ref<CoverPickerValue>({ mode: 'single', images: [null] });
+  const coverPickerDisabled = ref(false);
+  const coverPickerSize = ref<CoverPickerSize>('medium');
+  const lastCoverPickerEvent = ref('尚未选择');
   const lastFilePickerEvent = ref('尚未选择');
   const lastFileUploaderEvent = ref('等待上传');
   const filePickerConstraintOptions = [
@@ -256,6 +263,10 @@
   const recordFilePickerEvent = (items: FileItem[]) => {
     lastFilePickerEvent.value = items.length ? items.map((item) => item.name).join('、') : '已清空';
   };
+  const recordCoverPickerEvent = (value: CoverPickerValue) => {
+    const count = value.images.filter(Boolean).length;
+    lastCoverPickerEvent.value = `${value.mode} · ${count} 张图片`;
+  };
   const recordFileUploaderEvent = (result: FileUploadBatchResult) => {
     lastFileUploaderEvent.value = `成功 ${result.succeeded.length} 项，失败 ${result.failed.length} 项，取消 ${result.cancelled.length} 项`;
   };
@@ -287,6 +298,7 @@
       <a href="#icon-picker">AIconPicker</a>
       <a href="#coordinate-picker">ACoordinatePicker</a>
       <a href="#tiptap-editor">ATiptapEditor</a>
+      <a href="#cover-picker">ACoverPicker</a>
       <a href="#file-picker">AFilePicker</a>
       <a href="#file-uploader">AFileUploader</a>
     </nav>
@@ -713,6 +725,49 @@
             <dd>{{ stateOptions.find((option) => option.value === filePickerState)?.label }}</dd>
             <dt>最近事件</dt>
             <dd>{{ lastFilePickerEvent }}</dd>
+          </dl>
+        </div>
+      </section>
+
+      <section v-if="!tiptapFocused" id="cover-picker" class="acceptance-section" data-testid="cover-picker-section">
+        <div class="section-heading">
+          <div>
+            <span class="section-index">08</span>
+            <h2>ACoverPicker</h2>
+          </div>
+          <div class="section-controls">
+            <a-radio-group v-model="coverPickerSize" type="button" size="small" data-testid="cover-picker-size-control">
+              <a-radio value="small">小</a-radio>
+              <a-radio value="medium">中</a-radio>
+              <a-radio value="large">大</a-radio>
+            </a-radio-group>
+            <a-switch v-model="coverPickerDisabled" data-testid="cover-picker-disabled-control">
+              <template #checked>禁用</template>
+              <template #unchecked>可编辑</template>
+            </a-switch>
+          </div>
+        </div>
+
+        <div class="cover-picker-workspace component-frame">
+          <div>
+            <div class="field-label">展示封面</div>
+            <ACoverPicker
+              v-model="coverPickerValue"
+              :size="coverPickerSize"
+              :service="filePickerService"
+              :disabled="coverPickerDisabled"
+              can-upload
+              data-testid="cover-picker"
+              @change="recordCoverPickerEvent"
+            />
+          </div>
+          <dl class="event-readout" aria-live="polite">
+            <dt>当前模式</dt>
+            <dd>{{ coverPickerValue.mode }}</dd>
+            <dt>位置状态</dt>
+            <dd>{{ coverPickerValue.images.map((item) => item?.name || '空').join(' / ') || '无封面' }}</dd>
+            <dt>最近事件</dt>
+            <dd>{{ lastCoverPickerEvent }}</dd>
           </dl>
         </div>
       </section>

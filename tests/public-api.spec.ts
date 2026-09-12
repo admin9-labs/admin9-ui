@@ -5,6 +5,10 @@ import type {
   Admin9UIPluginOptions,
   AChatComposerProps,
   ChatComposerSize,
+  ACoverPickerProps,
+  CoverMode,
+  CoverPickerSize,
+  CoverPickerValue,
   CoordinateSelection,
   CoordinateValue,
   FilePickerAdapter,
@@ -81,6 +85,15 @@ describe('package public API', () => {
 
     expect(props).toEqual({ fileType: 'image', groupId: 'design', multiple: true });
     expect(result).toEqual({ succeeded: [], failed: [], cancelled: [] });
+  });
+
+  it('exports the fixed-position cover picker contract', () => {
+    const mode: CoverMode = 'triple';
+    const value: CoverPickerValue = { mode, images: [null, null, null] };
+    const size: CoverPickerSize = 'small';
+    const props: ACoverPickerProps = { modelValue: value, size, accept: 'image/*', canUpload: true };
+
+    expect(props).toEqual({ modelValue: value, size: 'small', accept: 'image/*', canUpload: true });
   });
 
   it('exports the coordinate picker value and selection types', () => {
@@ -229,6 +242,7 @@ describe('package public API', () => {
       [
         'AChatMessageList',
         'AChatComposer',
+        'ACoverPicker',
         'AIconPicker',
         'ACoordinatePicker',
         'AFilePicker',
@@ -248,6 +262,7 @@ describe('package public API', () => {
     expect(Object.keys(localeApi).sort()).toEqual(['enUS', 'localePrefix', 'messages', 'zhCN'].sort());
     expect(localeApi.enUS.filePicker.types.archive).toBe('Archives');
     expect(localeApi.enUS.filePicker.typeAllowed).toBe('All allowed types');
+    expect(localeApi.enUS.coverPicker.triple).toBe('Three images');
     expect(localeApi.zhCN.coordinatePicker.choose).toBe('选择坐标');
   });
 
@@ -260,6 +275,7 @@ describe('package public API', () => {
     app.use(publicApi.default);
     expect(app.component('AChatMessageList')).toBe(publicApi.AChatMessageList);
     expect(app.component('AChatComposer')).toBe(publicApi.AChatComposer);
+    expect(app.component('ACoverPicker')).toBe(publicApi.ACoverPicker);
 
     expect(app.component('AMediaLibrary')).toBeUndefined();
     expect(app.component('AFileManager')).toBeUndefined();

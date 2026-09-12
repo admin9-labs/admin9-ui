@@ -5,6 +5,7 @@ import type { Admin9UIPluginOptions } from './services/types';
 // 组件
 import AChatMessageList from './components/chat-message-list/index.vue';
 import AChatComposer from './components/chat-composer/index.vue';
+import ACoverPicker from './components/cover-picker/index.vue';
 import AFilePicker from './components/file-picker/index.vue';
 import AFileUploader from './components/file-uploader/index.vue';
 import AIconPicker from './components/icon-picker/index.vue';
@@ -28,6 +29,8 @@ export type {
   AChatComposerSlots,
   AChatComposerExposed,
 } from './components/chat-composer/types';
+
+export type { ACoverPickerProps, CoverMode, CoverPickerSize, CoverPickerValue } from './components/cover-picker/types';
 
 // 服务接口契约（供 App 实现 adapter 时 import 类型）
 export type {
@@ -115,6 +118,7 @@ export {
   AChatMessageList,
   AChatComposer,
   ACoordinatePicker,
+  ACoverPicker,
   AFilePicker,
   AFileUploader,
   AFilterForm,
@@ -138,6 +142,7 @@ const Admin9UI = {
     const reserved = [
       'AChatMessageList',
       'AChatComposer',
+      'ACoverPicker',
       'AFilePicker',
       'AFileUploader',
       'AFilterForm',
@@ -155,6 +160,7 @@ const Admin9UI = {
 
     app.component('AChatMessageList', AChatMessageList);
     app.component('AChatComposer', AChatComposer);
+    app.component('ACoverPicker', ACoverPicker);
     app.component('AFilePicker', AFilePicker);
     app.component('AFileUploader', AFileUploader);
     app.component('AFilterForm', AFilterForm);

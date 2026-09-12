@@ -30,6 +30,7 @@
 | default `Admin9UI`                         | 全局组件注册与默认 service 注入 | 可选文件 adapter         |
 | `AChatMessageList` | 消息、Markdown 和滚动跟随 | 受控消息数组 |
 | `AChatComposer` | 文本输入、发送及停止 | 受控输入与生成状态 |
+| `ACoverPicker` | 单图、三图及无封面选择 | `FilePickerAdapter` |
 | `ACoordinatePicker`                        | 腾讯地图坐标搜索与点选          | 应用提供腾讯地图 API Key |
 | `AFilePicker`                              | 表单级文件浏览与选择            | `FilePickerAdapter`      |
 | `AFileUploader`                            | 本地批量上传队列                | `FileUploadCapability`   |
@@ -89,6 +90,7 @@ app.use(Admin9UI, {
 
 - [AChatMessageList](./docs/components/chat-message-list.md) 负责消息展示、安全 Markdown 和阅读位置，不接收流协议或请求接口。
 - [AChatComposer](./docs/components/chat-composer.md) 负责输入和发送／停止事件，不管理请求、附件队列或会话；`submitDisabled` 仅限制发送。
+- [ACoverPicker](./docs/components/cover-picker.md) 负责封面模式、固定图片位置与预览，复用 `AFilePicker` 完成图片选择。
 
 - [ACoordinatePicker](./docs/components/coordinate-picker.md) 只提交坐标和确认来源，不绑定地址、门店等业务字段，也不负责坐标系转换。
 - [AFilePicker](./docs/components/file-picker.md) 负责浏览、筛选、选择草稿与确认写回；上传完成只刷新列表，不自动选择文件。
