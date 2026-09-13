@@ -10,6 +10,7 @@ import {
   assertLatestDistTag,
   assertProvenanceAttestation,
   assertPublishedMetadata,
+  buildReleaseArtifactMetadata,
   buildRemoteTagRefs,
   buildRegistryPackageUrl,
   buildRegistryVersionUrl,
@@ -19,7 +20,9 @@ import {
   requirePublishedGitHubRelease,
   resolveRemoteTagCommit,
   resolveOutputDirectory,
+  selectSuccessfulMainCiRun,
   retry,
+  validateReleaseArtifactMetadata,
   validateReleaseIdentity,
   validateRemoteTagBinding,
 } from '../scripts/release-utils.mjs';
@@ -132,6 +135,84 @@ describe('release tarball output safety', () => {
 });
 
 describe('release identity validation', () => {
+  it('selects exactly one successful main CI run for the release commit', () => {
+    const expectedRun = {
+      id: 123,
+      run_attempt: 2,
+      event: 'push',
+      head_branch: 'main',
+      head_sha: sha,
+      path: '.github/workflows/ci.yml',
+      status: 'completed',
+      conclusion: 'success',
+    };
+    const ignoredRuns = [
+      { ...expectedRun, id: 1, event: 'pull_request' },
+      { ...expectedRun, id: 2, head_branch: 'feature' },
+      { ...expectedRun, id: 3, head_sha: newerMainSha },
+      { ...expectedRun, id: 4, path: '.github/workflows/other.yml' },
+      { ...expectedRun, id: 5, status: 'in_progress', conclusion: null },
+      { ...expectedRun, id: 6, conclusion: 'failure' },
+    ];
+    expect(
+      selectSuccessfulMainCiRun([...ignoredRuns, expectedRun], {
+        commit: sha,
+        workflowPath: '.github/workflows/ci.yml',
+      })
+    ).toEqual({ runId: 123, runAttempt: 2 });
+  });
+
+  it('rejects missing and ambiguous successful main CI runs', () => {
+    const input = {
+      id: 123,
+      run_attempt: 1,
+      event: 'push',
+      head_branch: 'main',
+      head_sha: sha,
+      path: '.github/workflows/ci.yml',
+      status: 'completed',
+      conclusion: 'success',
+    };
+    const expected = { commit: sha, workflowPath: '.github/workflows/ci.yml' };
+    expect(() => selectSuccessfulMainCiRun([], expected)).toThrow(/No successful main CI run/);
+    expect(() => selectSuccessfulMainCiRun([input, { ...input, id: 124 }], expected)).toThrow(/found 2/);
+  });
+
+  it('binds release artifact metadata to the exact CI run and tarball', () => {
+    const expected = {
+      repository: 'admin9-labs/admin9-ui',
+      workflow: '.github/workflows/ci.yml',
+      runId: 123,
+      runAttempt: 2,
+      headSha: sha,
+      packageName: '@admin9-labs/admin9-ui',
+      packageVersion: '0.21.0',
+      filename: 'admin9-labs-admin9-ui-0.21.0.tgz',
+      size: 1234,
+      sha256: `sha256:${'a'.repeat(64)}`,
+      integrity: `sha512-${Buffer.alloc(64, 7).toString('base64')}`,
+    };
+    const metadata = buildReleaseArtifactMetadata(expected);
+    expect(validateReleaseArtifactMetadata(metadata, expected)).toEqual(metadata);
+
+    [
+      { repository: 'other/admin9-ui' },
+      { workflow: '.github/workflows/other.yml' },
+      { runId: 124 },
+      { runAttempt: 3 },
+      { headSha: newerMainSha },
+      { packageName: '@admin9-labs/other' },
+      { packageVersion: '0.21.1' },
+      { filename: 'other.tgz' },
+      { size: 1235 },
+      { sha256: `sha256:${'b'.repeat(64)}` },
+      { integrity: `sha512-${Buffer.alloc(64, 8).toString('base64')}` },
+    ].forEach((override) => {
+      expect(() => validateReleaseArtifactMetadata(metadata, { ...expected, ...override })).toThrow(/does not match/);
+    });
+    expect(() => validateReleaseArtifactMetadata({ ...metadata, unexpected: true }, expected)).toThrow(/unexpected fields/);
+  });
+
   it('accepts a canonical tag on the current or an earlier remote main commit', () => {
     expect(
       validateReleaseIdentity({
@@ -340,22 +421,49 @@ describe('release identity validation', () => {
     expect(disposition).toBe('skip');
     expect(attempt).toBe(3);
   });
+
+  it('stops retrying permanent failures and supports per-attempt delays', async () => {
+    let attempts = 0;
+    await expect(
+      retry(
+        async () => {
+          attempts += 1;
+          const error = new Error('permanent');
+          Reflect.set(error, 'retryable', false);
+          throw error;
+        },
+        { attempts: 3, delayMs: () => 0, shouldRetry: (error) => Reflect.get(error, 'retryable') === true }
+      )
+    ).rejects.toThrow(/permanent/);
+    expect(attempts).toBe(1);
+  });
 });
 
 describe('release command ownership', () => {
   it('runs each release gate exactly once', () => {
     const packageJson = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
     expect(packageJson.scripts.build).toBe('vite build --config vite.config.lib.ts');
-    expect(packageJson.scripts['release:check'].split(' && ')).toEqual([
-      'pnpm run changelog:check',
-      'pnpm run type:check',
-      'pnpm run acceptance:typecheck',
-      'pnpm run lint',
-      'pnpm test',
-      'pnpm run acceptance:build',
-      'pnpm run verify:tarball',
-    ]);
+    expect(packageJson.scripts['release:check']).toBe('node scripts/run-release-check.mjs');
+    expect(packageJson.scripts.lint).toMatch(/corepack pnpm@10\.5\.2 run lint:eslint/);
     expect(packageJson.scripts['pack:check']).toBeUndefined();
+
+    const releaseCheck = readFileSync(join(packageRoot, 'scripts', 'run-release-check.mjs'), 'utf8');
+    const orderedCommands = [
+      "run(['run', 'changelog:check'])",
+      "run(['run', 'type:check'])",
+      "run(['run', 'acceptance:typecheck'])",
+      "run(['run', 'lint'])",
+      "run(['test'])",
+      "run(['run', 'acceptance:build'])",
+      "'verify:tarball'",
+    ];
+    let previousPosition = -1;
+    orderedCommands.forEach((command) => {
+      const position = releaseCheck.indexOf(command);
+      expect(position).toBeGreaterThan(previousPosition);
+      previousPosition = position;
+    });
+    expect(releaseCheck).toContain("const pnpm = ['pnpm@10.5.2']");
 
     const verifier = readFileSync(join(packageRoot, 'scripts', 'verify-tarball.mjs'), 'utf8');
     expect(packageJson.files).toContain('README.md');
@@ -376,35 +484,43 @@ describe('release command ownership', () => {
     expect(verifier).toContain('Published Markdown link is not included in the tarball');
     expect(verifier).toContain('docs/decisions/');
     expect(verifier).toContain('RELEASING.md');
-    expect(verifier.match(/run\('pnpm', \['run', 'build'\], \{ cwd: packageRoot \}\)/g)).toHaveLength(1);
+    expect(verifier.match(/run\('corepack', \['pnpm@10\.5\.2', 'run', 'build'\], \{ cwd: packageRoot \}\)/g)).toHaveLength(1);
+    expect(verifier).not.toMatch(/run\('pnpm'/);
     expect(verifier.match(/execFileSync\('npm', \['pack'/g)).toHaveLength(1);
 
     const ciWorkflow = readFileSync(join(packageRoot, '.github', 'workflows', 'ci.yml'), 'utf8');
-    expect(ciWorkflow.match(/pnpm run release:check/g)).toHaveLength(1);
+    expect(ciWorkflow.match(/corepack pnpm@10\.5\.2 run release:check/g)).toHaveLength(2);
+    expect(ciWorkflow).toMatch(/release-candidate-\$\{\{ github\.sha \}\}/);
+    expect(ciWorkflow).toMatch(/retention-days: 30/);
+    expect(ciWorkflow).toMatch(/overwrite: true/);
+    expect(ciWorkflow).toMatch(/release-metadata\.json/);
     expect(ciWorkflow).not.toMatch(/pnpm run build|pack:check/);
 
     const releaseWorkflow = readFileSync(join(packageRoot, '.github', 'workflows', 'release.yml'), 'utf8');
     const releaseIdentityCheck = readFileSync(join(packageRoot, 'scripts', 'check-release.mjs'), 'utf8');
     expect(releaseWorkflow).toMatch(/concurrency:\n {2}group: release\n {2}cancel-in-progress: false/);
     expect(releaseIdentityCheck).toMatch(/git.*merge-base.*--is-ancestor/s);
+    expect(releaseWorkflow).toMatch(/actions: read\n {6}contents: read/);
     expect(releaseWorkflow).toMatch(/permissions:\n {6}contents: read\n {6}id-token: write/);
     expect(releaseWorkflow).toMatch(/permissions:\n {6}contents: write/);
-    expect(releaseWorkflow.match(/sha256sum --check SHA256SUMS/g)).toHaveLength(2);
+    expect(releaseWorkflow.match(/id-token: write/g)).toHaveLength(1);
+    expect(releaseWorkflow.match(/contents: write/g)).toHaveLength(1);
+    expect(releaseWorkflow).not.toMatch(/actions: write/);
+    expect(releaseWorkflow.match(/verify-release-artifact\.mjs/g)).toHaveLength(4);
+    expect(releaseWorkflow).toMatch(/run-id: \$\{\{ steps\.candidate\.outputs\.run-id \}\}/);
+    expect(releaseWorkflow).not.toMatch(/run release:check|acceptance:typecheck|pnpm test|verify:tarball/);
     expect(releaseWorkflow).toMatch(
       /npm publish "\.\/\$\{\{ steps\.registry\.outputs\.tarball \}\}" --access public --provenance/
     );
-    const changelogGatePosition = releaseWorkflow.indexOf('run: pnpm run changelog:check');
-    const npmPublishPosition = releaseWorkflow.indexOf('npm publish');
-    expect(changelogGatePosition).toBeGreaterThan(-1);
-    expect(releaseWorkflow.match(/pnpm run changelog:check/g)).toHaveLength(1);
-    expect(npmPublishPosition).toBeGreaterThan(changelogGatePosition);
+    expect(releaseWorkflow).toMatch(/publish-npm:[\s\S]*verify-published-integrity\.mjs/);
+    expect(releaseWorkflow).toMatch(/verify-provenance:[\s\S]*needs:[\s\S]*- publish-npm/);
     expect(releaseWorkflow).toMatch(/verify-published-package\.mjs/);
     expect(releaseWorkflow).toMatch(/check-github-release-status\.mjs/);
     expect(releaseWorkflow).toMatch(/check-changelog\.mjs --release "\$GITHUB_REF_NAME" > release-notes\.md/);
     expect(releaseWorkflow).toMatch(/gh release create[\s\S]*--notes-file release-notes\.md/);
     expect(releaseWorkflow).not.toMatch(/--generate-notes/);
     expect(releaseWorkflow.match(/--notes-file release-notes\.md/g)).toHaveLength(3);
-    expect(releaseWorkflow.match(/--remote-tag/g)).toHaveLength(2);
+    expect(releaseWorkflow.match(/--remote-tag/g)).toHaveLength(3);
     expect(releaseWorkflow).toMatch(
       /Revalidate remote tag before npm publication[\s\S]*Check npm publication state[\s\S]*Publish verified tarball to npm/
     );

@@ -13,26 +13,30 @@
 ## 发布步骤
 
 1. 将本次内容从 `Unreleased` 移入带日期的 `## [X.Y.Z] - YYYY-MM-DD` 章节，并保留新的空 `Unreleased` 章节。
-2. 在同一个可审查的提交中更新 `package.json` 版本，运行 `pnpm run changelog:check`，确认版本章节与 manifest 一致。
+2. 在同一个可审查的提交中更新 `package.json` 版本，运行 `corepack pnpm@10.5.2 run changelog:check`，确认版本章节与 manifest 一致。
 3. 运行 `npm view @admin9-labs/admin9-ui@X.Y.Z version` 查询目标版本。只有明确返回 E404 才表示尚未发布；返回版本号时停止并选择新版本，其他错误不得视为可用。
-4. 改动冻结后运行一次 `pnpm run release:check`，确认真实 tarball 及隔离消费工程通过。
-5. 将发布提交推送到 `main`，等待该提交对应的 CI 通过。
+4. 改动冻结后可运行一次 `corepack pnpm@10.5.2 run release:check` 提前发现问题，不以本地结果代替 Actions 结论。
+5. 将发布提交推送到 `main`，等待该提交对应的 CI 通过，并确认其保存了 `release-candidate-<commit>` artifact。
 6. 在计划的发布提交上创建 annotated tag，例如 `git tag -a v0.9.0 <release-commit> -m "v0.9.0"`。
 7. 再次核对 tag、package 版本、CHANGELOG 和提交后，单独推送该 tag。
-8. 等待 Release workflow 的 `verify`、`publish` 和 `github-release` job 全部通过。
+8. 等待 Release workflow 的 `resolve-candidate`、`publish-npm`、`verify-provenance` 和 `github-release` job 全部通过。
 9. 核对 npm package 版本、`latest` dist-tag、provenance，以及 GitHub Release 正文和附件。
 
 ## 工作流保证
 
-- `verify` 只读取仓库，运行完整门禁并保存已经通过隔离消费验证的 tgz；
-- `publish` 使用同一个 artifact，通过 OIDC 发布，并校验 Registry integrity、`latest` 和 provenance；
+- `main` CI 运行完整门禁，保存已经通过隔离消费验证的 tgz、digest 和 CI 身份信息 30 天；
+- `resolve-candidate` 只接受 tag 提交对应的成功 `main` CI，并将其 artifact 晋级为发布 tarball；
+- `publish-npm` 使用同一个 artifact，通过 OIDC 发布并校验 Registry integrity；
+- `verify-provenance` 独立等待并校验 `latest` 和 provenance；
 - `github-release` 仅在 npm 发布成功后创建或核验 GitHub Release；
 - npm 发布和 GitHub Release 前都会重新确认远端 tag 仍指向 Actions 事件提交；
 - 已存在版本或 Release 只有在内容完全一致时才会安全跳过，任何冲突都会使工作流失败。
 
 ## 失败处理
 
-发布失败时优先重跑同一个 Actions workflow，不移动或复用 tag，也不重新打包同一版本。
+发布失败时不移动或复用 tag，也不重新打包同一版本。传播校验失败时使用 `gh run rerun <run-id> --failed`，只重跑失败 job 及其下游；候选 artifact 过期时不得回退到现场重建，应发布新的 patch 版本。
+
+tag 必须等待对应提交的 `main` CI 成功后再推送；若提前推送，`resolve-candidate` 会失败，等待 CI 完成后重跑原 Release workflow。仓库或组织的 Actions artifact 保存上限必须至少为 30 天。
 
 如果错误版本已经发布，通过 `npm deprecate` 标记，并发布新的 patch 版本。除 npm 安全事件或官方策略允许的紧急情况外，不使用 unpublish，不覆盖 GitHub Release 附件。
 

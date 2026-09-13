@@ -16,17 +16,15 @@ Repository development and CI use Node 24 with pnpm 10.5.2. This is a repository
 Contributor setup and routine checks are documented in `CONTRIBUTING.md`. The release runbook is `RELEASING.md`; keep operational release details out of consumer-facing documentation.
 
 ```bash
-corepack enable
-corepack prepare pnpm@10.5.2 --activate
-pnpm install --frozen-lockfile
+corepack pnpm@10.5.2 install --frozen-lockfile
 # During development, run only checks relevant to the changed scope.
-pnpm exec vitest run tests/file-picker.spec.ts
-pnpm run type:check
-pnpm run lint
-pnpm run changelog:check
+corepack pnpm@10.5.2 exec vitest run tests/file-picker.spec.ts
+corepack pnpm@10.5.2 run type:check
+corepack pnpm@10.5.2 run lint
+corepack pnpm@10.5.2 run changelog:check
 
 # Run at most once locally before handing off a release candidate.
-pnpm run release:check
+corepack pnpm@10.5.2 run release:check
 ```
 
 GitHub Actions is the final authority for pull requests, main pushes, and releases. Do not duplicate the full gate locally after an unchanged candidate has passed it.

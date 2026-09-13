@@ -41,8 +41,18 @@ async function fetchJson(url) {
     headers: { accept: 'application/json' },
     cache: 'no-store',
   });
-  if (!response.ok) throw new Error(`Registry request failed with status ${response.status}: ${url}`);
+  if (!response.ok) {
+    const error = new Error(`Registry request failed with status ${response.status}: ${url}`);
+    error.retryable = response.status === 404 || response.status === 408 || response.status === 429 || response.status >= 500;
+    throw error;
+  }
   return response.json();
+}
+
+function retryable(message) {
+  const error = new Error(message);
+  error.retryable = true;
+  return error;
 }
 
 await retry(
@@ -56,12 +66,24 @@ await retry(
       });
 
       const packageMetadata = await fetchJson(packageUrl);
-      assertLatestDistTag(packageMetadata, {
-        packageName: packageJson.name,
-        packageVersion: packageJson.version,
-      });
+      if (packageMetadata.name !== packageJson.name) {
+        assertLatestDistTag(packageMetadata, {
+          packageName: packageJson.name,
+          packageVersion: packageJson.version,
+        });
+      }
+      try {
+        assertLatestDistTag(packageMetadata, {
+          packageName: packageJson.name,
+          packageVersion: packageJson.version,
+        });
+      } catch {
+        throw retryable(`npm latest does not point to ${packageJson.name}@${packageJson.version} yet.`);
+      }
 
-      const attestationsUrl = new URL(versionMetadata.dist?.attestations?.url ?? '');
+      const provenance = versionMetadata.dist?.attestations?.url;
+      if (!provenance) throw retryable('The npm registry has not exposed the provenance URL yet.');
+      const attestationsUrl = new URL(provenance);
       if (
         attestationsUrl.origin !== 'https://registry.npmjs.org' ||
         !attestationsUrl.pathname.startsWith('/-/npm/v1/attestations/')
@@ -69,6 +91,10 @@ await retry(
         throw new Error('The npm registry returned an invalid provenance URL.');
       }
       const attestations = await fetchJson(attestationsUrl);
+      const hasProvenance = attestations.attestations?.some(
+        (attestation) => attestation.predicateType === 'https://slsa.dev/provenance/v1'
+      );
+      if (!hasProvenance) throw retryable('The npm registry has not exposed SLSA provenance yet.');
       assertProvenanceAttestation(attestations, {
         packageName: packageJson.name,
         packageVersion: packageJson.version,
@@ -83,7 +109,11 @@ await retry(
       throw error;
     }
   },
-  { attempts: 8, delayMs: 3000 }
+  {
+    attempts: 8,
+    delayMs: (attempt) => Math.min(5000 * 2 ** (attempt - 1), 60000) + Math.floor(Math.random() * 1000),
+    shouldRetry: (error) => error.retryable === true,
+  }
 );
 
 process.stdout.write(`Verified npm ${packageJson.name}@${packageJson.version}, latest, integrity, and SLSA provenance.\n`);

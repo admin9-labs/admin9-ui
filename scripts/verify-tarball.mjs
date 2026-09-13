@@ -46,7 +46,10 @@ function readJson(path) {
 
 try {
   const nodeMajor = Number.parseInt(process.versions.node.split('.')[0], 10);
-  const pnpmVersion = execFileSync('pnpm', ['--version'], { encoding: 'utf8', env: runtimeEnv }).trim();
+  const pnpmVersion = execFileSync('corepack', ['pnpm@10.5.2', '--version'], {
+    encoding: 'utf8',
+    env: runtimeEnv,
+  }).trim();
   assert(
     nodeMajor === Number(hostBaseline.node),
     `Host baseline requires Node ${hostBaseline.node}; found ${process.versions.node}.`
@@ -57,7 +60,7 @@ try {
 
   if (retainedOutputDirectory) await ensureEmptyOutputDirectory(retainedOutputDirectory);
 
-  run('pnpm', ['run', 'build'], { cwd: packageRoot });
+  run('corepack', ['pnpm@10.5.2', 'run', 'build'], { cwd: packageRoot });
 
   await cp(fixtureRoot, consumerDirectory, { recursive: true });
   if (!retainedOutputDirectory) await mkdir(tarballDirectory);
@@ -146,8 +149,8 @@ try {
     );
   });
 
-  run('pnpm', ['install', '--frozen-lockfile', '--ignore-scripts']);
-  run('pnpm', ['add', tarballPath, '--save-exact', '--strict-peer-dependencies', '--ignore-scripts']);
+  run('corepack', ['pnpm@10.5.2', 'install', '--frozen-lockfile', '--ignore-scripts']);
+  run('corepack', ['pnpm@10.5.2', 'add', tarballPath, '--save-exact', '--strict-peer-dependencies', '--ignore-scripts']);
 
   const sourcePackage = readJson(join(packageRoot, 'package.json'));
   const installedPackagePath = join(consumerDirectory, 'node_modules', '@admin9-labs', 'admin9-ui', 'package.json');
@@ -171,9 +174,18 @@ try {
   assert(!installedPackage.engines?.npm, 'Published package must not impose the library repository npm version on consumers.');
   assert(!installedPackage.packageManager, 'Published package must not expose a repository-only package-manager pin.');
 
-  run('pnpm', ['list', '@admin9-labs/admin9-ui', 'vue', '@arco-design/web-vue', 'vue-i18n', '@tiptap/core', '@tiptap/pm']);
-  run('pnpm', ['run', 'typecheck']);
-  run('pnpm', ['run', 'build']);
+  run('corepack', [
+    'pnpm@10.5.2',
+    'list',
+    '@admin9-labs/admin9-ui',
+    'vue',
+    '@arco-design/web-vue',
+    'vue-i18n',
+    '@tiptap/core',
+    '@tiptap/pm',
+  ]);
+  run('corepack', ['pnpm@10.5.2', 'run', 'typecheck']);
+  run('corepack', ['pnpm@10.5.2', 'run', 'build']);
 
   const builtAssetsDirectory = join(consumerDirectory, 'dist', 'assets');
   const cssAssets = (await readdir(builtAssetsDirectory))
@@ -185,7 +197,7 @@ try {
     'Consumer CSS asset does not contain admin9-ui styles.'
   );
 
-  run('pnpm', ['run', 'smoke']);
+  run('corepack', ['pnpm@10.5.2', 'run', 'smoke']);
 
   verified = true;
   console.log(`\nVerified ${packed.filename} (${packed.size} bytes) in the single host-baseline consumer.`);

@@ -19,6 +19,25 @@ const RELEASE_TAG = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const GIT_SHA = /^[0-9a-f]{40}$/i;
 const SLSA_PROVENANCE_TYPE = 'https://slsa.dev/provenance/v1';
 
+function assertExactKeys(value, expectedKeys, description) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${description} must be an object.`);
+  }
+  const actualKeys = Object.keys(value).sort();
+  const sortedExpectedKeys = [...expectedKeys].sort();
+  if (JSON.stringify(actualKeys) !== JSON.stringify(sortedExpectedKeys)) {
+    throw new Error(`${description} has unexpected fields.`);
+  }
+}
+
+function assertPositiveInteger(value, description) {
+  if (!Number.isSafeInteger(value) || value < 1) throw new Error(`${description} must be a positive integer.`);
+}
+
+function assertGitSha(value, description) {
+  if (!GIT_SHA.test(value)) throw new Error(`Invalid ${description} Git SHA: ${value}`);
+}
+
 function parseReleaseTag(tag) {
   const tagMatch = RELEASE_TAG.exec(tag);
   if (!tagMatch) throw new Error(`Release tag must use canonical vX.Y.Z form: ${tag}`);
@@ -76,6 +95,97 @@ export function validateReleaseIdentity({ tag, packageVersion, commit, checkoutH
   if (!isMainAncestor) throw new Error('The release tag commit is not an ancestor of remote main.');
 
   return tagVersion;
+}
+
+export function selectSuccessfulMainCiRun(workflowRuns, { commit, workflowPath }) {
+  assertGitSha(commit, 'release commit');
+  if (!Array.isArray(workflowRuns)) throw new Error('GitHub Actions workflow runs must be an array.');
+
+  const candidates = workflowRuns.filter(
+    (run) =>
+      run?.event === 'push' &&
+      run?.head_branch === 'main' &&
+      run?.head_sha?.toLowerCase() === commit.toLowerCase() &&
+      run?.path === workflowPath &&
+      run?.status === 'completed' &&
+      run?.conclusion === 'success'
+  );
+
+  if (candidates.length === 0) {
+    throw new Error(`No successful main CI run exists for release commit ${commit}.`);
+  }
+  if (candidates.length !== 1) {
+    throw new Error(`Expected one successful main CI run for ${commit}; found ${candidates.length}.`);
+  }
+
+  const [candidate] = candidates;
+  assertPositiveInteger(candidate.id, 'CI run ID');
+  assertPositiveInteger(candidate.run_attempt, 'CI run attempt');
+  return { runId: candidate.id, runAttempt: candidate.run_attempt };
+}
+
+export function buildReleaseArtifactMetadata({
+  repository,
+  workflow,
+  runId,
+  runAttempt,
+  headSha,
+  packageName,
+  packageVersion,
+  filename,
+  size,
+  sha256,
+  integrity,
+}) {
+  assertGitSha(headSha, 'release artifact head');
+  assertPositiveInteger(runId, 'Release artifact run ID');
+  assertPositiveInteger(runAttempt, 'Release artifact run attempt');
+  [repository, workflow, packageName, packageVersion, filename, sha256, integrity].forEach((value) => {
+    if (typeof value !== 'string' || value.length === 0) throw new Error('Release artifact metadata values are required.');
+  });
+  if (!Number.isSafeInteger(size) || size < 1) throw new Error('Release artifact tarball size must be positive.');
+  return {
+    schemaVersion: 1,
+    repository,
+    workflow,
+    runId,
+    runAttempt,
+    headSha: headSha.toLowerCase(),
+    package: { name: packageName, version: packageVersion },
+    tarball: { filename, size, sha256, integrity },
+  };
+}
+
+export function validateReleaseArtifactMetadata(metadata, expected) {
+  assertExactKeys(
+    metadata,
+    ['schemaVersion', 'repository', 'workflow', 'runId', 'runAttempt', 'headSha', 'package', 'tarball'],
+    'Release artifact metadata'
+  );
+  assertExactKeys(metadata.package, ['name', 'version'], 'Release artifact package metadata');
+  assertExactKeys(metadata.tarball, ['filename', 'size', 'sha256', 'integrity'], 'Release artifact tarball metadata');
+  assertPositiveInteger(metadata.runId, 'Release artifact run ID');
+  assertPositiveInteger(metadata.runAttempt, 'Release artifact run attempt');
+  assertGitSha(metadata.headSha, 'release artifact head');
+
+  const actual = buildReleaseArtifactMetadata({
+    repository: metadata.repository,
+    workflow: metadata.workflow,
+    runId: metadata.runId,
+    runAttempt: metadata.runAttempt,
+    headSha: metadata.headSha,
+    packageName: metadata.package.name,
+    packageVersion: metadata.package.version,
+    filename: metadata.tarball.filename,
+    size: metadata.tarball.size,
+    sha256: metadata.tarball.sha256,
+    integrity: metadata.tarball.integrity,
+  });
+  const normalizedExpected = buildReleaseArtifactMetadata(expected);
+  if (JSON.stringify(actual) !== JSON.stringify(normalizedExpected)) {
+    throw new Error('Release artifact metadata does not match the requested CI run and tarball.');
+  }
+  return actual;
 }
 
 export function buildRemoteTagRefs(tag) {
@@ -282,14 +392,15 @@ export function requirePublishedGitHubRelease(disposition, tag) {
   return disposition;
 }
 
-export async function retry(operation, { attempts, delayMs }) {
+export async function retry(operation, { attempts, delayMs, shouldRetry = () => true }) {
   async function run(attempt) {
     try {
       return await operation(attempt);
     } catch (error) {
-      if (attempt >= attempts) throw error;
+      if (attempt >= attempts || !shouldRetry(error)) throw error;
+      const currentDelayMs = typeof delayMs === 'function' ? delayMs(attempt) : delayMs;
       await new Promise((resolveDelay) => {
-        setTimeout(resolveDelay, delayMs);
+        setTimeout(resolveDelay, currentDelayMs);
       });
       return run(attempt + 1);
     }

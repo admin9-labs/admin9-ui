@@ -13,24 +13,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  verify:
+  resolve-candidate:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      ci-run-id: ${{ steps.candidate.outputs.run-id }}
+      ci-run-attempt: ${{ steps.candidate.outputs.run-attempt }}
     steps:
       - name: Checkout release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
-        with:
-          version: 10.5.2
-
-      - name: Set up quality-gate Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
-          cache: pnpm
 
       - name: Validate tag and main ancestry
         run: |
@@ -41,48 +41,57 @@ jobs:
             --checkout-head "$(git rev-parse HEAD)" \
             --main-head "$(git rev-parse origin/main)"
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Revalidate remote release tag
+        run: |
+          node scripts/check-release.mjs \
+            --remote-tag \
+            --tag "$GITHUB_REF_NAME" \
+            --commit "$GITHUB_SHA"
 
-      - name: Check changelog
-        run: pnpm run changelog:check
+      - name: Resolve exact main CI candidate
+        id: candidate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/resolve-ci-candidate.mjs \
+            --repository "$GITHUB_REPOSITORY" \
+            --commit "$GITHUB_SHA" \
+            --workflow "ci.yml"
 
-      - name: Check library types
-        run: pnpm run type:check
+      - name: Download exact main CI candidate
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-candidate-${{ github.sha }}
+          path: release-artifacts
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.candidate.outputs.run-id }}
 
-      - name: Check acceptance host types
-        run: pnpm run acceptance:typecheck
+      - name: Verify main CI candidate identity
+        run: |
+          node scripts/verify-release-artifact.mjs \
+            --tarball-dir release-artifacts \
+            --repository "$GITHUB_REPOSITORY" \
+            --workflow ".github/workflows/ci.yml" \
+            --run-id "${{ steps.candidate.outputs.run-id }}" \
+            --run-attempt "${{ steps.candidate.outputs.run-attempt }}" \
+            --commit "$GITHUB_SHA"
 
-      - name: Lint
-        run: pnpm run lint
-
-      - name: Test
-        run: pnpm test
-
-      - name: Build acceptance host
-        run: pnpm run acceptance:build
-
-      - name: Build and verify release tarball
-        run: pnpm run verify:tarball -- --output-dir release-artifacts
-
-      - name: Record verified tarball digest
-        working-directory: release-artifacts
-        run: sha256sum *.tgz > SHA256SUMS
-
-      - name: Retain verified release tarball
+      - name: Retain promoted release tarball
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-tarball
           path: |
             release-artifacts/*.tgz
             release-artifacts/SHA256SUMS
+            release-artifacts/release-metadata.json
           if-no-files-found: error
           compression-level: 0
           overwrite: true
-          retention-days: 5
+          retention-days: 30
 
-  publish:
-    needs: verify
+  publish-npm:
+    needs: resolve-candidate
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -97,10 +106,6 @@ jobs:
           name: release-tarball
           path: release-artifacts
 
-      - name: Verify transferred tarball digest
-        working-directory: release-artifacts
-        run: sha256sum --check SHA256SUMS
-
       - name: Set up trusted-publishing Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
@@ -110,6 +115,16 @@ jobs:
 
       - name: Install trusted-publishing npm CLI
         run: npm install --global npm@11.19.0
+
+      - name: Verify transferred tarball identity
+        run: |
+          node scripts/verify-release-artifact.mjs \
+            --tarball-dir release-artifacts \
+            --repository "$GITHUB_REPOSITORY" \
+            --workflow ".github/workflows/ci.yml" \
+            --run-id "${{ needs.resolve-candidate.outputs.ci-run-id }}" \
+            --run-attempt "${{ needs.resolve-candidate.outputs.ci-run-attempt }}" \
+            --commit "$GITHUB_SHA"
 
       - name: Revalidate remote tag before npm publication
         run: |
@@ -126,6 +141,42 @@ jobs:
         if: steps.registry.outputs.published != 'true'
         run: npm publish "./${{ steps.registry.outputs.tarball }}" --access public --provenance
 
+      - name: Verify published package integrity
+        run: node scripts/verify-published-integrity.mjs --tarball-dir release-artifacts
+
+  verify-provenance:
+    needs:
+      - resolve-candidate
+      - publish-npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Download published release tarball
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-tarball
+          path: release-artifacts
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+
+      - name: Verify transferred tarball identity
+        run: |
+          node scripts/verify-release-artifact.mjs \
+            --tarball-dir release-artifacts \
+            --repository "$GITHUB_REPOSITORY" \
+            --workflow ".github/workflows/ci.yml" \
+            --run-id "${{ needs.resolve-candidate.outputs.ci-run-id }}" \
+            --run-attempt "${{ needs.resolve-candidate.outputs.ci-run-attempt }}" \
+            --commit "$GITHUB_SHA"
+
       - name: Verify published package and provenance
         run: |
           node scripts/verify-published-package.mjs \
@@ -136,7 +187,9 @@ jobs:
             --workflow ".github/workflows/release.yml"
 
   github-release:
-    needs: publish
+    needs:
+      - resolve-candidate
+      - verify-provenance
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -150,14 +203,20 @@ jobs:
           name: release-tarball
           path: release-artifacts
 
-      - name: Verify transferred tarball digest
-        working-directory: release-artifacts
-        run: sha256sum --check SHA256SUMS
-
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
+
+      - name: Verify transferred tarball identity
+        run: |
+          node scripts/verify-release-artifact.mjs \
+            --tarball-dir release-artifacts \
+            --repository "$GITHUB_REPOSITORY" \
+            --workflow ".github/workflows/ci.yml" \
+            --run-id "${{ needs.resolve-candidate.outputs.ci-run-id }}" \
+            --run-attempt "${{ needs.resolve-candidate.outputs.ci-run-attempt }}" \
+            --commit "$GITHUB_SHA"
 
       - name: Revalidate remote tag before GitHub Release
         run: |
