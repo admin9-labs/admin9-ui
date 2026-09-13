@@ -1,5 +1,5 @@
 /* eslint-disable vue/one-component-per-file */
-import { createApp, defineComponent, h, nextTick, ref, type App, type ComponentPublicInstance } from 'vue';
+import { createApp, defineComponent, h, KeepAlive, nextTick, ref, type App, type ComponentPublicInstance } from 'vue';
 import { Message } from '@arco-design/web-vue';
 import type { Editor } from '@tiptap/core';
 import { GapCursor } from '@tiptap/pm/gapcursor';
@@ -268,6 +268,7 @@ function installStubs(app: App) {
   );
   app.component('ATextarea', InputStub);
   app.component('IconEraser', IconStub);
+  app.component('IconBrush', IconStub);
   app.component('IconAttachment', IconStub);
   app.component('AButton', ButtonStub);
   app.component('ATooltip', TransparentStub);
@@ -535,6 +536,104 @@ describe('ATiptapEditor public contract', () => {
     expect(html).not.toContain('color: red');
     editor.commands.undo();
     expect(instance.getHTML()).toContain('<strong');
+  });
+
+  it.each(['html', 'json'])('paints through the toolbar with one %s model update and a round trip', async (format) => {
+    const update = vi.fn();
+    const change = vi.fn();
+    const content: TiptapDocument = {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'Source', marks: [{ type: 'bold' }] }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'Target' }] },
+      ],
+    };
+    const { editor, instance, props } = await mountReactiveEditor({
+      'valueFormat': format,
+      'modelValue': format === 'html' ? '<p><strong>Source</strong></p><p>Target</p>' : content,
+      'onUpdate:modelValue': update,
+      'onChange': change,
+    });
+    editor.commands.setTextSelection({ from: 1, to: 7 });
+    document.querySelector<HTMLButtonElement>('button[aria-label="Format painter"]')?.click();
+    await flush();
+    expect(update).not.toHaveBeenCalled();
+    expect(document.querySelector('button[aria-label="Format painter"]')?.getAttribute('aria-pressed')).toBe('true');
+    editor.commands.setTextSelection({ from: 9, to: 15 });
+    document.querySelector<HTMLButtonElement>('.a9-tiptap-editor__painter button')?.click();
+    await flush();
+    expect(update).toHaveBeenCalledOnce();
+    expect(change).toHaveBeenCalledOnce();
+    expect(instance.getHTML()).toBe('<p><strong>Source</strong></p><p><strong>Target</strong></p>');
+    const [[updatedValue]] = update.mock.calls;
+    props.value.modelValue = updatedValue;
+    await flush();
+    expect(change).toHaveBeenCalledOnce();
+    expect(instance.getJSON().content?.[1]?.content?.[0]?.marks).toEqual([{ type: 'bold' }]);
+  });
+
+  it.each(['disabled', 'readonly', 'clear', 'replace'])(
+    'cancels the format painter on %s without painting',
+    async (operation) => {
+      const { editor, instance, props } = await mountReactiveEditor({
+        modelValue: '<p><strong>Source</strong></p><p>Target</p>',
+      });
+      editor.commands.setTextSelection({ from: 1, to: 7 });
+      document.querySelector<HTMLButtonElement>('button[aria-label="Format painter"]')?.click();
+      await flush();
+      if (operation === 'clear') instance.clear();
+      else if (operation === 'replace') props.value.modelValue = '<p>Replacement</p>';
+      else props.value[operation] = true;
+      await flush();
+      expect(document.querySelector('.a9-tiptap-editor__painter')).toBeNull();
+      expect(document.querySelector('button[aria-label="Format painter"]')?.getAttribute('aria-pressed')).not.toBe('true');
+    }
+  );
+
+  it('clears cursor input formatting without changing existing text or removing its link', async () => {
+    const instance = mountEditor({ modelValue: '<p><a href="/a"><strong>Source</strong></a></p>' });
+    await flush();
+    const editor = getInternalEditor(instance);
+    editor.commands.setTextSelection(3);
+    const before = instance.getHTML();
+    document.querySelector<HTMLButtonElement>('button[aria-label="Clear text formatting"]')?.click();
+    expect(instance.getHTML()).toBe(before);
+    editor.commands.insertContent('x');
+    expect(instance.getHTML()).toContain('<strong>So</strong>x<strong>urce</strong>');
+    expect(instance.getHTML()).toContain('href="/a"');
+  });
+
+  it('keeps equivalent model feedback armed and cancels when a cached editor is deactivated', async () => {
+    const visible = ref(true);
+    const model = ref<TiptapDocument>({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Source' }] }],
+    });
+    const exposed = ref<TiptapEditorInstance>();
+    const app = createApp({
+      setup: () => () =>
+        h(KeepAlive, null, {
+          default: () =>
+            visible.value ? h(ATiptapEditor, { ref: exposed, valueFormat: 'json', modelValue: model.value }) : null,
+        }),
+    });
+    app.use(createI18n({ legacy: false, locale: 'en-US', messages }));
+    installStubs(app);
+    mountedApps.push(app);
+    app.mount('#app');
+    await flush();
+    if (!exposed.value) throw new Error('Editor did not mount');
+    const editor = getInternalEditor(exposed.value);
+    editor.commands.setTextSelection({ from: 1, to: 7 });
+    document.querySelector<HTMLButtonElement>('button[aria-label="Format painter"]')?.click();
+    model.value = JSON.parse(JSON.stringify(model.value));
+    await flush();
+    expect(document.querySelector('button[aria-label="Format painter"]')?.getAttribute('aria-pressed')).toBe('true');
+    visible.value = false;
+    await flush();
+    visible.value = true;
+    await flush();
+    expect(document.querySelector('button[aria-label="Format painter"]')?.getAttribute('aria-pressed')).toBe('false');
   });
 
   it('links selected text on URL paste without replacing the label', async () => {

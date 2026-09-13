@@ -127,6 +127,9 @@
   const tiptapValue = ref(
     [
       '<h1>活动公告示例</h1>',
+      '<p><span style="color:#f53f3f;font-size:20px">格式刷来源：红色大字</span></p>',
+      '<p><a href="/notice"><strong><u>格式刷目标：带链接的粗体下划线</u></strong></a></p>',
+      '<p>默认格式来源；<strong>混合格式粗体</strong>与普通文字；<code>行内代码不参与格式刷</code>。</p>',
       '<p>独占一行的图片用于正文视觉内容，跟随文字的图片 <img src="/media-layout.svg" alt="状态图标" data-display="inline" data-size="1.25em"> 可与文字保持基线。</p>',
       '<img src="/media-board.svg" alt="素材面板" data-display="block" data-width="50%" data-align="left">',
       '<p>长正文验收段落一：正文先自动增高，到达上限后只在编辑器内部滚动。</p>',
@@ -160,6 +163,16 @@
     type: 'doc',
     content: [
       { type: 'paragraph', content: [{ type: 'text', text: 'JSON 内容可保存后回填，继续编辑。' }] },
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'JSON 格式刷来源', marks: [{ type: 'bold' }, { type: 'highlight', attrs: { color: null } }] },
+        ],
+      },
+      {
+        type: 'paragraph',
+        content: [{ type: 'text', text: 'JSON 格式刷目标', marks: [{ type: 'link', attrs: { href: '/notice' } }] }],
+      },
       {
         type: 'table',
         content: [
@@ -638,7 +651,7 @@
             data-testid="tiptap-json-editor"
             @image-upload-state-change="jsonUploadState = $event"
           />
-          <a-space>
+          <a-space wrap>
             <a-button data-testid="save-json" :disabled="!jsonUploadState.canSave" @click="saveJSON">保存 JSON</a-button>
             <a-button data-testid="reload-json" :disabled="!savedJSON" @click="reloadJSON">回填已保存内容</a-button>
             <a-button data-testid="clear-json" :disabled="editorMode !== 'normal'" @click="jsonEditor?.clear()"

@@ -4,6 +4,7 @@ import ArcoVue, { ConfigProvider, Form, FormItem, Input, type Size } from '@arco
 import * as Icons from '@arco-design/web-vue/es/icon';
 import { createI18n } from 'vue-i18n';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Editor } from '@tiptap/core';
 import AProTable from '../src/components/pro-table/index.vue';
 import AIconPicker from '../src/components/icon-picker/index.vue';
 import ACoordinatePicker from '../src/components/coordinate-picker/index.vue';
@@ -300,6 +301,39 @@ describe('real Arco 2.57 component contracts', () => {
     const editor = document.querySelector('.ProseMirror')!;
     expect(editor.getAttribute('aria-readonly')).toBe('true');
     expect(editor.getAttribute('aria-invalid')).toBe('true');
+  });
+
+  it('keeps the real Arco painter controls keyboard accessible and paints without losing the text selection', async () => {
+    const exposed = ref<InstanceType<typeof ATiptapEditor>>();
+    const update = vi.fn();
+    mount(() =>
+      h(ATiptapEditor, {
+        'ref': exposed,
+        'modelValue': '<p><strong>Source</strong></p><p><a href="/target">Target</a></p>',
+        'onUpdate:modelValue': update,
+      })
+    );
+    await flush();
+    const { editor } = exposed.value!.$.setupState as { editor: Editor };
+    editor.commands.setTextSelection({ from: 1, to: 7 });
+    editor.view.dom.focus();
+    const brush = document.querySelector<HTMLButtonElement>('button[aria-label="Format painter"]')!;
+    brush.focus();
+    brush.click();
+    await flush();
+    expect(brush.getAttribute('aria-pressed')).toBe('true');
+    expect(document.activeElement).toBe(editor.view.dom);
+    expect(update).not.toHaveBeenCalled();
+    editor.commands.setTextSelection({ from: 9, to: 15 });
+    const apply = document.querySelector<HTMLButtonElement>('.a9-tiptap-editor__painter button')!;
+    apply.focus();
+    expect(brush.getAttribute('aria-pressed')).toBe('true');
+    apply.click();
+    await flush();
+    expect(update).toHaveBeenCalledOnce();
+    expect(exposed.value!.getHTML()).toContain('href="/target"');
+    expect(editor.state.doc.child(1).firstChild!.marks.map((mark) => mark.type.name)).toContain('bold');
+    expect(document.activeElement).toBe(editor.view.dom);
   });
 
   it('does not turn editor disabled/readonly changes into content updates', async () => {

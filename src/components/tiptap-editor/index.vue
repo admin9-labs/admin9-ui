@@ -1,5 +1,17 @@
 <script setup lang="ts" generic="F extends TiptapValueFormat = 'html'">
-  import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, toRef, toRefs, watch, type Ref } from 'vue';
+  import {
+    computed,
+    inject,
+    nextTick,
+    onBeforeUnmount,
+    onDeactivated,
+    onMounted,
+    ref,
+    toRef,
+    toRefs,
+    watch,
+    type Ref,
+  } from 'vue';
   import { FormItem, Message, useFormItem } from '@arco-design/web-vue';
   import { Extension, isNodeEmpty, type Editor } from '@tiptap/core';
   import CharacterCount from '@tiptap/extension-character-count';
@@ -22,6 +34,7 @@
   import { cleanPastedHTML, parseTableText, tableTextContent } from './paste';
   import { SafeColor, SafeFontSize, SafeHighlight, TextStyle } from './text-format';
   import TextFormatToolbar from './text-format-toolbar.vue';
+  import { createFormatPainter } from './format-painter';
   import { Audio, BlockImage, InlineImage, isSafeMediaUrl, type TiptapMediaNodeName, Video } from './media-node';
   import type {
     ATiptapEditorExposed,
@@ -115,6 +128,13 @@
   const { mergedDisabled, mergedError, eventHandlers } = useFormItem({ disabled: toRef(props, 'disabled') });
   const interactionDisabled = computed(() => Boolean(mergedDisabled.value));
   const isEditable = computed(() => !interactionDisabled.value && !props.readonly);
+  let painterEditor: Editor | undefined;
+  const painter = createFormatPainter(
+    () => painterEditor,
+    () => isEditable.value
+  );
+  const { active: painterActive, failure: painterFailure } = painter;
+  const painterRoot = ref<HTMLElement>();
   const editorAttributes = computed(() => ({
     'class': 'a9-tiptap-editor__prose',
     'role': 'textbox',
@@ -335,6 +355,7 @@
   const editor = useEditor({
     content: '',
     onBeforeCreate: ({ editor: currentEditor }) => {
+      painterEditor = currentEditor;
       uploadEditor = currentEditor;
       const content = readContent(currentEditor, props.modelValue, 'initial');
       currentEditor.options.content = typeof content === 'string' ? content : content?.toJSON() ?? '';
@@ -388,6 +409,7 @@
         return result.html;
       },
       handleClick: (view, pos, event) => {
+        if (painterActive.value) return false;
         const link = (event.target as HTMLElement)?.closest('a[href]');
         if (!link || !isEditable.value) return false;
         view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)));
@@ -424,7 +446,8 @@
       eventHandlers.value?.onChange?.();
     },
     onSelectionUpdate: ({ editor: currentEditor }) => syncSelectedMedia(currentEditor),
-    onTransaction: ({ editor: currentEditor }) => {
+    onTransaction: ({ editor: currentEditor, transaction }) => {
+      if (transaction.docChanged) painter.cancel();
       syncSelectedMedia(currentEditor);
       uploads.sync();
     },
@@ -438,6 +461,7 @@
       emit('blur');
       eventHandlers.value?.onBlur?.();
     },
+    onDestroy: () => painter.dispose(),
   });
 
   const characterCount = computed(() => editor.value?.storage.characterCount.characters() ?? 0);
@@ -973,6 +997,7 @@
 
   const focus = () => editor.value?.commands.focus();
   const clear = () => {
+    painter.cancel();
     uploads.pause();
     return editor.value?.commands.clearContent(true);
   };
@@ -1005,6 +1030,7 @@
     editor.value?.setOptions({ editorProps: { attributes } });
   });
   watch(isEditable, (value) => {
+    if (!value) painter.cancel();
     if (!value) uploads.pause();
     if (!value) tablePopupVisible.value = false;
     const currentEditor = editor.value;
@@ -1026,15 +1052,19 @@
     });
   });
   onMounted(() => {
+    if (painterRoot.value) painter.bind(painterRoot.value);
     bubbleMenuReady.value = true;
     uploads.sync();
   });
   watch([resolvedFileService, () => props.canUploadImage], () => uploads.pause());
   onBeforeUnmount(() => uploads.dispose());
+  onBeforeUnmount(() => painter.dispose());
+  onDeactivated(() => painter.cancel());
 </script>
 
 <template>
   <div
+    ref="painterRoot"
     class="a9-tiptap-editor"
     :class="{
       'is-disabled': interactionDisabled,
@@ -1211,6 +1241,20 @@
             @click="clearTextFormat"
           >
             <template #icon><icon-eraser /></template>
+          </a-button>
+        </a-tooltip>
+        <a-tooltip :content="t('admin9Ui.tiptapEditor.formatPainter')">
+          <a-button
+            data-format-painter
+            size="small"
+            :type="painterActive ? 'primary' : 'text'"
+            :disabled="interactionDisabled"
+            :aria-label="t('admin9Ui.tiptapEditor.formatPainter')"
+            :aria-pressed="painterActive"
+            @mousedown.prevent
+            @click="painter.toggle"
+          >
+            <template #icon><icon-brush /></template>
           </a-button>
         </a-tooltip>
         <AFilePicker
@@ -1483,6 +1527,18 @@
             <template #icon><icon-redo /></template>
           </a-button>
         </a-tooltip>
+      </div>
+
+      <div v-if="!readonly && (painterActive || painterFailure)" class="a9-tiptap-editor__painter" data-format-painter>
+        <span role="status" aria-live="polite">{{ t(`admin9Ui.tiptapEditor.painter${painterFailure || 'Hint'}`) }}</span>
+        <template v-if="painterActive">
+          <a-button size="small" :disabled="interactionDisabled" @mousedown.prevent @click="painter.apply">
+            {{ t('admin9Ui.tiptapEditor.painterApply') }}
+          </a-button>
+          <a-button size="small" @mousedown.prevent @click="painter.toggle">
+            {{ t('admin9Ui.tiptapEditor.painterCancel') }}
+          </a-button>
+        </template>
       </div>
 
       <a-modal
@@ -1805,6 +1861,22 @@
       color: var(--color-text-4);
       background: var(--color-fill-2);
       cursor: not-allowed;
+    }
+  }
+
+  .a9-tiptap-editor__painter {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    padding: 8px 12px;
+    color: var(--color-text-2);
+    background: var(--color-fill-1);
+
+    span {
+      flex: 1 1 240px;
+      min-width: 0;
+      overflow-wrap: anywhere;
     }
   }
 
