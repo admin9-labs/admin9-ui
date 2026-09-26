@@ -124,6 +124,8 @@
               v-model="images"
               :service="service"
               :readonly="readonly"
+              display-mode="landscape"
+              fit="cover"
               multiple
               :limit="3"
               can-upload /></a-form-item

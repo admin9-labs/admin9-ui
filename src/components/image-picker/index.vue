@@ -24,6 +24,8 @@
     multiple: false,
     limit: 0,
     showFileList: true,
+    displayMode: 'square',
+    fit: 'contain',
     service: undefined,
     canUpload: false,
     accept: 'image/*',
@@ -174,7 +176,11 @@
 <template>
   <div
     class="a9-image-picker"
-    :class="{ 'is-disabled': mergedDisabled, 'is-error': mergedError }"
+    :class="[
+      `a9-image-picker--${displayMode}`,
+      `a9-image-picker--fit-${fit}`,
+      { 'is-disabled': mergedDisabled, 'is-error': mergedError },
+    ]"
     :aria-invalid="mergedError || undefined"
   >
     <FormItem no-style :validate-trigger="[]">
@@ -298,8 +304,26 @@
 
 <style scoped lang="less">
   .a9-image-picker {
+    --a9-image-picker-card-width: 80px;
+    --a9-image-picker-card-height: 80px;
+
     width: 100%;
     min-width: 0;
+
+    &--landscape {
+      --a9-image-picker-card-width: 144px;
+      --a9-image-picker-card-height: 81px;
+    }
+
+    &--portrait {
+      --a9-image-picker-card-width: 80px;
+      --a9-image-picker-card-height: 112px;
+    }
+
+    &--banner {
+      --a9-image-picker-card-width: 200px;
+      --a9-image-picker-card-height: 64px;
+    }
 
     :deep(.a9-file-picker__trigger-row),
     :deep(.a9-file-picker__trigger) {
@@ -312,6 +336,8 @@
       flex-wrap: wrap;
       gap: 8px;
       align-items: flex-start;
+      width: 100%;
+      min-width: 0;
     }
 
     &__cards,
@@ -320,13 +346,20 @@
     }
 
     :deep(.arco-upload-list-picture) {
-      flex: 0 0 80px;
+      flex: 0 1 var(--a9-image-picker-card-width);
+      width: min(var(--a9-image-picker-card-width), 100%);
+      max-width: 100%;
+      height: var(--a9-image-picker-card-height);
       margin: 0;
       background: var(--color-fill-2);
     }
 
     :deep(.arco-upload-list-picture img) {
       object-fit: contain;
+    }
+
+    &--fit-cover :deep(.arco-upload-list-picture img) {
+      object-fit: cover;
     }
 
     :deep(.arco-upload-list-picture-operation) {
@@ -342,13 +375,14 @@
 
     &__add {
       display: flex;
-      flex: 0 0 80px;
+      flex: 0 1 var(--a9-image-picker-card-width);
       flex-direction: column;
       gap: 8px;
       align-items: center;
       justify-content: center;
-      width: 80px;
-      height: 80px;
+      width: min(var(--a9-image-picker-card-width), 100%);
+      max-width: 100%;
+      height: var(--a9-image-picker-card-height);
       padding: 4px;
       color: var(--color-text-2);
       font: inherit;

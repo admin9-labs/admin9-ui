@@ -229,6 +229,43 @@ describe('AImagePicker with real Arco', () => {
     expect(host.change).not.toHaveBeenCalled();
   });
 
+  it('applies the four display modes and both thumbnail fits without changing the controlled value', async () => {
+    const host = mount({ value: a });
+    const root = element('.a9-image-picker');
+    expect(root.classList.contains('a9-image-picker--square')).toBe(true);
+    expect(root.classList.contains('a9-image-picker--fit-contain')).toBe(true);
+    const assertDisplay = async (
+      displayMode: NonNullable<AImagePickerProps['displayMode']>,
+      fit: NonNullable<AImagePickerProps['fit']>
+    ) => {
+      host.props.displayMode = displayMode;
+      host.props.fit = fit;
+      await flush();
+      expect(root.classList.contains(`a9-image-picker--${displayMode}`)).toBe(true);
+      expect(root.classList.contains(`a9-image-picker--fit-${fit}`)).toBe(true);
+      expect(cards()).toHaveLength(1);
+      expect(host.model.value).toEqual(a);
+    };
+    await assertDisplay('landscape', 'cover');
+    await assertDisplay('portrait', 'cover');
+    await assertDisplay('banner', 'cover');
+    await assertDisplay('square', 'contain');
+    expect(host.update).not.toHaveBeenCalled();
+    expect(host.change).not.toHaveBeenCalled();
+  });
+
+  it('uses the same display mode for empty entries and every selected card', async () => {
+    const host = mount({ value: [], props: { multiple: true, displayMode: 'banner', fit: 'cover' } });
+    expect(element('.a9-image-picker').classList.contains('a9-image-picker--banner')).toBe(true);
+    expect(document.querySelector('.a9-image-picker__add')).not.toBeNull();
+    host.model.value = [a, b];
+    await flush();
+    expect(cards()).toHaveLength(2);
+    expect(element('.a9-image-picker').classList.contains('a9-image-picker--fit-cover')).toBe(true);
+    expect(document.querySelector('.a9-image-picker__add')).not.toBeNull();
+    expect(host.update).not.toHaveBeenCalled();
+  });
+
   it('cancels a single selection and only commits on confirmation, including same-value confirm', async () => {
     const host = mount({ value: a });
     await openHost(host);
@@ -390,8 +427,12 @@ describe('AImagePicker with real Arco', () => {
     host.model.value = { ...a };
     host.props.showFileList = false;
     host.props.size = 'large';
+    host.props.displayMode = 'landscape';
+    host.props.fit = 'cover';
     await flush();
     expect(element<HTMLInputElement>('[data-file-id="b"] input').checked).toBe(true);
+    expect(element('.a9-image-picker').classList.contains('a9-image-picker--landscape')).toBe(true);
+    expect(element('.a9-image-picker').classList.contains('a9-image-picker--fit-cover')).toBe(true);
     await confirm();
     expect(host.model.value).toEqual(b);
     await openHost(host);

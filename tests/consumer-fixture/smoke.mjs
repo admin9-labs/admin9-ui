@@ -70,6 +70,7 @@ assert.match(css, /\.a9-chat-message-list/);
 assert.match(css, /\.a9-chat-composer/);
 assert.match(css, /\.a9-cover-picker/);
 assert.match(css, /\.a9-image-picker/);
+assert.match(css, /\.a9-image-picker--banner/);
 assert.match(css, /\.a9-(coordinate|file|icon|pro|tiptap)-/);
 assert.match(css, /\.a9-tiptap-editor__media-bubble/);
 
@@ -96,7 +97,7 @@ const app = createApp({
   render: () =>
     h('main', [
       h(packageExports.ACoverPicker, { modelValue: { mode: 'single', images: [null] } }),
-      h(packageExports.AImagePicker, { multiple: true, modelValue: [] }),
+      h(packageExports.AImagePicker, { multiple: true, modelValue: [], displayMode: 'banner', fit: 'cover' }),
       h(packageExports.AIconPicker, { modelValue: '' }),
       h(packageExports.ACoordinatePicker, {
         modelValue: { latitude: 27.8945, longitude: 102.2644 },
@@ -164,6 +165,10 @@ assert.equal(mountedAudioWrapper?.style.getPropertyValue('--a9-media-width'), '4
   assert.ok(!element?.hasAttribute('autoplay'), 'Embedded media retained autoplay.');
 });
 assert.ok(host.querySelector('.a9-image-picker'), 'AImagePicker did not mount from shared fileService.');
+assert.ok(
+  host.querySelector('.a9-image-picker--banner.a9-image-picker--fit-cover'),
+  'AImagePicker display props did not mount.'
+);
 assert.ok(host.querySelector('.a9-file-picker'), 'AFilePicker did not mount from shared list-only fileService.');
 assert.ok(host.querySelector('.a9-file-uploader'), 'AFileUploader did not mount from shared fileService.');
 assert.ok(host.querySelector('.arco-input-wrapper'), 'Arco input integration did not mount.');

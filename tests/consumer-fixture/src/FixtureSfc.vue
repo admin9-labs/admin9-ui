@@ -68,7 +68,7 @@
 
 <template>
   <section data-testid="host-baseline-sfc">
-    <AImagePicker ref="imagePicker" v-model="image" :service="filePickerService" />
+    <AImagePicker ref="imagePicker" v-model="image" :service="filePickerService" display-mode="landscape" fit="cover" />
     <AImagePicker v-model="attachments" :service="filePickerService" multiple :limit="2"
       ><template #trigger="{ open, disabled, selectedCount, limitReached }"
         ><button :disabled="disabled" :data-full="limitReached" @click="open">{{ selectedCount }}</button></template

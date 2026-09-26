@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- AImagePicker 新增 square、landscape、portrait、banner 四种语义展示模式及 contain、cover 缩略图填充方式；模式切换仅改变外观，不影响受控值或选图草稿。
+
 ## [0.23.0] - 2026-09-26
 
 ### Added

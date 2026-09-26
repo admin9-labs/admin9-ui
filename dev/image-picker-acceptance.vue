@@ -1,7 +1,13 @@
 <script setup lang="ts">
   import { computed, ref, watch } from 'vue';
   import { useI18n } from 'vue-i18n';
-  import { AImagePicker, type AImagePickerExposed, type ImagePickerValue } from '../src';
+  import {
+    AImagePicker,
+    type AImagePickerExposed,
+    type ImagePickerDisplayMode,
+    type ImagePickerFit,
+    type ImagePickerValue,
+  } from '../src';
   import createFakeFilePickerService from './fake-file-picker-service';
   import type { AcceptanceState } from './fake-acceptance-utils';
 
@@ -12,6 +18,8 @@
   const readonly = ref(false);
   const canUpload = ref(true);
   const showFileList = ref(true);
+  const displayMode = ref<ImagePickerDisplayMode>('square');
+  const fit = ref<ImagePickerFit>('contain');
   const custom = ref(false);
   const narrow = ref(false);
   const dark = ref(false);
@@ -38,6 +46,22 @@
       <label><input v-model="readonly" type="checkbox" /> Readonly</label>
       <label><input v-model="canUpload" type="checkbox" /> 弹窗上传</label>
       <label><input v-model="showFileList" type="checkbox" /> 显示图片列表</label>
+      <label
+        >展示模式
+        <select v-model="displayMode" aria-label="Image display mode">
+          <option>square</option>
+          <option>landscape</option>
+          <option>portrait</option>
+          <option>banner</option>
+        </select></label
+      >
+      <label
+        >缩略图填充
+        <select v-model="fit" aria-label="Image fit"
+          ><option>contain</option
+          ><option>cover</option></select
+        ></label
+      >
       <label><input v-model="custom" type="checkbox" /> 自定义入口</label>
       <label><input v-model="narrow" type="checkbox" /> 320px 容器</label>
       <label><input v-model="dark" type="checkbox" /> Dark</label>
@@ -72,6 +96,8 @@
             :can-upload="canUpload"
             :readonly="readonly"
             :show-file-list="showFileList"
+            :display-mode="displayMode"
+            :fit="fit"
             :page-size="1"
             @change="changes += 1"
             @confirm="confirmations += 1"

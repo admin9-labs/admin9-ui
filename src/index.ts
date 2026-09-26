@@ -66,6 +66,8 @@ export type {
   AImagePickerEmits,
   AImagePickerSlots,
   AImagePickerExposed,
+  ImagePickerDisplayMode,
+  ImagePickerFit,
   ImagePickerValue,
 } from './components/image-picker/types';
 

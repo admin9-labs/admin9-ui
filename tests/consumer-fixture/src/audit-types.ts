@@ -9,6 +9,8 @@ import type {
   AImagePickerEmits,
   AImagePickerSlots,
   AImagePickerExposed,
+  ImagePickerDisplayMode,
+  ImagePickerFit,
   ImagePickerValue,
   AFilePickerExposed,
   AFileUploaderProps,
@@ -86,7 +88,16 @@ export function checkConcreteEditor(instance: InstanceType<typeof import('@admin
   return { focused, cleared };
 }
 
-export const imagePickerProps: AImagePickerProps = { multiple: true, limit: 2, showFileList: false, readonly: true };
+export const imagePickerDisplayMode: ImagePickerDisplayMode = 'banner';
+export const imagePickerFit: ImagePickerFit = 'cover';
+export const imagePickerProps: AImagePickerProps = {
+  multiple: true,
+  limit: 2,
+  showFileList: false,
+  displayMode: imagePickerDisplayMode,
+  fit: imagePickerFit,
+  readonly: true,
+};
 export const emptyImagePicker: ImagePickerValue = undefined;
 export const imagePickerSlots: AImagePickerSlots = {
   trigger: ({ open, selectedItems, selectedCount, disabled, readonly, limitReached }) => {

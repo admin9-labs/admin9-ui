@@ -3,12 +3,16 @@ import type { FileItem, FilePickerAdapter } from '../../services/types';
 import type { FilePickerView } from '../file-picker/types';
 
 export type ImagePickerValue = FileItem | FileItem[] | undefined;
+export type ImagePickerDisplayMode = 'square' | 'landscape' | 'portrait' | 'banner';
+export type ImagePickerFit = 'contain' | 'cover';
 
 export interface AImagePickerProps {
   modelValue?: ImagePickerValue;
   multiple?: boolean;
   limit?: number;
   showFileList?: boolean;
+  displayMode?: ImagePickerDisplayMode;
+  fit?: ImagePickerFit;
   service?: FilePickerAdapter;
   canUpload?: boolean;
   accept?: string;

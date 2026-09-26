@@ -17,8 +17,8 @@
 </script>
 
 <template>
-  <AImagePicker v-model="image" :service="fileService" :can-upload="canUploadFiles" />
-  <AImagePicker v-model="images" :service="fileService" multiple :limit="5" />
+  <AImagePicker v-model="image" :service="fileService" :can-upload="canUploadFiles" display-mode="landscape" fit="cover" />
+  <AImagePicker v-model="images" :service="fileService" multiple :limit="5" display-mode="banner" />
 </template>
 ```
 
@@ -26,23 +26,40 @@
 
 ## Props
 
-| Prop         | 类型                                  | 默认值           | 说明                                                          |
-| ------------ | ------------------------------------- | ---------------- | ------------------------------------------------------------- |
-| modelValue   | `FileItem \| FileItem[] \| undefined` | undefined        | 单图为对象，多图为数组                                        |
-| multiple     | boolean                               | false            | 明确控制值形状，不从输入或 limit 推断                         |
-| limit        | number                                | 0                | 多图数量上限；0 不限，非法运行时值按 0 处理；单图始终最多一张 |
-| showFileList | boolean                               | true             | 是否显示外层图片列表，不影响弹窗                              |
-| service      | FilePickerAdapter                     | 插件 fileService | 后端无关的浏览和可选上传能力                                  |
-| canUpload    | boolean                               | false            | 开启内部选图弹窗的上传入口                                    |
-| accept       | string                                | `image/*`        | 传给内部上传入口的原生文件选择提示                            |
-| disabled     | boolean                               | false            | 禁止修改和预览，同时继承 Form disabled                        |
-| readonly     | boolean                               | false            | 禁止修改，保留图片预览                                        |
-| size         | Arco Size                             | 继承             | 默认按钮尺寸；图片卡片保持 80 × 80px                          |
-| buttonText   | string                                | locale“选择图片” | 默认选择入口文案                                              |
-| pageSize     | number                                | 24               | 弹窗后端分页容量                                              |
-| defaultView  | `grid \| list`                        | grid             | 弹窗初始视图                                                  |
+| Prop         | 类型                                                | 默认值           | 说明                                                          |
+| ------------ | --------------------------------------------------- | ---------------- | ------------------------------------------------------------- |
+| modelValue   | `FileItem \| FileItem[] \| undefined`               | undefined        | 单图为对象，多图为数组                                        |
+| multiple     | boolean                                             | false            | 明确控制值形状，不从输入或 limit 推断                         |
+| limit        | number                                              | 0                | 多图数量上限；0 不限，非法运行时值按 0 处理；单图始终最多一张 |
+| showFileList | boolean                                             | true             | 是否显示外层图片列表，不影响弹窗                              |
+| displayMode  | `'square' \| 'landscape' \| 'portrait' \| 'banner'` | `square`         | 后台图片卡片的语义视觉类别                                    |
+| fit          | `'contain' \| 'cover'`                              | `contain`        | 缩略图在卡片内的填充方式                                      |
+| service      | FilePickerAdapter                                   | 插件 fileService | 后端无关的浏览和可选上传能力                                  |
+| canUpload    | boolean                                             | false            | 开启内部选图弹窗的上传入口                                    |
+| accept       | string                                              | `image/*`        | 传给内部上传入口的原生文件选择提示                            |
+| disabled     | boolean                                             | false            | 禁止修改和预览，同时继承 Form disabled                        |
+| readonly     | boolean                                             | false            | 禁止修改，保留图片预览                                        |
+| size         | Arco Size                                           | 继承             | 默认按钮尺寸，不改变图片卡片规格                              |
+| buttonText   | string                                              | locale“选择图片” | 默认选择入口文案                                              |
+| pageSize     | number                                              | 24               | 弹窗后端分页容量                                              |
+| defaultView  | `grid \| list`                                      | grid             | 弹窗初始视图                                                  |
 
-class/style、ARIA 及原生属性落在组件根节点，不透传到 Upload 或弹窗。图片固定使用 contain，不裁剪或改写原文件。缩略图加载失败回退原图，再失败显示占位；大图预览使用原图。安全 URL 规则与 AFilePicker 相同，只允许 HTTP(S)、相对地址和 blob。
+class/style、ARIA 及原生属性落在组件根节点，不透传到 Upload 或弹窗。缩略图加载失败回退原图，再失败显示占位；大图预览始终完整展示原图，不继承 fit，也不会裁剪或改写文件。安全 URL 规则与 AFilePicker 相同，只允许 HTTP(S)、相对地址和 blob。
+
+## 展示模式
+
+`displayMode` 是后台界面的语义视觉类别，不是上传规格、比例校验或裁剪规则：
+
+| 模式      | 参考尺寸   | 适用外观                              |
+| --------- | ---------- | ------------------------------------- |
+| square    | 80 × 80px  | 方形图标、头像和普通图片              |
+| landscape | 144 × 81px | 横向封面和视频配图                    |
+| portrait  | 80 × 112px | 竖向海报和人物图                      |
+| banner    | 200 × 64px | 横幅；3:1 与 6:1 等业务比例共用此类别 |
+
+空态选择入口和选中图片使用同一模式与尺寸，多图中的每张卡片也保持一致。卡片宽度最大为容器宽度，窄容器只做自然收缩和换行，不计算图片比例或切换紧凑布局。`fit` 只控制缩略图：contain 展示完整缩略图，cover 填满并可能在视觉上裁去边缘。
+
+动态修改 displayMode 或 fit 只更新外观，不修改字段、不触发表单 change、不关闭已打开的选图弹窗，也不重置跨页选择草稿。
 
 ## 值与数量规则
 
@@ -109,7 +126,7 @@ trigger 参数为 `{ open, selectedItems, selectedCount, disabled, readonly, lim
 
 图片 ID、顺序或原图地址变化时关闭并重置大图预览，清空后回填不会自动重开。等值回显或仅文件名等元数据变化时保持当前预览。
 
-模型内容、multiple、有效 limit 或 service 改变时取消当前会话，迟到结果不能写回新值。等值对象回显以及尺寸、语言、主题、showFileList 变化不重置草稿。组件无法判断图片值未变的业务记录切换，应用应使用 `:key="recordId"` 重建组件，或在切换记录前调用 close()。
+模型内容、multiple、有效 limit 或 service 改变时取消当前会话，迟到结果不能写回新值。等值对象回显以及尺寸、语言、主题、showFileList、displayMode、fit 变化不重置草稿。组件无法判断图片值未变的业务记录切换，应用应使用 `:key="recordId"` 重建组件，或在切换记录前调用 close()。
 
 ## URL 字段和其他组件
 
@@ -117,4 +134,4 @@ URL-only 字段由应用转换为 FileItem，再把确认结果转回原字段�
 
 已有 FileItem 字段直接传入，不必经过 URL 往返转换。文章单图／三图／无封面及固定空位置使用 [ACoverPicker](./cover-picker.md)；业务图集的说明、排序和封面关联仍由应用实现。视频、音频及通用附件继续使用 [AFilePicker](./file-picker.md)。
 
-根入口导出 AImagePicker、AImagePickerProps、AImagePickerEmits、AImagePickerSlots、AImagePickerExposed 和 ImagePickerValue。
+根入口导出 AImagePicker、AImagePickerProps、AImagePickerEmits、AImagePickerSlots、AImagePickerExposed、ImagePickerValue、ImagePickerDisplayMode 和 ImagePickerFit。

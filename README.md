@@ -61,7 +61,7 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 
 - [`ACoverPicker`](./docs/components/cover-picker.md)：支持单图、三图和无封面的固定位置封面选择器
 - [`ACoordinatePicker`](./docs/components/coordinate-picker.md)：基于腾讯地图 JavaScript API GL 的表单级坐标选择器
-- [`AImagePicker`](./docs/components/image-picker.md)：图片字段卡片、预览、更换和移除，复用文件选择弹窗
+- [`AImagePicker`](./docs/components/image-picker.md)：图片字段卡片、预览、更换和移除，支持方形、横图、竖图与横幅外观
 - [`AFilePicker`](./docs/components/file-picker.md)：支持后端分页、跨页选择和可选上传的文件选择器
 - [`AFileUploader`](./docs/components/file-uploader.md)：支持进度、取消、重试和部分成功的本地批量上传队列
 - [`AFilterForm`](./docs/components/filter-form.md)：默认提供卡片式背景，并根据字段数和响应式列数自动调整布局的筛选表单

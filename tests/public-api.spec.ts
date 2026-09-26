@@ -12,6 +12,9 @@ import type {
   CoordinateSelection,
   CoordinateValue,
   FilePickerAdapter,
+  AImagePickerProps,
+  ImagePickerDisplayMode,
+  ImagePickerFit,
   AFilterFormProps,
   ProTableAction,
   ProTableActionSlot,
@@ -85,6 +88,14 @@ describe('package public API', () => {
 
     expect(props).toEqual({ fileType: 'image', groupId: 'design', multiple: true });
     expect(result).toEqual({ succeeded: [], failed: [], cancelled: [] });
+  });
+
+  it('exports the image picker display contract', () => {
+    const displayMode: ImagePickerDisplayMode = 'landscape';
+    const fit: ImagePickerFit = 'cover';
+    const props: AImagePickerProps = { displayMode, fit };
+
+    expect(props).toEqual({ displayMode: 'landscape', fit: 'cover' });
   });
 
   it('exports the fixed-position cover picker contract', () => {
