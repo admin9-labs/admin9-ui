@@ -331,6 +331,7 @@
           @press-enter="handleSearch"
           @clear="handleSearch"
         />
+        <slot name="toolbar-right" />
         <a-tooltip v-if="showRefresh" :content="t('admin9Ui.proTable.refresh')">
           <a-button
             class="a9-pro-table__refresh"
@@ -344,7 +345,6 @@
             <template #icon><icon-refresh /></template>
           </a-button>
         </a-tooltip>
-        <slot name="toolbar-right" />
       </div>
     </div>
     <div v-if="hasBeforeTable" class="a9-pro-table__before-table"><slot name="before-table" /></div>
