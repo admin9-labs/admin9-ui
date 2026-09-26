@@ -347,7 +347,7 @@
 
     :deep(.arco-upload-list-picture) {
       flex: 0 1 var(--a9-image-picker-card-width);
-      width: min(var(--a9-image-picker-card-width), 100%);
+      width: var(--a9-image-picker-card-width);
       max-width: 100%;
       height: var(--a9-image-picker-card-height);
       margin: 0;
@@ -380,7 +380,7 @@
       gap: 8px;
       align-items: center;
       justify-content: center;
-      width: min(var(--a9-image-picker-card-width), 100%);
+      width: var(--a9-image-picker-card-width);
       max-width: 100%;
       height: var(--a9-image-picker-card-height);
       padding: 4px;

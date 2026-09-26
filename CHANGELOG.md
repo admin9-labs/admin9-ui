@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复 AImagePicker 在自然收缩的 flex、grid 或 fieldset 容器中按按钮文字收窄，导致空态和图片卡片未保持展示模式参考宽度的问题；明确窄容器仍通过 max-width 安全收缩。
+
 ## [0.24.0] - 2026-09-26
 
 ### Added

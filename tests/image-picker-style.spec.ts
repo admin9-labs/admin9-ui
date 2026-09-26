@@ -25,9 +25,10 @@ describe('AImagePicker style contract', () => {
     const addRule = imagePickerSource.match(/&__add\s*{([^}]*)}/)?.[1] ?? '';
 
     [cardRule, addRule].forEach((rule) => {
-      expect(rule).toContain('width: min(var(--a9-image-picker-card-width), 100%);');
+      expect(rule).toContain('width: var(--a9-image-picker-card-width);');
       expect(rule).toContain('max-width: 100%;');
       expect(rule).toContain('height: var(--a9-image-picker-card-height);');
+      expect(rule).not.toContain('min(var(--a9-image-picker-card-width), 100%)');
     });
     expect(imagePickerSource).not.toContain('@container');
     expect(imagePickerSource).not.toContain('aspect-ratio');
