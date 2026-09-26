@@ -272,7 +272,7 @@ describe('AProTable public contract', () => {
     expect(document.querySelector('.a9-pro-table')?.classList.contains('a9-pro-table--surface')).toBe(false);
   });
 
-  it('renders toolbar-left, search, refresh, and toolbar-right in public order on a surface', async () => {
+  it('renders toolbar-left, search, toolbar-right, and refresh in public order on a surface', async () => {
     mountTable(
       vi.fn().mockResolvedValue({ list: [], total: 0 }),
       { searchable: true, surface: true },
@@ -288,8 +288,8 @@ describe('AProTable public contract', () => {
     const ordered = [
       toolbar?.querySelector('[data-testid="toolbar-left"]'),
       toolbar?.querySelector('[data-testid="table-search"]'),
-      toolbar?.querySelector('.a9-pro-table__refresh'),
       toolbar?.querySelector('[data-testid="toolbar-right"]'),
+      toolbar?.querySelector('.a9-pro-table__refresh'),
     ];
 
     expect(root?.classList.contains('a9-pro-table--surface')).toBe(true);

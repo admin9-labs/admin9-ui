@@ -92,7 +92,7 @@
 
 内容顺序固定为标题、工具栏、`before-table`、表格、footer。`surface-title` 插槽优先于 `title` prop，两者都统一渲染为组件内的 `h2`；专用名称不会截获传给 Arco Table 的列插槽 `title`。没有对应内容时不生成标题或前置容器，空的 `before-table` 插槽也不会产生可见间距。
 
-工具栏固定按 `toolbar-left`、搜索框、内置刷新按钮、`toolbar-right` 的顺序排列；没有任何工具内容时不渲染工具栏。搜索会回到第 1 页后请求，普通刷新保留当前页。复杂筛选继续放在组件外部，例如使用 `AFilterForm` 管理筛选条件后将其闭包注入 `fetcher`。
+工具栏固定按 `toolbar-left`、搜索框、`toolbar-right`、内置刷新按钮的顺序排列；没有任何工具内容时不渲染工具栏。搜索会回到第 1 页后请求，普通刷新保留当前页。复杂筛选继续放在组件外部，例如使用 `AFilterForm` 管理筛选条件后将其闭包注入 `fetcher`。
 
 ## 复合刷新
 

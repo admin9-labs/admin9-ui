@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-09-26
+
 ### Added
 
 - 新增 AImagePicker，提供受控单图／多图卡片、预览、更换、移除、数量上限、自定义入口和隐藏列表；复用 AFilePicker 弹窗内已有上传能力，上传成功后仍需选择并确认。
@@ -11,6 +13,9 @@
 ### Fixed
 
 - AFilePicker 关闭后优先恢复到本次实际触发控件，支持包含多张图片操作的自定义入口；失效控件回退到可用入口。
+- AProTable 工具栏始终先渲染业务操作，再渲染内置刷新按钮。
+
+**Full Changelog**: https://github.com/admin9-labs/admin9-ui/compare/v0.22.0...v0.23.0
 
 ## [0.22.0] - 2026-09-13
 
