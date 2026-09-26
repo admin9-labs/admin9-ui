@@ -2,6 +2,7 @@
   import { computed, reactive, ref, watch } from 'vue';
   import type { TableColumnData } from '@arco-design/web-vue';
   import AuditAcceptance from './audit-acceptance.vue';
+  import ImagePickerAcceptance from './image-picker-acceptance.vue';
   import ChatAcceptance from './chat-acceptance.vue';
   import {
     ACoverPicker,
@@ -317,11 +318,13 @@
       <a href="#coordinate-picker">ACoordinatePicker</a>
       <a href="#tiptap-editor">ATiptapEditor</a>
       <a href="#cover-picker">ACoverPicker</a>
+      <a href="#image-picker">AImagePicker</a>
       <a href="#file-picker">AFilePicker</a>
       <a href="#file-uploader">AFileUploader</a>
     </nav>
 
     <main>
+      <ImagePickerAcceptance v-if="!tiptapFocused" />
       <ChatAcceptance v-if="!tiptapFocused" />
       <section v-if="!tiptapFocused" id="filter-form" class="acceptance-section" data-testid="filter-form-section">
         <div class="section-heading">

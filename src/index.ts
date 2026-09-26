@@ -7,6 +7,7 @@ import AChatMessageList from './components/chat-message-list/index.vue';
 import AChatComposer from './components/chat-composer/index.vue';
 import ACoverPicker from './components/cover-picker/index.vue';
 import AFilePicker from './components/file-picker/index.vue';
+import AImagePicker from './components/image-picker/index.vue';
 import AFileUploader from './components/file-uploader/index.vue';
 import AIconPicker from './components/icon-picker/index.vue';
 import AProTable from './components/pro-table/index.vue';
@@ -59,6 +60,14 @@ export type {
 
 export type { AIconPickerProps, AIconPickerExposed } from './components/icon-picker/types';
 export type { ACoordinatePickerProps, ACoordinatePickerExposed } from './components/coordinate-picker/types';
+
+export type {
+  AImagePickerProps,
+  AImagePickerEmits,
+  AImagePickerSlots,
+  AImagePickerExposed,
+  ImagePickerValue,
+} from './components/image-picker/types';
 
 export type { AFilePickerProps, AFilePickerExposed, FilePickerValue, FilePickerView } from './components/file-picker/types';
 
@@ -125,6 +134,7 @@ export {
   ACoordinatePicker,
   ACoverPicker,
   AFilePicker,
+  AImagePicker,
   AFileUploader,
   AFilterForm,
   AIconPicker,
@@ -149,6 +159,7 @@ const Admin9UI = {
       'AChatComposer',
       'ACoverPicker',
       'AFilePicker',
+      'AImagePicker',
       'AFileUploader',
       'AFilterForm',
       'AIconPicker',
@@ -167,6 +178,7 @@ const Admin9UI = {
     app.component('AChatComposer', AChatComposer);
     app.component('ACoverPicker', ACoverPicker);
     app.component('AFilePicker', AFilePicker);
+    app.component('AImagePicker', AImagePicker);
     app.component('AFileUploader', AFileUploader);
     app.component('AFilterForm', AFilterForm);
     app.component('AIconPicker', AIconPicker);

@@ -246,6 +246,7 @@ describe('package public API', () => {
         'AIconPicker',
         'ACoordinatePicker',
         'AFilePicker',
+        'AImagePicker',
         'AFileUploader',
         'AFilterForm',
         'AProTable',
@@ -279,6 +280,7 @@ describe('package public API', () => {
 
     expect(app.component('AMediaLibrary')).toBeUndefined();
     expect(app.component('AFileManager')).toBeUndefined();
+    expect(app.component('AImagePicker')).toBe(publicApi.AImagePicker);
     expect(app.component('AFilePicker')).toBe(publicApi.AFilePicker);
     expect(app.component('AFileUploader')).toBe(publicApi.AFileUploader);
     expect(app.component('AFilterForm')).toBe(publicApi.AFilterForm);

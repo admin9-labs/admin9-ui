@@ -106,6 +106,8 @@
   const committedItems = ref<FileItem[]>([]);
   const lastUploadFileType = ref<FileType>();
   const triggerRoot = ref<HTMLElement>();
+  let triggerAction: HTMLElement | undefined;
+  let returnFocusTarget: HTMLElement | undefined;
   const uploader = ref<AFileUploaderExposed>();
   let viewGeneration = 0;
   let latestListRequest = 0;
@@ -393,9 +395,26 @@
     fetchList();
   };
 
+  const focusSelector = 'button, [href], input:not([type="hidden"]), select, textarea, [tabindex]:not([tabindex="-1"])';
+  const canFocusTrigger = (element: HTMLElement | undefined): element is HTMLElement => {
+    if (!element?.isConnected || !triggerRoot.value?.contains(element)) return false;
+    if (element.matches(':disabled, [aria-disabled="true"]') || element.closest('[hidden], [inert]')) return false;
+    for (let parent: HTMLElement | null = element; parent; parent = parent.parentElement) {
+      const style = getComputedStyle(parent);
+      if (style.display === 'none' || style.visibility === 'hidden') return false;
+    }
+    return true;
+  };
+  const rememberTrigger = (event: Event) => {
+    const element = event.target instanceof Element ? event.target.closest<HTMLElement>(focusSelector) : undefined;
+    if (element && canFocusTrigger(element)) triggerAction = element;
+  };
   const open = () => {
     if (interactionDisabled.value || visible.value) return;
     requireService();
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+    returnFocusTarget = canFocusTrigger(triggerAction) ? triggerAction : active;
+    triggerAction = undefined;
     visible.value = true;
     replaceDraft(committedItems.value, false);
     emit('visibleChange', true);
@@ -411,9 +430,12 @@
     emit('visibleChange', false);
   };
   const restoreTriggerFocus = () => {
-    triggerRoot.value
-      ?.querySelector<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
-      ?.focus();
+    if (visible.value) return;
+    const target = canFocusTrigger(returnFocusTarget)
+      ? returnFocusTarget
+      : Array.from(triggerRoot.value?.querySelectorAll<HTMLElement>(focusSelector) ?? []).find(canFocusTrigger);
+    returnFocusTarget = undefined;
+    target?.focus();
   };
   const clear = () => {
     if (interactionDisabled.value) return;
@@ -496,7 +518,12 @@
 <template>
   <div class="a9-file-picker">
     <div class="a9-file-picker__trigger-row">
-      <span ref="triggerRoot" class="a9-file-picker__trigger">
+      <span
+        ref="triggerRoot"
+        class="a9-file-picker__trigger"
+        @pointerdown.capture="rememberTrigger"
+        @focusin.capture="rememberTrigger"
+      >
         <slot
           name="trigger"
           :open="open"

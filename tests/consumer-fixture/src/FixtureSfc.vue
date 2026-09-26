@@ -13,6 +13,8 @@
     AIconPicker,
     ACoordinatePicker,
     AFilePicker,
+    AImagePicker,
+    type AImagePickerExposed,
     AFileUploader,
     AFilterForm,
     AProTable,
@@ -47,6 +49,8 @@
   const submitChat = (value: string) => {
     chatMessages.value.push({ id: `u-${chatMessages.value.length}`, role: 'user', content: value });
   };
+  const image = ref<FileItem>();
+  const imagePicker = ref<AImagePickerExposed>();
   const attachments = ref<FileItem[]>([]);
   const cover = ref<CoverPickerValue>({ mode: 'triple', images: [null, null, null] });
   const coverSize: CoverPickerSize = 'small';
@@ -64,6 +68,12 @@
 
 <template>
   <section data-testid="host-baseline-sfc">
+    <AImagePicker ref="imagePicker" v-model="image" :service="filePickerService" />
+    <AImagePicker v-model="attachments" :service="filePickerService" multiple :limit="2"
+      ><template #trigger="{ open, disabled, selectedCount, limitReached }"
+        ><button :disabled="disabled" :data-full="limitReached" @click="open">{{ selectedCount }}</button></template
+      ></AImagePicker
+    >
     <AChatMessageList ref="chatList" :messages="chatMessages" style="height: 240px">
       <template #footer="{ message, index }"
         ><span>{{ message.id }}:{{ index }}</span></template

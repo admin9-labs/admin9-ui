@@ -49,6 +49,16 @@ export default {
       cancelled: 'Cancelled',
     },
   },
+  imagePicker: {
+    choose: 'Choose images',
+    preview: 'Preview image',
+    replace: 'Replace image',
+    remove: 'Remove image',
+    empty: 'No images',
+    unavailable: 'Image unavailable: {name}',
+    duplicate: 'This image is already in the list',
+    selectImage: 'Please select an available image',
+  },
   coverPicker: {
     modeLabel: 'Cover display mode',
     single: 'Single image',

@@ -2,6 +2,8 @@
 
 `AFilePicker` 是后端无关的完整文件选择工作流，适合表单、弹窗和附件字段。它负责打开文件库、浏览筛选、维护草稿选择和确认写回，并复用 `AFileUploader` 的上传队列；不提供移动、删除或分组管理。
 
+图片字段需要卡片、预览、更换与移除时，使用组合组件 [AImagePicker](./image-picker.md)。
+
 `AFilePicker` 是图片、视频、音频及其他文件的统一轻量选择器；`ATiptapEditor` 使用它作为媒体资源选择来源。
 
 ## 基础示例
@@ -141,3 +143,5 @@ Picker value 只表达可以交付给业务字段的文件：
 回显仅更新归一化后的展示，不触发 update/change/selection-change。弹层草稿与外层字段隔离，只有正式提交才触发 change 校验。单选清空为 undefined，多选清空为 []。`confirm` 始终为数组，适合不需要保存选择值的编辑器插入命令。
 
 导出 `AFilePickerProps`、`AFilePickerExposed`、`FilePickerValue`、`FilePickerView`。defaultView 只决定初始视图。文件预览、下载和选中值只接受 HTTP(S)、相对路径和 blob URL；不渲染可执行协议或 data 文档。
+
+自定义触发区域有多个操作控件时，关闭弹窗优先恢复到本次实际触发控件；控件失效时回退到区域内可用入口。

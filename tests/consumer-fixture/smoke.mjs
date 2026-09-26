@@ -45,6 +45,7 @@ assert.ok(packageExports.ACoverPicker);
 assert.ok(packageExports.AIconPicker);
 assert.ok(packageExports.ACoordinatePicker);
 assert.ok(packageExports.AFilePicker);
+assert.ok(packageExports.AImagePicker);
 assert.ok(packageExports.AFileUploader);
 assert.ok(packageExports.AProTable);
 assert.ok(packageExports.ATiptapEditor);
@@ -58,6 +59,7 @@ assert.ok(commonJsPackage.ACoverPicker);
 assert.ok(commonJsPackage.AIconPicker);
 assert.ok(commonJsPackage.ACoordinatePicker);
 assert.ok(commonJsPackage.AFilePicker);
+assert.ok(commonJsPackage.AImagePicker);
 assert.ok(commonJsPackage.AFileUploader);
 assert.ok(commonJsPackage.ATiptapEditor);
 assert.equal(commonJsLocale.localePrefix, 'admin9Ui');
@@ -67,6 +69,7 @@ const css = await readFile(new URL(cssPath), 'utf8');
 assert.match(css, /\.a9-chat-message-list/);
 assert.match(css, /\.a9-chat-composer/);
 assert.match(css, /\.a9-cover-picker/);
+assert.match(css, /\.a9-image-picker/);
 assert.match(css, /\.a9-(coordinate|file|icon|pro|tiptap)-/);
 assert.match(css, /\.a9-tiptap-editor__media-bubble/);
 
@@ -93,6 +96,7 @@ const app = createApp({
   render: () =>
     h('main', [
       h(packageExports.ACoverPicker, { modelValue: { mode: 'single', images: [null] } }),
+      h(packageExports.AImagePicker, { multiple: true, modelValue: [] }),
       h(packageExports.AIconPicker, { modelValue: '' }),
       h(packageExports.ACoordinatePicker, {
         modelValue: { latitude: 27.8945, longitude: 102.2644 },
@@ -159,6 +163,7 @@ assert.equal(mountedAudioWrapper?.style.getPropertyValue('--a9-media-width'), '4
   assert.equal(element?.getAttribute('preload'), 'metadata');
   assert.ok(!element?.hasAttribute('autoplay'), 'Embedded media retained autoplay.');
 });
+assert.ok(host.querySelector('.a9-image-picker'), 'AImagePicker did not mount from shared fileService.');
 assert.ok(host.querySelector('.a9-file-picker'), 'AFilePicker did not mount from shared list-only fileService.');
 assert.ok(host.querySelector('.a9-file-uploader'), 'AFileUploader did not mount from shared fileService.');
 assert.ok(host.querySelector('.arco-input-wrapper'), 'Arco input integration did not mount.');

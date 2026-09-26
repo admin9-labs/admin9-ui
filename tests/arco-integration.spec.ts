@@ -9,6 +9,7 @@ import AProTable from '../src/components/pro-table/index.vue';
 import AIconPicker from '../src/components/icon-picker/index.vue';
 import ACoordinatePicker from '../src/components/coordinate-picker/index.vue';
 import AFilePicker from '../src/components/file-picker/index.vue';
+import AImagePicker from '../src/components/image-picker/index.vue';
 import AFileUploader from '../src/components/file-uploader/index.vue';
 import ACoverPicker from '../src/components/cover-picker/index.vue';
 import AChatComposer from '../src/components/chat-composer/index.vue';
@@ -129,6 +130,7 @@ describe('real Arco 2.57 component contracts', () => {
             h(FormItem, {}, { default: () => h(AIconPicker, { disabled: false }) }),
             h(FormItem, {}, { default: () => h(ACoordinatePicker, { apiKey: '', disabled: false }) }),
             h(FormItem, {}, { default: () => h(AFilePicker, { service, disabled: false }) }),
+            h(FormItem, {}, { default: () => h(AImagePicker, { service, disabled: false }) }),
             h(FormItem, {}, { default: () => h(ACoverPicker, { service, modelValue: value, disabled: false }) }),
             h(FormItem, {}, { default: () => h(AChatComposer, { modelValue: 'Send me', disabled: false, onSubmit: submit }) }),
             h(FormItem, {}, { default: () => h(ATiptapEditor, { modelValue: '<p>Read me</p>', disabled: false }) }),
@@ -138,6 +140,7 @@ describe('real Arco 2.57 component contracts', () => {
     );
     await flush();
     expect(document.querySelector<HTMLButtonElement>('[data-testid="file-picker-trigger"]')!.disabled).toBe(true);
+    expect(document.querySelector<HTMLButtonElement>('.a9-image-picker__add')!.disabled).toBe(true);
     expect(document.querySelector<HTMLButtonElement>('.a9-chat-composer__action')!.disabled).toBe(true);
     expect(document.querySelector('.ProseMirror')!.getAttribute('contenteditable')).toBe('false');
     document.querySelector<HTMLButtonElement>('.a9-chat-composer__action')!.click();
@@ -146,6 +149,7 @@ describe('real Arco 2.57 component contracts', () => {
     disabled.value = false;
     await flush();
     expect(document.querySelector<HTMLButtonElement>('[data-testid="file-picker-trigger"]')!.disabled).toBe(false);
+    expect(document.querySelector<HTMLButtonElement>('.a9-image-picker__add')!.disabled).toBe(false);
     expect(document.querySelector('.ProseMirror')!.getAttribute('contenteditable')).toBe('true');
   });
 

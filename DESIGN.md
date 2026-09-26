@@ -32,6 +32,7 @@
 | `AChatComposer`                            | 文本输入、发送及停止            | 受控输入与生成状态       |
 | `ACoverPicker`                             | 单图、三图及无封面选择          | `FilePickerAdapter`      |
 | `ACoordinatePicker`                        | 腾讯地图坐标搜索与点选          | 应用提供腾讯地图 API Key |
+| `AImagePicker`                             | 图片字段卡片、预览、更换和移除  | `FilePickerAdapter`      |
 | `AFilePicker`                              | 表单级文件浏览与选择            | `FilePickerAdapter`      |
 | `AFileUploader`                            | 本地批量上传队列                | `FileUploadCapability`   |
 | `AFilterForm`                              | 列表页自适应筛选表单            | 无                       |
@@ -93,6 +94,7 @@ app.use(Admin9UI, {
 - [ACoverPicker](./docs/components/cover-picker.md) 负责封面模式、固定图片位置与预览，复用 `AFilePicker` 完成图片选择。
 
 - [ACoordinatePicker](./docs/components/coordinate-picker.md) 只提交坐标和确认来源，不绑定地址、门店等业务字段，也不负责坐标系转换。
+- [AImagePicker](./docs/components/image-picker.md) 负责图片字段卡片及组合，复用 AFilePicker 弹窗内的选择和上传；外层不实现上传链路，移除仅解除字段引用。
 - [AFilePicker](./docs/components/file-picker.md) 负责浏览、筛选、选择草稿与确认写回；上传完成只刷新列表，不自动选择文件。
 - [AFileUploader](./docs/components/file-uploader.md) 负责本地文件队列、进度、取消、重试和部分成功，不提供网络文件或扫码上传。
 - [AFilterForm](./docs/components/filter-form.md) 默认提供可直接放入列表页的卡片式表面，负责响应式筛选布局与表单事件，不管理标题、分页、请求和业务默认值。

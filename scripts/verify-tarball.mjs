@@ -106,6 +106,7 @@ try {
     'docs/components/file-uploader.md',
     'docs/components/filter-form.md',
     'docs/components/file-picker.md',
+    'docs/components/image-picker.md',
     'docs/components/icon-picker.md',
     'docs/components/pro-table.md',
     'docs/components/tiptap-editor.md',

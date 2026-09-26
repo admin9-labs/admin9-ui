@@ -6,6 +6,7 @@
     AIconPicker,
     ACoordinatePicker,
     AFilePicker,
+    AImagePicker,
     AFileUploader,
     ACoverPicker,
     AFilterForm,
@@ -31,6 +32,7 @@
   const service = computed(() => createFakeFilePickerService(state.value));
   const icon = ref<string>();
   const coordinate = ref<CoordinateValue>();
+  const images = ref<FilePickerValue>([]);
   const files = ref<FilePickerValue>([]);
   const cover = ref<CoverPickerValue>({ mode: 'single', images: [null] });
   const html = ref('<p>编辑这段文字 / Edit this text</p>');
@@ -99,7 +101,12 @@
     </div>
     <output id="audit-result">{{ result }}</output>
     <a-config-provider :size="size">
-      <a-form :model="{ icon, coordinate, files, cover, html, draft }" :size="size" :disabled="disabled" layout="vertical">
+      <a-form
+        :model="{ icon, coordinate, files, images, cover, html, draft }"
+        :size="size"
+        :disabled="disabled"
+        layout="vertical"
+      >
         <section id="audit-icon"
           ><h2>AIconPicker</h2
           ><a-form-item field="icon" label="Icon"><AIconPicker v-model="icon" :readonly="readonly" allow-clear /></a-form-item
@@ -110,6 +117,17 @@
             ><ACoordinatePicker v-model="coordinate" :api-key="key" :readonly="readonly" allow-clear /></a-form-item
           ><output>{{ JSON.stringify(coordinate) }}</output></section
         >
+        <section id="audit-image"
+          ><h2>AImagePicker</h2
+          ><a-form-item field="images" label="Images"
+            ><AImagePicker
+              v-model="images"
+              :service="service"
+              :readonly="readonly"
+              multiple
+              :limit="3"
+              can-upload /></a-form-item
+        ></section>
         <section id="audit-file"
           ><h2>AFilePicker</h2
           ><a-form-item field="files" label="Files"

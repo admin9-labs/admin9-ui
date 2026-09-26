@@ -43,6 +43,16 @@ export default {
       cancelled: '已取消',
     },
   },
+  imagePicker: {
+    choose: '选择图片',
+    preview: '预览图片',
+    replace: '更换图片',
+    remove: '移除图片',
+    empty: '暂无图片',
+    unavailable: '无法显示图片：{name}',
+    duplicate: '该图片已在当前列表中',
+    selectImage: '请选择一张可用图片',
+  },
   coverPicker: {
     modeLabel: '封面展示方式',
     single: '单图',

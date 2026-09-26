@@ -5,6 +5,11 @@ import type {
   ACoordinatePickerProps,
   ACoordinatePickerExposed,
   AFilePickerProps,
+  AImagePickerProps,
+  AImagePickerEmits,
+  AImagePickerSlots,
+  AImagePickerExposed,
+  ImagePickerValue,
   AFilePickerExposed,
   AFileUploaderProps,
   AFilterFormExposed,
@@ -79,4 +84,29 @@ export function checkConcreteEditor(instance: InstanceType<typeof import('@admin
   const focused: boolean | undefined = exposed.focus();
   const cleared: boolean | undefined = exposed.clear();
   return { focused, cleared };
+}
+
+export const imagePickerProps: AImagePickerProps = { multiple: true, limit: 2, showFileList: false, readonly: true };
+export const emptyImagePicker: ImagePickerValue = undefined;
+export const imagePickerSlots: AImagePickerSlots = {
+  trigger: ({ open, selectedItems, selectedCount, disabled, readonly, limitReached }) => {
+    if (!disabled && !readonly) open();
+    return `${selectedItems.length}:${selectedCount}:${limitReached}`;
+  },
+};
+// @ts-expect-error URL-only values belong to the application adapter.
+export const invalidImagePickerValue: ImagePickerValue = '/image.png';
+export function checkImagePicker(
+  instance: InstanceType<typeof import('@admin9-labs/admin9-ui').AImagePicker>,
+  emit: AImagePickerEmits
+) {
+  const exposed: AImagePickerExposed = instance;
+  exposed.open();
+  exposed.close();
+  exposed.clear();
+  const pending: Promise<void> = exposed.refresh();
+  emit('confirm', []);
+  emit('change', undefined);
+  emit('visibleChange', false);
+  return pending;
 }
