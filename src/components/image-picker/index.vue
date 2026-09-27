@@ -1,6 +1,6 @@
 <script setup lang="ts">
   import { computed, inject, nextTick, onBeforeUnmount, ref, shallowRef, toRef, watch } from 'vue';
-  import { FormItem, Message, useFormItem, type FileItem as UploadFileItem } from '@arco-design/web-vue';
+  import { FormItem, Message, Upload, useFormItem, type FileItem as UploadFileItem } from '@arco-design/web-vue';
   import { useI18n } from 'vue-i18n';
   import AFilePicker from '../file-picker/index.vue';
   import type { AFilePickerExposed } from '../file-picker/types';
@@ -206,7 +206,7 @@
       >
         <template #trigger>
           <div class="a9-image-picker__content">
-            <a-upload
+            <Upload
               v-if="showFileList"
               :key="previewKey"
               class="a9-image-picker__cards"
@@ -270,7 +270,7 @@
                   ><icon-swap
                 /></button>
               </template>
-            </a-upload>
+            </Upload>
             <slot
               name="trigger"
               :open="open"

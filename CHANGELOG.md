@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复 AImagePicker 的 Upload 依赖未被 Arco 按需样式插件识别，导致生产构建中默认上传入口未隐藏、空态出现额外加号的问题。
+
 ## [0.24.1] - 2026-09-26
 
 ### Fixed
