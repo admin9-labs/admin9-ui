@@ -342,7 +342,10 @@
     state: (state) => emit('imageUploadStateChange', state),
     error: (error) => {
       emit('imageUploadError', error);
-      Message.error(t(`admin9Ui.tiptapEditor.${error.reason === 'upload-unavailable' ? 'uploadUnavailable' : 'uploadFailed'}`));
+      let key = 'uploadFailed';
+      if (error.reason === 'upload-unavailable') key = 'uploadUnavailable';
+      if (error.reason === 'unsupported-image') key = 'unsupportedImageUpload';
+      Message.error(t(`admin9Ui.tiptapEditor.${key}`));
     },
   });
   const publicHTML = (currentEditor: Editor) => {

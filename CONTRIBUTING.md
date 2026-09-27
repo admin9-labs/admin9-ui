@@ -21,7 +21,9 @@ corepack pnpm@10.5.2 run lint
 corepack pnpm@10.5.2 run changelog:check
 ```
 
-`corepack pnpm@10.5.2 run acceptance:dev` 启动使用 fake service 的浏览器验收应用。它只验证组件交互与样式，不代表真实业务应用或后端验收。
+`corepack pnpm@10.5.2 run acceptance:dev` 启动使用 fake service 的浏览器验收应用。它只验证组件交互与样式，不代表真实业务应用或后端验收。修改组件引用的外部 Props/类型声明后应重启验收服务并重新加载页面，避免 Vite 的旧类型编译缓存影响结果。
+
+文件上传验收可使用文件名前缀 `unsupported-format` 触发格式拒绝，`temporary-failure` 触发首次失败、重试成功；类型不在允许集合内时触发类型拒绝。这些约定仅用于 fake service。
 
 公共 API、可观察行为或升级要求发生变化时，同步更新组件文档和 `CHANGELOG.md` 的 `Unreleased` 章节。纯内部重构、测试和发布流程调整不写入面向使用者的 CHANGELOG。
 

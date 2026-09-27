@@ -147,6 +147,6 @@
       :can-upload-audio="false"
     />
     <AFilePicker v-model="attachments" :service="filePickerService" :file-types="['image', 'document']" :limit="3" multiple />
-    <AFileUploader :service="fileUploaderService" file-type="image" group-id="fixture-images" accept="image/*" />
+    <AFileUploader :service="fileUploaderService" :file-types="['image']" group-id="fixture-images" accept="image/*" />
   </section>
 </template>

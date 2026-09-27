@@ -43,6 +43,7 @@ export type {
   FilePagination,
   FileListResult,
   FileUploadOptions,
+  FileUploadRejection,
   FileBrowseCapability,
   FileUploadCapability,
   FilePickerAdapter,

@@ -31,9 +31,11 @@
 
 设置 `canUploadImage=true` 且文件服务实现 `upload()` 后，可粘贴截图或从文件管理器拖入 PNG、JPEG、GIF、WebP 图片。默认仍关闭上传。HTML 和 JSON 模式使用相同流程，上传完成的图片可继续调整大小、对齐和替代文字。
 
-图片先在插入位置显示预览，最多并发上传三张；提供进度的服务显示百分比，否则显示加载状态。失败后可原位重试或删除，多图按输入顺序排列。删除或撤销未完成图片会取消上传，晚到响应不会将其重新插入；重做已成功图片使用正式地址，不再次上传。只读／禁用切换会取消在途请求，恢复编辑后可以重试或删除未完成项。
+图片先在插入位置显示预览，最多并发上传三张；提供进度的服务显示百分比，否则显示加载状态。普通失败可原位重试或删除；adapter 明确拒绝图片类型或格式时不可重试，应删除后更换图片。多图按输入顺序排列。删除或撤销未完成图片会取消上传，晚到响应不会将其重新插入；重做已成功图片使用正式地址，不再次上传。只读／禁用切换会取消在途请求，恢复编辑后可以重试或删除未完成项。
 
-上传沿用 `FileUploadOptions`，图片使用 `fileType: 'image'`、`groupId: null`，并传入进度回调和 `AbortSignal`。结果须有非空 ID、正确图片类型、就绪状态和 HTTP(S) 或相对 URL。`blob:`、base64、上传任务 ID 和本地文件对象不会写入公开 HTML／JSON。本组件当前采用即时上传，不提供保存时提交 base64 的模式。
+上传沿用 `FileUploadOptions`，图片使用 `fileTypes: ['image']`、`groupId: null`，并传入进度回调和 `AbortSignal`。adapter/后端识别真实类型并校验允许集合，不再读取旧的 `fileType` 参数；迁移要求见[文件服务迁移](./file-service-migration.md)。结果须有非空 ID、正确图片类型、就绪状态和 HTTP(S) 或相对 URL。`blob:`、base64、上传任务 ID 和本地文件对象不会写入公开 HTML／JSON。本组件当前采用即时上传，不提供保存时提交 base64 的模式。
+
+adapter 抛出 `FileUploadRejection` 中的 `unsupported-file-type` 或 `unsupported-file-format` 时，编辑器沿用 `image-upload-error` 的 `unsupported-image` 原因并保留原始 `cause`；节点提示和 toast 均指引删除后更换图片，撤销、重做不会重新请求该拒绝任务。未知错误仍按普通上传失败处理。
 
 消费方应监听 `image-upload-state-change`，并在提交时再次调用 `getImageUploadState()`。`pending`、`uploading`、`failed` 任一非零时，`canSave=false`；用户等待、重试或删除未完成图片后才能保存。`canSave` 只表示图片任务是否完成，不代替业务表单校验。`getHTML()`、`getJSON()` 与模型事件仍可读取已完成内容，消费方不能以拿到内容代替状态检查。
 

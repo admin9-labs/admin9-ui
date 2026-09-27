@@ -83,10 +83,10 @@ describe('package public API', () => {
   });
 
   it('exports the file uploader contract types', () => {
-    const props: AFileUploaderProps = { fileType: 'image', groupId: 'design', multiple: true };
+    const props: AFileUploaderProps = { fileTypes: ['image'], groupId: 'design', multiple: true };
     const result: FileUploadBatchResult = { succeeded: [], failed: [], cancelled: [] };
 
-    expect(props).toEqual({ fileType: 'image', groupId: 'design', multiple: true });
+    expect(props).toEqual({ fileTypes: ['image'], groupId: 'design', multiple: true });
     expect(result).toEqual({ succeeded: [], failed: [], cancelled: [] });
   });
 
@@ -273,7 +273,7 @@ describe('package public API', () => {
   it('keeps the locale entry limited to consumer-facing locale resources', () => {
     expect(Object.keys(localeApi).sort()).toEqual(['enUS', 'localePrefix', 'messages', 'zhCN'].sort());
     expect(localeApi.enUS.filePicker.types.archive).toBe('Archives');
-    expect(localeApi.enUS.filePicker.typeAllowed).toBe('All allowed types');
+    expect(localeApi.enUS.filePicker.typeAll).toBe('All');
     expect(localeApi.enUS.coverPicker.triple).toBe('Three images');
     expect(localeApi.zhCN.coordinatePicker.choose).toBe('选择坐标');
   });

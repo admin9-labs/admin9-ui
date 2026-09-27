@@ -275,6 +275,9 @@ function installStubs(app: App, options: { realModal?: boolean; realSelectionCon
   app.component('ARadioGroup', options.realSelectionControls ? RadioGroup : RadioGroupStub);
   app.component('ARadio', options.realSelectionControls ? Radio : RadioStub);
   [
+    'IconDown',
+    'IconRight',
+    'IconEye',
     'IconApps',
     'IconArchive',
     'IconClose',
@@ -376,7 +379,11 @@ function mountDynamic(
 }
 
 function click(selector: string) {
-  const element = document.querySelector<HTMLElement>(selector);
+  const element =
+    document.querySelector<HTMLElement>(selector) ??
+    (selector === '[data-testid="file-picker-trigger"]'
+      ? document.querySelector<HTMLElement>('[data-testid="file-picker-replace"]')
+      : null);
   if (!element) throw new Error(`Missing element: ${selector}`);
   element.click();
 }
@@ -393,6 +400,13 @@ function selectItem(id: string) {
   control.click();
 }
 
+function selectType(value: string) {
+  const select = document.querySelector<HTMLSelectElement>('.a9-file-picker__type-select');
+  if (!select) throw new Error('Missing file type selector');
+  select.value = value;
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
 describe('AFilePicker', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="app"></div>';
@@ -401,6 +415,7 @@ describe('AFilePicker', () => {
 
   afterEach(() => {
     mountedApps.splice(0).forEach((app) => app.unmount());
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -412,13 +427,13 @@ describe('AFilePicker', () => {
 
     click('[data-testid="file-picker-trigger"]');
     await flush();
-    expect(allService.list).toHaveBeenCalledWith({ page: 1, pageSize: 24, keyword: undefined });
+    expect(allService.list).toHaveBeenCalledWith({ page: 1, pageSize: 24, keyword: undefined, groupId: undefined });
     expect((allService.list as ReturnType<typeof vi.fn>).mock.calls[0][0]).not.toHaveProperty('fileTypes');
-    expect((allService.list as ReturnType<typeof vi.fn>).mock.calls[0][0]).not.toHaveProperty('groupId');
+    expect((allService.list as ReturnType<typeof vi.fn>).mock.calls[0][0]).toHaveProperty('groupId', undefined);
 
     mountedApps.pop()?.unmount();
     document.body.innerHTML = '<div id="app"></div>';
-    const subsetService = makeService({ list: vi.fn().mockResolvedValue(result([image, implicitReady], 1, 24, 9)) });
+    const subsetService = makeService({ list: vi.fn().mockResolvedValue(result([image, implicitReady], 1, 24, 30)) });
     mountPicker({ service: subsetService, props: { fileTypes: ['image', 'document'] } });
     click('[data-testid="file-picker-trigger"]');
     await flush();
@@ -428,8 +443,9 @@ describe('AFilePicker', () => {
       pageSize: 24,
       keyword: undefined,
       fileTypes: ['image', 'document'],
+      groupId: undefined,
     });
-    expect(document.querySelector('[data-testid="file-picker-pagination"]')?.getAttribute('data-total')).toBe('9');
+    expect(document.querySelector('[data-testid="file-picker-pagination"]')?.getAttribute('data-total')).toBe('30');
   });
 
   it('uses a concrete query and real-type groups for one allowed type', async () => {
@@ -445,8 +461,8 @@ describe('AFilePicker', () => {
       fileType: 'image',
       groupId: undefined,
     });
-    expect(service.listGroups).toHaveBeenCalledWith('image');
-    expect(document.querySelectorAll('.a9-file-picker__type-button')).toHaveLength(1);
+    expect(service.listGroups).toHaveBeenCalledWith();
+    expect(document.querySelectorAll('.a9-file-picker__type-select')).toHaveLength(0);
   });
 
   it('normalizes duplicate and invalid file types without inventing all', async () => {
@@ -459,7 +475,7 @@ describe('AFilePicker', () => {
     await flush();
 
     expect(service.list).toHaveBeenCalledWith(expect.objectContaining({ fileTypes: ['image', 'document'] }));
-    expect(document.querySelectorAll('.a9-file-picker__type-button')).toHaveLength(3);
+    expect(document.querySelectorAll('.a9-file-picker__type-select option')).toHaveLength(3);
   });
 
   it('treats an empty allowed set as zero matches without mutating the external value', async () => {
@@ -474,7 +490,7 @@ describe('AFilePicker', () => {
     expect(service.list).not.toHaveBeenCalled();
     expect(service.listGroups).not.toHaveBeenCalled();
     expect(service.upload).not.toHaveBeenCalled();
-    expect(document.body.textContent).toContain('No file types are allowed');
+    expect(document.body.textContent).toContain('No file types available');
   });
 
   it('invalidates an old request when restrictions become empty and resumes when restored', async () => {
@@ -526,7 +542,7 @@ describe('AFilePicker', () => {
     selectItem('document-2');
     await nextTick();
     expect(emitted.selectionChange?.at(-1)?.[0]).toEqual([image, pageTwo]);
-    expect(document.querySelector('.a9-file-picker__footer-status')?.textContent).toContain('2 selected');
+    expect(document.querySelector('.a9-file-picker__selected-count')?.textContent).toContain('2 selected');
 
     click('[data-testid="modal-cancel"]');
     await flush();
@@ -536,7 +552,10 @@ describe('AFilePicker', () => {
     click('[data-testid="file-picker-trigger"]');
     await flush();
     selectItem('image-1');
-    const confirmButton = Array.from(document.querySelectorAll('button')).find((button) => button.textContent === 'Confirm');
+    await nextTick();
+    const confirmButton = Array.from(document.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Confirm selection'
+    );
     confirmButton?.click();
     confirmButton?.click();
     await flush();
@@ -683,7 +702,9 @@ describe('AFilePicker', () => {
     selectItem('image-1');
     await nextTick();
 
-    const confirmButton = Array.from(document.querySelectorAll('button')).find((button) => button.textContent === 'Confirm');
+    const confirmButton = Array.from(document.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Confirm selection'
+    );
     confirmButton?.click();
     confirmButton?.click();
     await flush();
@@ -695,7 +716,7 @@ describe('AFilePicker', () => {
   it('keeps closed outer clear events independent of prior open and cancel history', async () => {
     const direct = mountPicker({ service: makeService(), props: { modelValue: [image], multiple: true } });
     await flush();
-    click('[data-testid="file-picker-clear"]');
+    click('.a9-file-picker__committed button');
     await flush();
     expect(direct.emitted['update:modelValue']).toEqual([[[]]]);
     expect(direct.emitted.change).toEqual([[[]]]);
@@ -709,7 +730,7 @@ describe('AFilePicker', () => {
     click('[data-testid="file-picker-trigger"]');
     await flush();
     click('[data-testid="modal-cancel"]');
-    click('[data-testid="file-picker-clear"]');
+    click('.a9-file-picker__committed button');
     await flush();
     expect(afterCancel.emitted['update:modelValue']).toEqual([[[]]]);
     expect(afterCancel.emitted.change).toEqual([[[]]]);
@@ -743,7 +764,9 @@ describe('AFilePicker', () => {
 
     click('[data-testid="file-picker-trigger"]');
     await flush();
-    const confirmButton = Array.from(document.querySelectorAll('button')).find((button) => button.textContent === 'Confirm');
+    const confirmButton = Array.from(document.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Confirm selection'
+    );
     confirmButton?.click();
     await flush();
     expect(emitted['update:modelValue']).toEqual([[changedImage]]);
@@ -876,7 +899,7 @@ describe('AFilePicker', () => {
     click('[data-testid="file-picker-upload"]');
     expect(uploads[0].accept).toBe('.pdf');
     expect(service.upload).toHaveBeenCalledWith(
-      expect.objectContaining({ fileType: 'image', groupId: null, file: expect.any(File) })
+      expect.objectContaining({ fileTypes: ['image', 'document'], groupId: null, file: expect.any(File) })
     );
     const uploadOptions = (service.upload as ReturnType<typeof vi.fn>).mock.calls[0][0];
     uploadOptions.onProgress(42);
@@ -892,22 +915,22 @@ describe('AFilePicker', () => {
     expect(service.list).toHaveBeenCalledTimes(listCallsBeforeUploadCompletes + 1);
   });
 
-  it('keeps the most recently selected concrete type as the aggregate upload target', async () => {
+  it('keeps upload constraints independent of the last browsed type', async () => {
     const service = makeService({
-      upload: vi.fn(async (options) => ({ ...image, id: 'document-upload', type: options.fileType })),
+      upload: vi.fn(async () => ({ ...image, id: 'document-upload' })),
     });
     mountPicker({ service, props: { fileTypes: ['image', 'document'], canUpload: true } });
     click('[data-testid="file-picker-trigger"]');
     await flush();
 
-    document.querySelectorAll<HTMLElement>('.a9-file-picker__type-button')[2]?.click();
+    selectType('document');
     await flush();
-    document.querySelectorAll<HTMLElement>('.a9-file-picker__type-button')[0]?.click();
+    selectType('');
     await flush();
     click('[data-testid="file-picker-upload"]');
     await flush();
 
-    expect(service.upload).toHaveBeenCalledWith(expect.objectContaining({ fileType: 'document', groupId: null }));
+    expect(service.upload).toHaveBeenCalledWith(expect.objectContaining({ fileTypes: ['image', 'document'], groupId: null }));
   });
 
   it('never auto-selects invalid, duplicate or stale upload responses and reports current errors', async () => {
@@ -1021,14 +1044,13 @@ describe('AFilePicker', () => {
     const service = makeService({
       list: vi.fn().mockImplementation((params: FileListParams) => {
         if (!params.fileType && !params.keyword) return aggregate.promise;
-        return Promise.resolve(result(params.fileType === 'video' ? [video] : [image]));
+        return Promise.resolve(result(params.fileType === 'video' ? [video] : [image], 1, 1, 3));
       }),
     });
     mountPicker({ service, props: { fileTypes: ['image', 'video'], pageSize: 1 } });
     click('[data-testid="file-picker-trigger"]');
     await nextTick();
-    const typeButtons = document.querySelectorAll<HTMLElement>('.a9-file-picker__type-button');
-    typeButtons[2].click();
+    selectType('video');
     await flush();
     expect(item('video-1')).not.toBeNull();
 
@@ -1045,11 +1067,329 @@ describe('AFilePicker', () => {
     await flush();
     expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, keyword: 'launch' }));
 
-    const groupSelect = document.querySelector<HTMLSelectElement>('.a9-file-picker__groups select');
-    if (!groupSelect) throw new Error('Missing group selector');
-    groupSelect.value = '__admin9_ui_file_picker_ungrouped__';
-    groupSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    document.querySelectorAll<HTMLButtonElement>('.a9-file-picker__group-button')[1].click();
     await flush();
     expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, groupId: null }));
+  });
+  it('combines global groups with type filters without refetching groups or losing selections', async () => {
+    const documents = { ...implicitReady, groupId: 'design' };
+    const service = makeService({
+      list: vi.fn(async (params) => {
+        const files = [image, documents].filter(
+          (file) =>
+            (!params.fileType || file.type === params.fileType) &&
+            (params.groupId === undefined || file.groupId === params.groupId)
+        );
+        return result(files);
+      }),
+    });
+    const { emitted } = mountPicker({ service, props: { multiple: true, fileTypes: ['image', 'document'] } });
+    click('[data-testid="file-picker-trigger"]');
+    await flush();
+    click('[data-group-id="design"]');
+    await flush();
+    expect(service.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ groupId: 'design', fileTypes: ['image', 'document'] })
+    );
+    item(image.id).click();
+    await flush();
+    selectType('document');
+    await flush();
+    expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ groupId: 'design', fileType: 'document' }));
+    expect(service.listGroups).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('.a9-file-picker__selected-count')?.textContent).toContain('1 selected');
+    item(documents.id).click();
+    await flush();
+    expect(emitted.selectionChange.at(-1)?.[0]).toEqual([image, documents]);
+    document.querySelectorAll<HTMLButtonElement>('.a9-file-picker__group-button')[1].click();
+    await flush();
+    expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ groupId: null, fileType: 'document' }));
+    expect(document.querySelector('[data-testid="file-picker-pagination"]')).toBeNull();
+  });
+
+  it('browses two-level groups independently and uploads into the selected child', async () => {
+    const service = makeService({
+      listGroups: vi.fn().mockResolvedValue([
+        { id: 'child', name: 'Assets', parentId: 'design' },
+        { id: 'design', name: 'Design' },
+      ]),
+    });
+    mountPicker({ service, props: { fileTypes: ['image', 'document'], canUpload: true } });
+    click('[data-testid="file-picker-trigger"]');
+    await flush();
+    expect(document.querySelector('[data-group-id="child"]')?.getAttribute('aria-label')).toBe('Design / Assets');
+    click('[data-group-id="child"]');
+    await flush();
+    expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ groupId: 'child' }));
+    const calls = vi.mocked(service.list).mock.calls.length;
+    click('.a9-file-picker__group-toggle');
+    await flush();
+    expect(document.querySelector('[data-group-id="child"]')).toBeNull();
+    expect(service.list).toHaveBeenCalledTimes(calls);
+    click('.a9-file-picker__group-toggle');
+    await flush();
+    expect(document.querySelector('[data-group-id="child"]')?.getAttribute('aria-pressed')).toBe('true');
+    selectType('document');
+    await flush();
+    expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ groupId: 'child', fileType: 'document' }));
+    click('[data-testid="file-picker-upload"]');
+    await flush();
+    expect(service.upload).toHaveBeenCalledWith(
+      expect.objectContaining({ groupId: 'child', fileTypes: ['image', 'document'] })
+    );
+    click('[data-group-id="design"]');
+    await flush();
+    expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ groupId: 'design', fileType: 'document' }));
+  });
+
+  it('defaults to expanded groups and toggles the selected parent without refetching', async () => {
+    const service = makeService({
+      listGroups: vi.fn().mockResolvedValue([
+        { id: 'design', name: 'Design' },
+        { id: 'child', name: 'Assets', parentId: 'design' },
+      ]),
+    });
+    mountPicker({ service });
+    click('[data-testid="file-picker-trigger"]');
+    await flush();
+    expect(document.querySelector('[data-group-id="child"]')).not.toBeNull();
+    click('.a9-file-picker__group-toggle');
+    await flush();
+    expect(document.querySelector('[data-group-id="child"]')).toBeNull();
+    click('[data-group-id="design"]');
+    await flush();
+    expect(document.querySelector('[data-group-id="child"]')).not.toBeNull();
+    click('.a9-file-picker__group-toggle');
+    await flush();
+    const calls = vi.mocked(service.list).mock.calls.length;
+    click('[data-group-id="design"]');
+    await flush();
+    expect(document.querySelector('[data-group-id="child"]')).not.toBeNull();
+    expect(service.list).toHaveBeenCalledTimes(calls);
+    click('[data-group-id="design"]');
+    await flush();
+    expect(document.querySelector('[data-group-id="child"]')).toBeNull();
+    expect(document.querySelector('.a9-file-picker__group-toggle')?.getAttribute('aria-expanded')).toBe('false');
+    expect(document.querySelector('[data-group-id="design"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(service.list).toHaveBeenCalledTimes(calls);
+    click('[data-group-id="design"]');
+    await flush();
+    expect(document.querySelector('[data-group-id="child"]')).not.toBeNull();
+    expect(document.querySelector('.a9-file-picker__group-toggle')?.getAttribute('aria-expanded')).toBe('true');
+    click('[data-group-id="design"]');
+    click('[data-testid="modal-cancel"]');
+    await flush();
+    click('[data-testid="file-picker-trigger"]');
+    await flush();
+    expect(document.querySelector('[data-group-id="child"]')).not.toBeNull();
+  });
+
+  it('shows full child paths in the narrow group selector', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+    const service = makeService({
+      listGroups: vi.fn().mockResolvedValue([
+        { id: 'design', name: 'Design', parentId: null },
+        { id: 'child', name: 'Assets', parentId: 'design' },
+      ]),
+    });
+    mountPicker({ service });
+    click('[data-testid="file-picker-trigger"]');
+    await flush();
+    const select = document.querySelector<HTMLSelectElement>('.a9-file-picker__compact-groups select');
+    expect(select?.querySelector('[value="group:child"]')?.textContent).toBe('Design / Assets');
+    if (!select) throw new Error('Missing group selector');
+    select.value = 'group:child';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await flush();
+    expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ groupId: 'child' }));
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps uploads alive across type/search filters and locks only group navigation', async () => {
+    const pending = deferred<FileItem>();
+    const service = makeService({ upload: vi.fn(() => pending.promise) });
+    const { emitted } = mountPicker({ service, props: { fileTypes: ['image', 'document'], canUpload: true } });
+    click('[data-testid="file-picker-trigger"]');
+    await flush();
+    click('[data-group-id="design"]');
+    await flush();
+    click('[data-testid="file-picker-upload"]');
+    await flush();
+    const options = vi.mocked(service.upload).mock.calls[0][0];
+    expect(options.groupId).toBe('design');
+    expect(document.querySelector<HTMLButtonElement>('.a9-file-picker__group-button')?.disabled).toBe(true);
+    selectType('document');
+    click('[data-testid="picker-search-submit"]');
+    await flush();
+    expect(options.signal?.aborted).toBe(false);
+    pending.resolve({ ...image, id: 'new-mixed' });
+    await flush();
+    expect(document.querySelector<HTMLButtonElement>('.a9-file-picker__group-button')?.disabled).toBe(false);
+    expect(document.querySelector('.a9-file-picker__upload-result')?.textContent).toContain('Select them, then confirm');
+    expect(emitted.selectionChange).toBeUndefined();
+    expect(emitted['update:modelValue']).toBeUndefined();
+  });
+
+  it('explains the limit and lets a selected card be deselected', async () => {
+    const { emitted } = mountPicker({ service: makeService(), props: { multiple: true, limit: 1 } });
+    click('[data-testid="file-picker-trigger"]');
+    await flush();
+    item(image.id).click();
+    await flush();
+    item(video.id).click();
+    await flush();
+    expect(emitted.selectionChange).toHaveLength(1);
+    expect(document.querySelector('.a9-file-picker__limit-notice')?.textContent).toContain('Select up to 1 files');
+    expect(document.querySelector('.a9-file-picker__selected-count')?.textContent).toContain('1 / 1');
+    item(image.id).click();
+    await flush();
+    expect(emitted.selectionChange.at(-1)).toEqual([[]]);
+    item(video.id).click();
+    await flush();
+    click('.a9-file-picker__footer-actions button:last-child');
+    await flush();
+    expect(document.querySelector('.a9-file-picker__committed')?.textContent).toContain(video.name);
+    click('.a9-file-picker__committed button');
+    await flush();
+    expect(emitted['update:modelValue'].at(-1)).toEqual([[]]);
+  });
+  it('resets all browse filters before the first reopen query and retains the chosen view', async () => {
+    const service = makeService();
+    mountPicker({ service, props: { multiple: true } });
+    click('[data-testid="file-picker-trigger"]');
+    await flush();
+    click('[data-group-id="design"]');
+    selectType('document');
+    await flush();
+    const search = document.querySelector<HTMLInputElement>('[data-testid="picker-search"]');
+    if (!search) throw new Error('Missing search');
+    search.value = 'report';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    click('[data-testid="picker-search-submit"]');
+    await flush();
+    click('[data-testid="modal-cancel"]');
+    await flush();
+    vi.mocked(service.list).mockClear();
+    click('[data-testid="file-picker-trigger"]');
+    await flush();
+    expect(service.list).toHaveBeenCalledTimes(1);
+    expect(service.list).toHaveBeenCalledWith({ page: 1, pageSize: 2, keyword: undefined, groupId: undefined });
+    expect(document.querySelector<HTMLInputElement>('[data-testid="picker-search"]')?.value).toBe('');
+  });
+
+  it('only announces attempted over-selection, deduplicates notices and clears its timer', async () => {
+    const { emitted } = mountPicker({ service: makeService(), props: { multiple: true, limit: 1 } });
+    click('[data-testid="file-picker-trigger"]');
+    await flush();
+    vi.useFakeTimers();
+    selectItem(image.id);
+    await nextTick();
+    expect(document.querySelector('.a9-file-picker__limit-notice')).toBeNull();
+    selectItem(video.id);
+    await nextTick();
+    expect(document.querySelectorAll('.a9-file-picker__limit-notice')).toHaveLength(1);
+    expect(emitted.selectionChange).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(2000);
+    selectItem(video.id);
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(document.querySelectorAll('.a9-file-picker__limit-notice')).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1000);
+    await nextTick();
+    expect(document.querySelector('.a9-file-picker__limit-notice')).toBeNull();
+    selectItem(video.id);
+    await nextTick();
+    selectItem(image.id);
+    await nextTick();
+    expect(document.querySelector('.a9-file-picker__limit-notice')).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('disables an empty confirm while allowing a deliberate normalized empty commit', async () => {
+    const empty = mountPicker({ service: makeService() });
+    click('[data-testid="file-picker-trigger"]');
+    await flush();
+    const confirm = document.querySelector<HTMLButtonElement>('.a9-file-picker__footer-actions button:last-child');
+    expect(confirm?.disabled).toBe(true);
+    confirm?.click();
+    expect(empty.emitted['update:modelValue']).toBeUndefined();
+    empty.app.unmount();
+    mountedApps.splice(mountedApps.indexOf(empty.app), 1);
+    document.body.innerHTML = '<div id="app"></div>';
+    const invalid = mountPicker({ service: makeService(), props: { fileTypes: ['image'], modelValue: video } });
+    click('[data-testid="file-picker-trigger"]');
+    await flush();
+    expect(document.querySelector<HTMLButtonElement>('.a9-file-picker__footer-actions button:last-child')?.disabled).toBe(
+      false
+    );
+    expect(document.querySelector('.a9-file-picker__notice')?.textContent).toContain('clear');
+    click('.a9-file-picker__footer-actions button:last-child');
+    await flush();
+    expect(invalid.emitted['update:modelValue']).toEqual([[undefined]]);
+  });
+
+  it('renders only replace and one remove for a single committed file and restores focus', async () => {
+    const { emitted } = mountPicker({ service: makeService(), props: { modelValue: image } });
+    await flush();
+    expect(document.querySelector('[data-testid="file-picker-trigger"]')).toBeNull();
+    expect(document.querySelector('[data-testid="file-picker-clear"]')).toBeNull();
+    const replace = document.querySelector<HTMLButtonElement>('[data-testid="file-picker-replace"]');
+    replace?.focus();
+    replace?.click();
+    await flush();
+    click('[data-testid="modal-cancel"]');
+    await flush();
+    expect(document.activeElement).toBe(replace);
+    click('.a9-file-picker__committed button:last-child');
+    await flush();
+    expect(emitted['update:modelValue']).toEqual([[undefined]]);
+    expect(document.activeElement).toBe(document.querySelector('[data-testid="file-picker-trigger"]'));
+  });
+
+  it('shows a textual bulk clear only for multiple committed files', async () => {
+    const { emitted } = mountPicker({ service: makeService(), props: { modelValue: [image, implicitReady], multiple: true } });
+    await flush();
+    expect(document.querySelector('[data-testid="file-picker-clear"]')?.textContent).toBe('Clear selection');
+    click('[data-testid="file-picker-clear"]');
+    await flush();
+    expect(emitted['update:modelValue']).toEqual([[[]]]);
+    expect(emitted.clear).toBeUndefined();
+    expect(document.querySelector('[data-testid="file-picker-clear"]')).toBeNull();
+  });
+
+  it('places upload success outside toolbar and hides single-page pagination and group counts', async () => {
+    mountPicker({
+      service: makeService({ list: vi.fn().mockResolvedValue(result([image], 1, 24)) }),
+      props: { canUpload: true },
+    });
+    click('[data-testid="file-picker-trigger"]');
+    await flush();
+    expect(document.querySelector('[data-testid="file-picker-pagination"]')).toBeNull();
+    expect(document.querySelector('[data-group-id="design"] small')).toBeNull();
+    click('[data-testid="file-picker-upload"]');
+    await flush();
+    expect(document.querySelector('.a9-file-picker__toolbar .a9-file-picker__upload-result')).toBeNull();
+    expect(document.querySelector('.a9-file-picker__feedback .a9-file-picker__upload-result')).not.toBeNull();
+  });
+  it('shows only a live count without a selected-list entry or focus stop', async () => {
+    const { emitted } = mountPicker({ service: makeService(), props: { multiple: true, limit: 4 } });
+    click('[data-testid="file-picker-trigger"]');
+    await flush();
+    const count = document.querySelector<HTMLElement>('.a9-file-picker__selected-count');
+    expect(count?.textContent).toBe('Selected 0 / 4');
+    expect(count?.getAttribute('role')).toBe('status');
+    expect(count?.tabIndex).toBe(-1);
+    item(image.id).click();
+    await flush();
+    expect(count?.textContent).toBe('Selected 1 / 4');
+    count?.click();
+    await flush();
+    expect(document.querySelector('.a9-file-picker__selected')).toBeNull();
+    expect(document.querySelector('.a9-file-picker__selection-panel')).toBeNull();
+    expect(count?.hasAttribute('aria-expanded')).toBe(false);
+    expect(emitted['update:modelValue']).toBeUndefined();
+    item(image.id).click();
+    await flush();
+    expect(count?.textContent).toBe('Selected 0 / 4');
   });
 });

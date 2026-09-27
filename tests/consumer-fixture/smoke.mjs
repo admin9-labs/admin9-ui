@@ -78,12 +78,13 @@ const fileService = {
   async list({ page, pageSize }) {
     return { list: [], pagination: { page, pageSize, total: 0, hasMore: false } };
   },
-  async upload({ file, fileType, groupId, onProgress }) {
+  async upload({ file, fileTypes, groupId, onProgress }) {
+    if (!fileTypes.includes('image')) throw new Error('Only fixture images are supported');
     onProgress?.(100);
     return {
       id: `smoke-${file.name}`,
       name: file.name,
-      type: fileType,
+      type: 'image',
       groupId,
       url: `/uploads/${encodeURIComponent(file.name)}`,
       status: 'ready',
@@ -122,7 +123,7 @@ const app = createApp({
         canUploadAudio: false,
       }),
       h(packageExports.AFilePicker, { multiple: true, fileTypes: ['image', 'document'] }),
-      h(packageExports.AFileUploader, { fileType: 'image', groupId: 'smoke-images' }),
+      h(packageExports.AFileUploader, { fileTypes: ['image'], groupId: 'smoke-images' }),
     ]),
 });
 
@@ -234,7 +235,10 @@ for (const exports of [packageExports, commonJsPackage]) {
   document.body.append(coverHost);
   const coverApp = createApp({
     render: () =>
-      h('div', [undefined, 'small', 'medium', 'large'].map((size) => h(exports.ACoverPicker, { size }))),
+      h(
+        'div',
+        [undefined, 'small', 'medium', 'large'].map((size) => h(exports.ACoverPicker, { size }))
+      ),
   });
   coverApp.use(ArcoVue);
   Object.entries(ArcoVueIcon).forEach(([name, component]) => coverApp.component(name, component));

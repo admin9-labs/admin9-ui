@@ -135,6 +135,8 @@
           ><a-form-item field="files" label="Files"
             ><AFilePicker
               v-model="files"
+              :limit="4"
+              :page-size="6"
               :service="service"
               :readonly="readonly"
               multiple
@@ -146,7 +148,7 @@
           ><a-form-item label="Upload"
             ><AFileUploader
               :service="service"
-              file-type="image"
+              :file-types="['image']"
               @complete="result = `uploads:${$event.succeeded.length}`" /></a-form-item
         ></section>
         <section id="audit-cover"

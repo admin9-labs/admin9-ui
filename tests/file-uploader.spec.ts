@@ -61,7 +61,7 @@ function mountUploader(
 ) {
   const app = createApp(AFileUploader, {
     service,
-    fileType: 'image',
+    fileTypes: ['image'],
     groupId: 'design',
     ...props,
     ...listeners,
@@ -128,7 +128,7 @@ describe('AFileUploader', () => {
 
     expect(service.upload).toHaveBeenCalledTimes(2);
     expect(service.upload).toHaveBeenCalledWith(
-      expect.objectContaining({ file: files[0], fileType: 'image', groupId: 'design', signal: expect.any(AbortSignal) })
+      expect.objectContaining({ file: files[0], fileTypes: ['image'], groupId: 'design', signal: expect.any(AbortSignal) })
     );
     expect(result.succeeded.map((item) => item.name)).toEqual(['ready.png']);
     expect(result.failed).toHaveLength(1);
@@ -284,8 +284,8 @@ describe('AFileUploader', () => {
     expect(complete).toHaveBeenCalledOnce();
     expect(result.succeeded).toHaveLength(1);
     expect(result.failed.map((failure) => failure.reason).sort()).toEqual(['file-count', 'file-size']);
-    expect(document.body.textContent).toContain('The file exceeds the 4 byte limit');
-    expect(document.body.textContent).toContain('The queue accepts at most 2 files');
+    expect(document.body.textContent).toContain('The file exceeds 4 B. Compress it or choose another file.');
+    expect(document.body.textContent).toContain('Upload up to 2 files per batch');
   });
 
   it('coalesces synchronous validation failures from one native multi-file selection', async () => {
@@ -303,13 +303,13 @@ describe('AFileUploader', () => {
     expect(complete.mock.calls[0][0].failed).toHaveLength(2);
   });
 
-  it('requires a concrete FileType and suppresses callbacks after unmount', async () => {
+  it('requires allowed types and suppresses callbacks after unmount', async () => {
     const pending = deferred<FileItem>();
     const service: FileUploadCapability = { upload: vi.fn().mockReturnValue(pending.promise) };
     const success = vi.fn();
-    const uploader = mountUploader(service, { fileType: undefined }, { onSuccess: success });
+    const uploader = mountUploader(service, { fileTypes: [] }, { onSuccess: success });
 
-    await expect(uploader.upload([new File(['one'], 'one.png')])).rejects.toThrow('concrete FileType');
+    await expect(uploader.upload([new File(['one'], 'one.png')])).rejects.toThrow('allowed FileType');
     expect(service.upload).not.toHaveBeenCalled();
 
     mountedApps.pop()?.unmount();
@@ -324,5 +324,94 @@ describe('AFileUploader', () => {
     pending.resolve(validItem('late', 'two.png'));
     await flush();
     expect(success).not.toHaveBeenCalled();
+  });
+  it('accepts mixed actual types in one group and retains a dismissible success summary', async () => {
+    const service: FileUploadCapability = {
+      upload: vi.fn(async ({ file, groupId }) =>
+        validItem(file.name, file.name, {
+          groupId,
+          type: file.name.endsWith('.pdf') ? 'document' : 'image',
+        })
+      ),
+    };
+    const uploader = mountUploader(service, { fileTypes: ['image', 'document'] });
+    const result = await uploader.upload([new File(['a'], 'a.png'), new File(['b'], 'b.pdf')]);
+    await flush();
+    expect(result.succeeded.map((file) => file.type)).toEqual(['image', 'document']);
+    expect(service.upload).toHaveBeenCalledWith(
+      expect.objectContaining({ fileTypes: ['image', 'document'], groupId: 'design' })
+    );
+    expect(document.querySelector('.a9-file-uploader__panel')).toBeNull();
+    expect(document.querySelector('.a9-file-uploader__result')?.textContent).toContain('Uploaded 2 files');
+    document.querySelector<HTMLButtonElement>('[aria-label="Dismiss upload result"]')?.click();
+    await flush();
+    expect(document.querySelector('.a9-file-uploader__result')).toBeNull();
+  });
+
+  it('defaults to all known types but rejects a result outside a restricted set', async () => {
+    const service = { upload: vi.fn(async () => validItem('doc', 'a.pdf', { type: 'document' })) };
+    const unrestricted = mountUploader(service, { fileTypes: undefined });
+    expect((await unrestricted.upload([new File(['a'], 'a.pdf')])).succeeded).toHaveLength(1);
+    expect(service.upload).toHaveBeenCalledWith(
+      expect.objectContaining({ fileTypes: ['image', 'video', 'audio', 'document', 'archive', 'other'] })
+    );
+    mountedApps.pop()?.unmount();
+    document.body.innerHTML = '<div id="app"></div>';
+    const restricted = mountUploader(service, { fileTypes: ['image'] });
+    expect((await restricted.upload([new File(['a'], 'a.pdf')])).failed[0].reason).toBe('invalid-result');
+  });
+  it.each(['sync', 'async'])('classifies %s type rejection and never retries it', async (mode) => {
+    const rejection = { code: 'unsupported-file-type', message: 'PRIVATE BACKEND DETAIL' };
+    const upload = vi.fn(() => {
+      if (mode === 'sync') throw rejection;
+      return Promise.reject(rejection);
+    });
+    const error = vi.fn();
+    const uploader = mountUploader({ upload }, { fileTypes: ['image', 'document'] }, { onError: error });
+    const result = await uploader.upload([new File(['bad'], 'a.mp4')]);
+    await flush();
+    expect(result.failed[0].reason).toBe('file-type');
+    expect(error.mock.calls[0][0].error).toBe(rejection);
+    expect(document.body.textContent).toContain('Unsupported file type. Choose: Images, Documents');
+    expect(document.body.textContent).not.toContain('PRIVATE BACKEND DETAIL');
+    expect(document.querySelector('[aria-label="Retry upload for a.mp4"]')).toBeNull();
+    uploader.retry(result.failed[0].task.id);
+    await flush();
+    expect(upload).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { allowedFormats: [' PNG ', 'PNG', '', 4, 'JPG'], message: 'Unsupported format. Choose: PNG, JPG' },
+    { allowedFormats: 'PNG', message: 'Unsupported file format. Choose another file.' },
+    { allowedFormats: undefined, message: 'Unsupported file format. Choose another file.' },
+  ])('normalizes controlled format guidance without raw exception messages', async ({ allowedFormats, message }) => {
+    const rejection = { code: 'unsupported-file-format', allowedFormats, message: '<script>private</script>' };
+    const upload = vi.fn().mockRejectedValue(rejection);
+    const uploader = mountUploader({ upload });
+    const result = await uploader.upload([new File(['bad'], 'a.svg')]);
+    await flush();
+    expect(result.failed[0].reason).toBe('file-format');
+    expect(document.body.textContent).toContain(message);
+    expect(document.body.textContent).not.toContain('<script>private</script>');
+    uploader.retry(result.failed[0].task.id);
+    await flush();
+    expect(upload).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps unknown failures retryable and preserves successful files in a mixed batch', async () => {
+    const upload = vi
+      .fn()
+      .mockResolvedValueOnce(validItem('ok', 'ok.png'))
+      .mockRejectedValueOnce({ code: 'unsupported-file-format' })
+      .mockRejectedValueOnce({ code: 'upstream-unavailable' })
+      .mockResolvedValueOnce(validItem('retry', 'retry.png'));
+    const uploader = mountUploader({ upload });
+    const result = await uploader.upload([new File(['a'], 'ok.png'), new File(['b'], 'bad.svg'), new File(['c'], 'retry.png')]);
+    expect(result.succeeded).toHaveLength(1);
+    expect(result.failed.map((entry) => entry.reason)).toEqual(['file-format', 'upload-failed']);
+    uploader.retry(result.failed[1].task.id);
+    await flush();
+    expect(upload).toHaveBeenCalledTimes(4);
+    expect(uploader.tasks.filter((task) => task.status === 'succeeded')).toHaveLength(2);
   });
 });

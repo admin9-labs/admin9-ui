@@ -6,32 +6,58 @@ import type {
   FilePickerAdapter,
   FileType,
   FileUploadOptions,
+  FileUploadRejection,
 } from '../src';
 import { type AcceptanceState, wait } from './fake-acceptance-utils';
 
 const FILE_TYPES: FileType[] = ['image', 'video', 'audio', 'document', 'archive', 'other'];
 
-const demoGroups: Record<FileType, FileGroup[]> = {
-  image: [
-    { id: 'image-design', name: '设计稿' },
-    { id: 'image-release', name: '发布图片' },
-  ],
-  video: [{ id: 'video-campaign', name: '活动视频' }],
-  audio: [{ id: 'audio-brand', name: '品牌音频' }],
-  document: [
-    { id: 'document-product', name: '产品文档' },
-    { id: 'document-finance', name: '财务文档' },
-  ],
-  archive: [{ id: 'archive-release', name: '发布归档' }],
-  other: [{ id: 'other-assets', name: '其他附件' }],
-};
+const demoGroups: FileGroup[] = [
+  { id: 'campaign', name: '国庆活动' },
+  { id: 'campaign-event', name: '现场素材', parentId: 'campaign' },
+  { id: 'campaign-empty', name: '待补充', parentId: 'campaign' },
+  { id: 'brand', name: '品牌素材' },
+  { id: 'product', name: '产品资料' },
+];
 
 const demoFiles: FileItem[] = [
+  {
+    id: 'file-event-image',
+    name: 'event-poster.svg',
+    type: 'image',
+    groupId: 'campaign-event',
+    url: '/media-board.svg',
+    thumbnail: '/media-board.svg',
+    extension: 'svg',
+    size: 18432,
+    status: 'ready',
+  },
+  {
+    id: 'file-event-video',
+    name: 'event-highlight.mp4',
+    type: 'video',
+    groupId: 'campaign-event',
+    url: '/media-motion.mp4',
+    thumbnail: '/media-layout.svg',
+    extension: 'mp4',
+    size: 7340032,
+    duration: 2,
+    status: 'ready',
+  },
+  {
+    id: 'file-event-document',
+    name: 'event-agenda.txt',
+    type: 'document',
+    groupId: 'campaign-event',
+    url: '/event-agenda.txt',
+    extension: 'txt',
+    status: 'ready',
+  },
   {
     id: 'file-image-1',
     name: 'dashboard-board.svg',
     type: 'image',
-    groupId: 'image-design',
+    groupId: 'campaign',
     url: '/media-board.svg',
     thumbnail: '/media-board.svg',
     extension: 'svg',
@@ -42,7 +68,7 @@ const demoFiles: FileItem[] = [
     id: 'file-image-2',
     name: 'responsive-layout.svg',
     type: 'image',
-    groupId: 'image-release',
+    groupId: 'brand',
     url: '/media-layout.svg',
     thumbnail: '/media-layout.svg',
     extension: 'svg',
@@ -53,7 +79,7 @@ const demoFiles: FileItem[] = [
     id: 'file-video-1',
     name: 'component-motion.mp4',
     type: 'video',
-    groupId: 'video-campaign',
+    groupId: 'campaign',
     url: '/media-motion.mp4',
     thumbnail: '/media-layout.svg',
     extension: 'mp4',
@@ -65,7 +91,7 @@ const demoFiles: FileItem[] = [
     id: 'file-audio-1',
     name: 'interface-tone.wav',
     type: 'audio',
-    groupId: 'audio-brand',
+    groupId: 'brand',
     url: '/media-tone.wav',
     extension: 'wav',
     size: 184320,
@@ -76,7 +102,7 @@ const demoFiles: FileItem[] = [
     id: 'file-document-1',
     name: 'product-specification.pdf',
     type: 'document',
-    groupId: 'document-product',
+    groupId: 'campaign',
     url: '/documents/product-specification.pdf',
     extension: 'pdf',
     mime: 'application/pdf',
@@ -87,7 +113,7 @@ const demoFiles: FileItem[] = [
     id: 'file-document-2',
     name: 'release-plan.docx',
     type: 'document',
-    groupId: 'document-product',
+    groupId: 'campaign',
     url: '/documents/release-plan.docx',
     extension: 'docx',
     size: 842752,
@@ -97,7 +123,7 @@ const demoFiles: FileItem[] = [
     id: 'file-document-3',
     name: 'quarterly-budget.xlsx',
     type: 'document',
-    groupId: 'document-finance',
+    groupId: 'product',
     url: '/documents/quarterly-budget.xlsx',
     extension: 'xlsx',
     size: 126976,
@@ -107,7 +133,7 @@ const demoFiles: FileItem[] = [
     id: 'file-document-4',
     name: 'processing-report.pdf',
     type: 'document',
-    groupId: 'document-finance',
+    groupId: 'product',
     url: '/documents/processing-report.pdf',
     extension: 'pdf',
     size: 524288,
@@ -117,7 +143,7 @@ const demoFiles: FileItem[] = [
     id: 'file-archive-1',
     name: 'release-v0.3.1.zip',
     type: 'archive',
-    groupId: 'archive-release',
+    groupId: 'product',
     url: '/archives/release-v0.3.1.zip',
     extension: 'zip',
     size: 12582912,
@@ -137,7 +163,7 @@ const demoFiles: FileItem[] = [
     id: 'file-other-1',
     name: 'font-license.bin',
     type: 'other',
-    groupId: 'other-assets',
+    groupId: 'brand',
     url: '/files/font-license.bin',
     extension: 'bin',
     size: 4096,
@@ -157,9 +183,8 @@ const demoFiles: FileItem[] = [
 export default function createFakeFilePickerService(state: AcceptanceState): FilePickerAdapter {
   let files = demoFiles.map((item) => ({ ...item }));
   let uploadSequence = 0;
-  const groups = Object.fromEntries(
-    Object.entries(demoGroups).map(([type, entries]) => [type, entries.map((group) => ({ ...group }))])
-  ) as Record<FileType, FileGroup[]>;
+  const failedOnce = new Set<string>();
+  const groups = demoGroups.map((group) => ({ ...group }));
 
   return {
     async list(params: FileListParams): Promise<FileListResult> {
@@ -181,7 +206,7 @@ export default function createFakeFilePickerService(state: AcceptanceState): Fil
       const filtered = files.filter(
         (item) =>
           typeSet.has(item.type) &&
-          (!params.fileType || params.groupId === undefined || item.groupId === params.groupId) &&
+          (params.groupId === undefined || item.groupId === params.groupId) &&
           (!keyword || item.name.toLowerCase().includes(keyword))
       );
       const offset = (params.page - 1) * params.pageSize;
@@ -205,16 +230,36 @@ export default function createFakeFilePickerService(state: AcceptanceState): Fil
       };
     },
 
-    async listGroups(fileType: FileType) {
+    async listGroups() {
       await wait(160);
       if (state === 'error') throw new Error('Acceptance host: simulated file group failure');
-      return groups[fileType].map((group) => ({
+      return groups.map((group) => ({
         ...group,
-        count: files.filter((item) => item.type === fileType && item.groupId === group.id).length,
+        count: files.filter((item) => item.groupId === group.id).length,
       }));
     },
 
     async upload(options: FileUploadOptions) {
+      const extension = options.file.name.split('.').pop()?.toLowerCase() ?? '';
+      const formats: Partial<Record<FileType, RegExp>> = {
+        image: /^(png|jpe?g|gif|webp|svg)$/,
+        video: /^(mp4|webm|mov)$/,
+        audio: /^(mp3|wav|ogg)$/,
+        document: /^(pdf|docx?|xlsx?|txt|csv)$/,
+        archive: /^(zip|gz|tar)$/,
+      };
+      const type = FILE_TYPES.find((candidate) => formats[candidate]?.test(extension)) ?? 'other';
+      if (!options.fileTypes.includes(type))
+        throw Object.assign(new Error('Unsupported type'), { code: 'unsupported-file-type' } satisfies FileUploadRejection);
+      if (options.file.name.startsWith('unsupported-format'))
+        throw Object.assign(new Error('Unsupported format'), {
+          code: 'unsupported-file-format',
+          allowedFormats: ['PNG', 'JPG'],
+        } satisfies FileUploadRejection);
+      if (options.file.name.startsWith('temporary-failure') && !failedOnce.has(options.file.name)) {
+        failedOnce.add(options.file.name);
+        throw new Error('Simulated temporary upload failure.');
+      }
       const ensureActive = () => {
         if (options.signal?.aborted) throw new DOMException('Upload cancelled', 'AbortError');
       };
@@ -240,7 +285,8 @@ export default function createFakeFilePickerService(state: AcceptanceState): Fil
       const item: FileItem = {
         id: `file-upload-${Date.now()}-${uploadSequence}`,
         name: options.file.name,
-        type: options.fileType,
+        type,
+        extension,
         groupId: options.groupId,
         url: uploaded.url,
         mime: options.file.type,

@@ -86,12 +86,13 @@ const coverItem: FileItem = {
 const coverValue: CoverPickerValue = { mode: 'single', images: [coverItem] };
 const coverPickerProps: ACoverPickerProps = { modelValue: coverValue, service: filePickerService };
 const fileUploaderService: FileUploadCapability = {
-  async upload({ file, fileType, groupId, onProgress }) {
+  async upload({ file, fileTypes, groupId, onProgress }) {
+    if (!fileTypes.includes('image')) throw new Error('Only fixture images are supported');
     onProgress?.(100);
     return {
       id: `fixture-upload-${file.name}`,
       name: file.name,
-      type: fileType,
+      type: 'image',
       groupId,
       url: `https://example.invalid/uploads/${encodeURIComponent(file.name)}`,
       status: 'ready',
@@ -213,7 +214,7 @@ const app = createApp({
         canUploadAudio: false,
       }),
       h(AFilePicker, { service: filePickerService, modelValue: [fileItem], fileTypes: ['document'], multiple: true }),
-      h(AFileUploader, { service: fileUploaderService, fileType: 'image', groupId: 'fixture-images' }),
+      h(AFileUploader, { service: fileUploaderService, fileTypes: ['image'], groupId: 'fixture-images' }),
       h(FixtureSfc, { service: filePickerService, filePickerService, fileUploaderService }),
     ]),
 });

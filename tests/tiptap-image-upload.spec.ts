@@ -179,4 +179,35 @@ describe('editor-local image uploads', () => {
     expect(() => parseTiptapDocument(editor.getJSON(), editor)).toThrow('private');
     expect(() => parseTiptapDocument(getDocumentSnapshot(editor.state.doc), editor)).not.toThrow();
   });
+  it.each(['paste', 'drop'] as const)('keeps permanent %s image rejection non-retryable through undo/redo', async (source) => {
+    const cause = { code: 'unsupported-file-format', allowedFormats: ['JPG'] };
+    const upload = vi.fn().mockRejectedValue(cause);
+    const { editor, queue, error } = mount(upload);
+    document.body.append(editor.view.dom);
+    queue.insert([file()], source, 7);
+    await flush();
+    expect(error).toHaveBeenCalledWith(expect.objectContaining({ reason: 'unsupported-image', cause, source }));
+    expect(queue.state().canSave).toBe(false);
+    expect(editor.view.dom.textContent).toContain('unsupportedImageUpload');
+    const retry = [...editor.view.dom.querySelectorAll<HTMLButtonElement>('button')].find(
+      (button) => button.textContent === 'retryUpload'
+    );
+    expect(retry?.hidden).toBe(true);
+    retry?.click();
+    await flush();
+    expect(upload).toHaveBeenCalledTimes(1);
+    const remove = [...editor.view.dom.querySelectorAll<HTMLButtonElement>('button')].find(
+      (button) => button.textContent === 'deleteUpload'
+    );
+    remove?.click();
+    await flush();
+    expect(queue.state().canSave).toBe(true);
+    editor.commands.undo();
+    await flush();
+    expect(queue.state().failed).toBe(1);
+    expect(upload).toHaveBeenCalledTimes(1);
+    editor.commands.redo();
+    await flush();
+    expect(queue.state().canSave).toBe(true);
+  });
 });

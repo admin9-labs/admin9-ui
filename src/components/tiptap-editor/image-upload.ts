@@ -3,6 +3,7 @@ import { closeHistory } from '@tiptap/pm/history';
 import { Fragment, Slice } from '@tiptap/pm/model';
 import { ReplaceStep, StepMap } from '@tiptap/pm/transform';
 import type { FileItem, FilePickerAdapter } from '../../services/types';
+import fileUploadRejection from '../../internal/file-upload-rejection';
 import { isSafeMediaUrl } from './media-attributes';
 import type { TiptapImageDisplay, TiptapImageUploadError, TiptapImageUploadState } from './types';
 
@@ -27,6 +28,7 @@ interface UploadTask {
   controller?: AbortController;
   run: number;
   item?: FileItem;
+  rejection?: ReturnType<typeof fileUploadRejection>;
 }
 
 interface UploadOptions {
@@ -86,6 +88,7 @@ export function createImageUploads(options: UploadOptions) {
   };
   const fail = (task: UploadTask, reason: TiptapImageUploadError['reason'], cause?: unknown) => {
     task.status = 'failed';
+    task.rejection = fileUploadRejection(cause);
     task.controller = undefined;
     options.error({ file: task.file, source: task.source, reason, cause });
     notify();
@@ -148,7 +151,7 @@ export function createImageUploads(options: UploadOptions) {
             if (!valid()) return undefined;
             return options.service()?.upload?.({
               file: task.file,
-              fileType: 'image',
+              fileTypes: ['image'],
               groupId: null,
               signal: controller.signal,
               onProgress: (percent) => {
@@ -177,7 +180,7 @@ export function createImageUploads(options: UploadOptions) {
             resolve(task);
           })
           .catch((cause: unknown) => {
-            if (valid()) fail(task, 'upload-failed', cause);
+            if (valid()) fail(task, fileUploadRejection(cause) ? 'unsupported-image' : 'upload-failed', cause);
           })
           // The scheduler and pump deliberately call one another.
           // eslint-disable-next-line no-use-before-define
@@ -208,7 +211,7 @@ export function createImageUploads(options: UploadOptions) {
   };
   const retry = (id: string) => {
     const task = tasks.get(id);
-    if (!task || !options.editor()?.isEditable || !options.enabled() || !positions().has(id)) return;
+    if (!task || task.rejection || !options.editor()?.isEditable || !options.enabled() || !positions().has(id)) return;
     stop(task);
     task.status = 'pending';
     sync();
@@ -251,11 +254,12 @@ export function createImageUploads(options: UploadOptions) {
             image.removeAttribute('src');
           }
           let text = options.t(!task || task.status === 'failed' ? 'uploadFailed' : 'uploadingImage');
+          if (task?.rejection) text = options.t('unsupportedImageUpload');
           if (task?.status === 'uploading' && task.progress !== undefined) text += ` ${Math.round(task.progress)}%`;
           if (label.textContent !== text) label.textContent = text;
           retryButton.textContent = options.t('retryUpload');
           deleteButton.textContent = options.t('deleteUpload');
-          retryButton.hidden = task?.status !== 'failed';
+          retryButton.hidden = task?.status !== 'failed' || Boolean(task?.rejection);
           retryButton.disabled = !options.editor()?.isEditable || !options.enabled();
           deleteButton.disabled = !options.editor()?.isEditable;
         };

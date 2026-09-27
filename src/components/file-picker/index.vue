@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { computed, inject, onBeforeUnmount, ref, toRef, watch } from 'vue';
+  import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue';
   import { FormItem, useFormItem } from '@arco-design/web-vue';
   import { useI18n } from 'vue-i18n';
   import type {
@@ -9,15 +9,16 @@
     FilePickerView as FileView,
   } from './types';
   import safeFileUrl from '../../internal/file-url';
+  import { FILE_TYPES, normalizeFileTypes } from '../../internal/file-types';
   import AFileUploader from '../file-uploader/index.vue';
-  import type { AFileUploaderExposed, FileUploadBatchResult, FileUploadFailure } from '../file-uploader/types';
+  import type { AFileUploaderExposed, FileUploadBatchResult, FileUploadFailure, FileUploadTask } from '../file-uploader/types';
   import FileItemView from '../../internal/file-item.vue';
+  import FileFolderIcon from '../../internal/file-folder-icon.vue';
   import admin9UIOptionsKey from '../../internal/options';
   import type { FileGroup, FileItem, FileListParams, FilePickerAdapter, FileType } from '../../services/types';
 
   type GroupId = string | null | undefined;
 
-  const FILE_TYPES: readonly FileType[] = ['image', 'video', 'audio', 'document', 'archive', 'other'];
   const FILE_TYPE_SET = new Set<FileType>(FILE_TYPES);
 
   const props = withDefaults(defineProps<AFilePickerProps>(), {
@@ -75,14 +76,6 @@
   };
   requireService();
 
-  const normalizeFileTypes = (values: readonly FileType[] | undefined): FileType[] => {
-    if (!Array.isArray(values)) return [...FILE_TYPES];
-    const normalized: FileType[] = [];
-    values.forEach((value) => {
-      if (FILE_TYPE_SET.has(value) && !normalized.includes(value)) normalized.push(value);
-    });
-    return normalized;
-  };
   const allowedFileTypes = computed(() => normalizeFileTypes(props.fileTypes));
   const allowedTypeSet = computed(() => new Set(allowedFileTypes.value));
   const hasAllowedTypes = computed(() => allowedFileTypes.value.length > 0);
@@ -94,6 +87,29 @@
   const activeGroupId = ref<GroupId>(undefined);
   const list = ref<FileItem[]>([]);
   const groups = ref<FileGroup[]>([]);
+  const collapsedGroups = ref(new Set<string>());
+  const groupRows = computed(() => {
+    const roots = groups.value.filter((group) => !group.parentId);
+    return roots.flatMap((group) => {
+      const children = groups.value.filter((child) => child.parentId === group.id);
+      return [
+        { group, label: group.name, child: false, hasChildren: children.length > 0 },
+        ...children.map((child) => ({
+          group: child,
+          label: `${group.name} / ${child.name}`,
+          child: true,
+          hasChildren: false,
+        })),
+      ];
+    });
+  });
+  const visibleGroupRows = computed(() =>
+    groupRows.value.filter((row) => !row.child || !collapsedGroups.value.has(row.group.parentId ?? ''))
+  );
+  const toggleGroup = (id: string) => {
+    if (collapsedGroups.value.has(id)) collapsedGroups.value.delete(id);
+    else collapsedGroups.value.add(id);
+  };
   const current = ref(1);
   const resolvedPageSize = ref(props.pageSize);
   const total = ref(0);
@@ -104,7 +120,7 @@
   const groupError = ref(false);
   const draftMap = ref(new Map<string, FileItem>());
   const committedItems = ref<FileItem[]>([]);
-  const lastUploadFileType = ref<FileType>();
+  const uploading = ref(false);
   const triggerRoot = ref<HTMLElement>();
   let triggerAction: HTMLElement | undefined;
   let returnFocusTarget: HTMLElement | undefined;
@@ -112,43 +128,59 @@
   let viewGeneration = 0;
   let latestListRequest = 0;
   let latestGroupRequest = 0;
-  let modelNeedsNormalization = false;
+  const modelNeedsNormalization = ref(false);
+  const narrow = ref(false);
+  const workspace = ref<HTMLElement>();
+  const activePreview = ref<string>();
+  const uploadFeedback = ref<HTMLElement>();
+  const limitNotice = ref(false);
+  let limitTimer: ReturnType<typeof setTimeout> | undefined;
+  let viewportQuery: MediaQueryList | undefined;
+  const clearLimitNotice = () => {
+    clearTimeout(limitTimer);
+    limitTimer = undefined;
+    limitNotice.value = false;
+  };
+  const showLimitNotice = () => {
+    clearLimitNotice();
+    limitNotice.value = true;
+    limitTimer = setTimeout(clearLimitNotice, 3000);
+  };
+  const updateViewport = () => {
+    narrow.value = viewportQuery?.matches ?? false;
+  };
+  onMounted(() => {
+    viewportQuery = window.matchMedia('(max-width: 720px)');
+    updateViewport();
+    viewportQuery.addEventListener('change', updateViewport);
+  });
 
-  const GROUP_ALL = '__admin9_ui_file_picker_all__';
-  const GROUP_UNGROUPED = '__admin9_ui_file_picker_ungrouped__';
-  const GROUP_PREFIX = '__admin9_ui_file_picker_group__:';
-  const groupOptionValue = (id: string) => `${GROUP_PREFIX}${id}`;
-
-  const hasGroupNavigation = computed(
-    () => Boolean(activeFileType.value) && typeof resolvedService.value?.listGroups === 'function'
-  );
+  const hasGroupNavigation = computed(() => hasAllowedTypes.value && typeof resolvedService.value?.listGroups === 'function');
   const selectedItems = computed(() => committedItems.value);
   const selectedCount = computed(() => committedItems.value.length);
   const draftItems = computed(() => Array.from(draftMap.value.values()));
   const draftCount = computed(() => draftMap.value.size);
   const selectedDraftId = computed(() => draftItems.value[0]?.id ?? '');
   const empty = computed(() => list.value.length === 0 && !loading.value && !listError.value);
-  const aggregateLabel = computed(() =>
-    allowedFileTypes.value.length === FILE_TYPES.length
-      ? t('admin9Ui.filePicker.typeAll')
-      : t('admin9Ui.filePicker.typeAllowed')
-  );
   const triggerLabel = computed(() => props.buttonText || t('admin9Ui.filePicker.trigger'));
-  const uploadFileType = computed(
-    () =>
-      activeFileType.value ??
-      (lastUploadFileType.value && allowedTypeSet.value.has(lastUploadFileType.value)
-        ? lastUploadFileType.value
-        : allowedFileTypes.value[0])
+  const uploadGroupId = computed(() => activeGroupId.value ?? null);
+  const defaultActiveType = () => (allowedFileTypes.value.length === 1 ? allowedFileTypes.value[0] : undefined);
+  const hasFilters = computed(() => Boolean(keyword.value.trim()) || activeFileType.value !== defaultActiveType());
+  const needsEmptyCommit = computed(() => selectedCount.value > 0 || modelNeedsNormalization.value);
+  const canConfirm = computed(
+    () => hasAllowedTypes.value && !interactionDisabled.value && (draftCount.value > 0 || needsEmptyCommit.value)
   );
-  const uploadGroupId = computed(() =>
-    activeFileType.value === uploadFileType.value && typeof activeGroupId.value === 'string' ? activeGroupId.value : null
+  const selectionLabel = computed(() =>
+    props.multiple && props.limit > 0
+      ? t('admin9Ui.filePicker.selectedLimit', { count: draftCount.value, limit: props.limit })
+      : t('admin9Ui.filePicker.selectedCount', { count: draftCount.value })
   );
-  const uploadTooltip = computed(() =>
-    uploadFileType.value
-      ? t('admin9Ui.filePicker.uploadToType', { type: t(`admin9Ui.filePicker.types.${uploadFileType.value}`) })
-      : t('admin9Ui.filePicker.upload')
-  );
+  const emptyDescription = computed(() => {
+    if (keyword.value.trim()) return t('admin9Ui.filePicker.noMatches');
+    if (activeFileType.value || allowedFileTypes.value.length < FILE_TYPES.length)
+      return t('admin9Ui.filePicker.noMatchingTypes');
+    return t(activeGroupId.value === undefined ? 'admin9Ui.filePicker.empty' : 'admin9Ui.filePicker.groupEmpty');
+  });
 
   const hasStableId = (item: FileItem) => typeof item.id === 'string' && item.id.trim().length > 0;
   const hasUsableUrl = (item: FileItem) => Boolean(safeFileUrl(item.url));
@@ -209,6 +241,7 @@
     });
     const next = items.filter((item) => hasStableId(item) && idCounts.get(item.id) === 1);
     if (sameItems(draftItems.value, next)) return false;
+    clearLimitNotice();
     draftMap.value = new Map(next.map((item) => [item.id, item]));
     if (notify) emit('selectionChange', next);
     return true;
@@ -234,8 +267,8 @@
   };
   const emitCommittedValue = (items: FileItem[]) => {
     const next = sanitizeItems(items);
-    if (sameItems(committedItems.value, next) && !modelNeedsNormalization) return false;
-    modelNeedsNormalization = false;
+    if (sameItems(committedItems.value, next) && !modelNeedsNormalization.value) return false;
+    modelNeedsNormalization.value = false;
     committedItems.value = next;
     emit('update:modelValue', outputValue(next));
     emit('change', outputValue(next));
@@ -244,12 +277,11 @@
   };
   const syncExternalModel = () => {
     const next = sanitizeItems(itemsFromModel(props.modelValue));
-    modelNeedsNormalization = !modelMatches(props.modelValue, next);
+    modelNeedsNormalization.value = !modelMatches(props.modelValue, next);
     committedItems.value = next;
     if (visible.value) replaceDraft(next, false);
   };
 
-  const defaultActiveType = () => (allowedFileTypes.value.length === 1 ? allowedFileTypes.value[0] : undefined);
   const invalidateRequests = () => {
     viewGeneration += 1;
     latestListRequest += 1;
@@ -265,6 +297,7 @@
     if (resetKeyword) keyword.value = '';
     list.value = [];
     groups.value = [];
+    collapsedGroups.value.clear();
     total.value = 0;
     listError.value = false;
     groupError.value = false;
@@ -275,8 +308,9 @@
       page: current.value,
       pageSize: resolvedPageSize.value,
       keyword: keyword.value.trim() || undefined,
+      groupId: activeGroupId.value,
     };
-    if (activeFileType.value) return { ...base, fileType: activeFileType.value, groupId: activeGroupId.value };
+    if (activeFileType.value) return { ...base, fileType: activeFileType.value };
     if (allowedFileTypes.value.length === FILE_TYPES.length) return base;
     return { ...base, fileTypes: [...allowedFileTypes.value] };
   };
@@ -320,11 +354,10 @@
 
   const fetchGroups = async () => {
     const service = requireService();
-    const fileType = activeFileType.value;
     latestGroupRequest += 1;
     const request = latestGroupRequest;
     const generation = viewGeneration;
-    if (!visible.value || !fileType || !service.listGroups) {
+    if (!visible.value || !hasAllowedTypes.value || !service.listGroups) {
       groups.value = [];
       groupError.value = false;
       groupLoading.value = false;
@@ -333,7 +366,7 @@
     groupLoading.value = true;
     groupError.value = false;
     try {
-      const next = await service.listGroups(fileType);
+      const next = await service.listGroups();
       if (generation === viewGeneration && request === latestGroupRequest && service === resolvedService.value) {
         groups.value = next;
       }
@@ -354,38 +387,45 @@
   };
   const selectFileType = (fileType: FileType | undefined) => {
     if (activeFileType.value === fileType) return;
-    invalidateRequests();
     activeFileType.value = fileType;
-    if (fileType) lastUploadFileType.value = fileType;
-    activeGroupId.value = undefined;
     current.value = 1;
-    groups.value = [];
-    groupError.value = false;
     list.value = [];
-    total.value = 0;
-    refresh();
+    fetchList();
   };
+  const typeFilter = computed({
+    get: () => activeFileType.value ?? '',
+    set: (value: string) => selectFileType(allowedFileTypes.value.find((fileType) => fileType === value)),
+  });
   const onGroupChange = (groupId: GroupId) => {
-    if (!activeFileType.value || activeGroupId.value === groupId) return;
-    invalidateRequests();
+    if (uploading.value) return;
+    if (activeGroupId.value === groupId) {
+      if (typeof groupId === 'string' && groups.value.some((group) => group.parentId === groupId)) toggleGroup(groupId);
+      return;
+    }
+    if (typeof groupId === 'string') collapsedGroups.value.delete(groupId);
     activeGroupId.value = groupId;
     current.value = 1;
     list.value = [];
-    total.value = 0;
     fetchList();
   };
-  const compactGroupValue = computed({
+  const groupFilter = computed({
     get: () => {
-      if (activeGroupId.value === undefined) return GROUP_ALL;
-      if (activeGroupId.value === null) return GROUP_UNGROUPED;
-      return groupOptionValue(activeGroupId.value);
+      if (activeGroupId.value === undefined) return 'all';
+      if (activeGroupId.value === null) return 'ungrouped';
+      return `group:${activeGroupId.value}`;
     },
     set: (value: string) => {
-      if (value === GROUP_ALL) onGroupChange(undefined);
-      else if (value === GROUP_UNGROUPED) onGroupChange(null);
-      else if (value.startsWith(GROUP_PREFIX)) onGroupChange(value.slice(GROUP_PREFIX.length));
+      if (value === 'all') onGroupChange(undefined);
+      else if (value === 'ungrouped') onGroupChange(null);
+      else if (value.startsWith('group:')) onGroupChange(value.slice(6));
     },
   });
+  const clearFilters = () => {
+    keyword.value = '';
+    activeFileType.value = defaultActiveType();
+    current.value = 1;
+    fetchList();
+  };
   const onSearch = () => {
     current.value = 1;
     fetchList();
@@ -415,17 +455,21 @@
     const active = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
     returnFocusTarget = canFocusTrigger(triggerAction) ? triggerAction : active;
     triggerAction = undefined;
+    clearLimitNotice();
     visible.value = true;
     replaceDraft(committedItems.value, false);
     emit('visibleChange', true);
-    resetBrowseScope(false);
+    resetBrowseScope(true);
     if (hasAllowedTypes.value) refresh();
   };
   const close = () => {
     if (!visible.value) return;
+    clearLimitNotice();
+    activePreview.value = undefined;
     invalidateRequests();
     visible.value = false;
     uploader.value?.clear();
+    uploading.value = false;
     replaceDraft(committedItems.value, false);
     emit('visibleChange', false);
   };
@@ -444,7 +488,7 @@
   };
   const confirm = () => {
     const next = sanitizeItems(draftItems.value);
-    if (!visible.value || interactionDisabled.value || !hasAllowedTypes.value) return;
+    if (!visible.value || !canConfirm.value) return;
     emitCommittedValue(next);
     emit('confirm', next);
     close();
@@ -457,8 +501,49 @@
       const next = new Map(draftMap.value);
       if (next.has(item.id)) next.delete(item.id);
       else if (props.limit <= 0 || next.size < props.limit) next.set(item.id, item);
+      else {
+        showLimitNotice();
+        return;
+      }
       replaceDraft(Array.from(next.values()));
     }
+  };
+  const onCardClick = (event: MouseEvent, item: FileItem) => {
+    if (
+      event.target instanceof Element &&
+      event.target.closest(
+        'button, a, input, label, select, textarea, [contenteditable], [role="button"], .a9-file-picker__checkbox'
+      )
+    )
+      return;
+    toggleItem(item);
+  };
+  const restorePreviewFocus = async (trigger: HTMLElement | undefined, id: string) => {
+    if (activePreview.value !== id) return;
+    activePreview.value = undefined;
+    await nextTick();
+    if (!visible.value || !workspace.value?.isConnected) return;
+    if (trigger?.isConnected && workspace.value.contains(trigger)) {
+      trigger.focus();
+      return;
+    }
+    const card = Array.from(workspace.value.querySelectorAll<HTMLElement>('[data-file-id]')).find(
+      (element) => element.dataset.fileId === id
+    );
+    const control = card?.querySelector<HTMLElement>('input:not(:disabled)');
+    const results = workspace.value.querySelector<HTMLElement>('.a9-file-picker__items');
+    (control ?? results ?? workspace.value.querySelector<HTMLElement>('.a9-file-picker__search input'))?.focus();
+  };
+  const removeCommitted = async (id: string) => {
+    if (interactionDisabled.value || !props.allowClear) return;
+    const next = committedItems.value.filter((item) => item.id !== id);
+    replaceDraft(next, visible.value);
+    if (emitCommittedValue(next) && next.length === 0) emit('clear');
+    await nextTick();
+    triggerRoot.value?.querySelector<HTMLElement>('[data-testid="file-picker-trigger"], button')?.focus();
+  };
+  const onUploadTasksChange = (tasks: readonly FileUploadTask[]) => {
+    uploading.value = tasks.some((task) => task.status === 'pending' || task.status === 'uploading');
   };
   const selectSingleItem = (id: string | number | boolean) => {
     if (typeof id !== 'string') return;
@@ -486,6 +571,7 @@
   watch(
     () => allowedFileTypes.value.join('|'),
     () => {
+      uploader.value?.clear();
       resetBrowseScope(true);
       syncExternalModel();
       if (visible.value && hasAllowedTypes.value) refresh();
@@ -495,6 +581,7 @@
     () => [resolvedService.value, props.canUpload] as const,
     () => {
       requireService();
+      uploader.value?.clear();
       resetBrowseScope(false);
       if (visible.value && hasAllowedTypes.value) refresh();
     }
@@ -511,14 +598,19 @@
   watch(interactionDisabled, (value) => {
     if (value) close();
   });
-  onBeforeUnmount(invalidateRequests);
+  watch(() => props.limit, clearLimitNotice);
+  onBeforeUnmount(() => {
+    invalidateRequests();
+    clearLimitNotice();
+    viewportQuery?.removeEventListener('change', updateViewport);
+  });
   defineExpose<AFilePickerExposed>({ open, close, clear, refresh });
 </script>
 
 <template>
   <div class="a9-file-picker">
     <div class="a9-file-picker__trigger-row">
-      <span
+      <div
         ref="triggerRoot"
         class="a9-file-picker__trigger"
         @pointerdown.capture="rememberTrigger"
@@ -531,14 +623,62 @@
           :selected-count="selectedCount"
           :disabled="interactionDisabled"
         >
-          <a-button :disabled="interactionDisabled" :size="mergedSize" data-testid="file-picker-trigger" @click="open">
+          <a-button
+            v-if="multiple || !selectedCount"
+            :disabled="interactionDisabled"
+            :size="mergedSize"
+            data-testid="file-picker-trigger"
+            @click="open"
+          >
             <template #icon><icon-folder /></template>
             {{ triggerLabel }}
             <span v-if="selectedCount">({{ selectedCount }})</span>
           </a-button>
+          <ul v-if="selectedCount" class="a9-file-picker__committed" :aria-label="t('admin9Ui.filePicker.selectedFiles')">
+            <li v-for="item in selectedItems" :key="item.id">
+              <icon-file />
+              <a
+                v-if="safeFileUrl(item.url)"
+                :href="safeFileUrl(item.url)"
+                target="_blank"
+                rel="noopener noreferrer"
+                :title="item.name"
+                >{{ item.name }}</a
+              >
+              <span v-else>{{ item.name }}</span>
+              <a-button
+                v-if="!multiple && !interactionDisabled"
+                data-testid="file-picker-replace"
+                type="text"
+                size="mini"
+                @click="open"
+                >{{ t('admin9Ui.filePicker.replace') }}</a-button
+              >
+              <a-button
+                v-if="allowClear && !interactionDisabled"
+                type="text"
+                size="mini"
+                :aria-label="t('admin9Ui.filePicker.removeItem', { name: item.name })"
+                @click="removeCommitted(item.id)"
+              >
+                <template #icon><icon-close /></template>
+              </a-button>
+            </li>
+          </ul>
+          <a-button
+            v-if="multiple && selectedCount > 1 && allowClear && !interactionDisabled"
+            type="text"
+            :size="mergedSize"
+            data-testid="file-picker-clear"
+            @click="clear"
+            >{{ t('admin9Ui.filePicker.clear') }}</a-button
+          >
         </slot>
-      </span>
-      <a-tooltip v-if="allowClear && selectedCount && !interactionDisabled" :content="t('admin9Ui.filePicker.clear')">
+      </div>
+      <a-tooltip
+        v-if="$slots.trigger && allowClear && selectedCount && !interactionDisabled"
+        :content="t('admin9Ui.filePicker.clear')"
+      >
         <a-button
           type="text"
           status="danger"
@@ -566,39 +706,96 @@
       :body-style="{ minHeight: 0, padding: '16px', overflow: 'auto' }"
       modal-class="a9-file-picker-modal"
       unmount-on-close
+      :esc-to-close="!activePreview"
       @cancel="close"
       @close="restoreTriggerFocus"
     >
       <FormItem no-style :validate-trigger="[]">
-        <div class="a9-file-picker__workspace">
-          <aside class="a9-file-picker__sidebar" :aria-label="t('admin9Ui.filePicker.fileTypes')">
+        <div ref="workspace" class="a9-file-picker__workspace" :class="{ 'without-groups': !hasGroupNavigation }">
+          <aside
+            v-if="hasGroupNavigation && !narrow"
+            class="a9-file-picker__sidebar"
+            :aria-label="t('admin9Ui.filePicker.groups')"
+          >
+            <div class="a9-file-picker__sidebar-title">{{ t('admin9Ui.filePicker.groups') }}</div>
             <button
-              v-if="showsAggregateType"
               type="button"
-              class="a9-file-picker__type-button"
-              :class="{ 'is-active': activeFileType === undefined }"
-              :aria-pressed="activeFileType === undefined"
-              @click="selectFileType(undefined)"
+              class="a9-file-picker__group-button"
+              :class="{ 'is-active': activeGroupId === undefined }"
+              :aria-pressed="activeGroupId === undefined"
+              :disabled="uploading"
+              @click="onGroupChange(undefined)"
             >
-              <icon-folder />
-              <span>{{ aggregateLabel }}</span>
+              <FileFolderIcon
+                :open="activeGroupId === undefined"
+                class="a9-file-picker__group-icon a9-file-picker__group-icon--folder"
+              /><span>{{ t('admin9Ui.filePicker.groupAll') }}</span>
             </button>
             <button
-              v-for="fileType in allowedFileTypes"
-              :key="fileType"
               type="button"
-              class="a9-file-picker__type-button"
-              :class="{ 'is-active': activeFileType === fileType }"
-              :aria-pressed="activeFileType === fileType"
-              @click="selectFileType(fileType)"
+              class="a9-file-picker__group-button"
+              :class="{ 'is-active': activeGroupId === null }"
+              :aria-pressed="activeGroupId === null"
+              :disabled="uploading"
+              @click="onGroupChange(null)"
             >
-              <icon-file-image v-if="fileType === 'image'" />
-              <icon-file-video v-else-if="fileType === 'video'" />
-              <icon-file-audio v-else-if="fileType === 'audio'" />
-              <icon-archive v-else-if="fileType === 'archive'" />
-              <icon-file v-else />
-              <span>{{ t(`admin9Ui.filePicker.types.${fileType}`) }}</span>
+              <FileFolderIcon
+                :open="activeGroupId === null"
+                class="a9-file-picker__group-icon a9-file-picker__group-icon--folder"
+              /><span>{{ t('admin9Ui.filePicker.groupUngrouped') }}</span>
             </button>
+            <a-alert v-if="groupError" type="error" class="a9-file-picker__group-error">
+              {{ t('admin9Ui.filePicker.groupLoadFailed') }}
+              <a-button type="text" size="mini" data-testid="file-picker-retry-groups" @click="fetchGroups">{{
+                t('admin9Ui.filePicker.retry')
+              }}</a-button>
+            </a-alert>
+            <a-spin v-else :loading="groupLoading" class="a9-file-picker__group-spin">
+              <div
+                v-for="row in visibleGroupRows"
+                :key="row.group.id"
+                class="a9-file-picker__group-row"
+                :class="{ 'is-child': row.child, 'has-children': row.hasChildren }"
+              >
+                <button
+                  v-if="row.hasChildren"
+                  type="button"
+                  class="a9-file-picker__group-toggle"
+                  :aria-expanded="!collapsedGroups.has(row.group.id)"
+                  :aria-label="
+                    t(
+                      collapsedGroups.has(row.group.id)
+                        ? 'admin9Ui.filePicker.expandGroup'
+                        : 'admin9Ui.filePicker.collapseGroup',
+                      { name: row.group.name }
+                    )
+                  "
+                  @click="toggleGroup(row.group.id)"
+                >
+                  <FileFolderIcon
+                    :open="!collapsedGroups.has(row.group.id)"
+                    class="a9-file-picker__group-icon a9-file-picker__group-icon--folder"
+                  />
+                </button>
+                <button
+                  type="button"
+                  class="a9-file-picker__group-button"
+                  :data-group-id="row.group.id"
+                  :class="{ 'is-active': activeGroupId === row.group.id }"
+                  :aria-label="row.label"
+                  :aria-pressed="activeGroupId === row.group.id"
+                  :disabled="uploading"
+                  @click="onGroupChange(row.group.id)"
+                >
+                  <FileFolderIcon
+                    v-if="!row.hasChildren"
+                    :open="activeGroupId === row.group.id"
+                    class="a9-file-picker__group-icon a9-file-picker__group-icon--folder"
+                  /><span :title="row.label">{{ row.group.name }}</span>
+                </button>
+              </div>
+            </a-spin>
+            <p v-if="uploading" class="a9-file-picker__hint" role="status">{{ t('admin9Ui.filePicker.groupLocked') }}</p>
           </aside>
 
           <main class="a9-file-picker__main">
@@ -607,17 +804,52 @@
             </a-alert>
 
             <template v-else>
+              <div v-if="hasGroupNavigation && narrow" class="a9-file-picker__compact-groups">
+                <a-select
+                  v-model="groupFilter"
+                  :loading="groupLoading"
+                  :disabled="uploading"
+                  :aria-label="t('admin9Ui.filePicker.groups')"
+                >
+                  <a-option value="all">{{ t('admin9Ui.filePicker.groupAll') }}</a-option>
+                  <a-option value="ungrouped">{{ t('admin9Ui.filePicker.groupUngrouped') }}</a-option>
+                  <a-option v-for="row in groupRows" :key="row.group.id" :value="`group:${row.group.id}`">{{
+                    row.label
+                  }}</a-option>
+                </a-select>
+                <a-alert v-if="groupError" type="error"
+                  >{{ t('admin9Ui.filePicker.groupLoadFailed')
+                  }}<a-button type="text" size="mini" @click="fetchGroups">{{
+                    t('admin9Ui.filePicker.retry')
+                  }}</a-button></a-alert
+                >
+                <p v-if="uploading" class="a9-file-picker__hint" role="status">{{ t('admin9Ui.filePicker.groupLocked') }}</p>
+              </div>
               <div class="a9-file-picker__toolbar">
-                <a-input-search
-                  v-model="keyword"
-                  class="a9-file-picker__search"
-                  :placeholder="t('admin9Ui.filePicker.searchPlaceholder')"
-                  allow-clear
-                  search-button
-                  @search="onSearch"
-                  @press-enter="onSearch"
-                  @clear="onSearch"
-                />
+                <div class="a9-file-picker__filters">
+                  <a-select
+                    v-if="showsAggregateType"
+                    v-model="typeFilter"
+                    class="a9-file-picker__type-select"
+                    :aria-label="t('admin9Ui.filePicker.fileTypes')"
+                  >
+                    <a-option value="">{{ t('admin9Ui.filePicker.typeAll') }}</a-option>
+                    <a-option v-for="fileType in allowedFileTypes" :key="fileType" :value="fileType">
+                      {{ t(`admin9Ui.filePicker.types.${fileType}`) }}
+                    </a-option>
+                  </a-select>
+                  <a-input-search
+                    v-model="keyword"
+                    class="a9-file-picker__search"
+                    :placeholder="t('admin9Ui.filePicker.searchPlaceholder')"
+                    allow-clear
+                    :button-text="t('admin9Ui.filePicker.search')"
+                    search-button
+                    @search="onSearch"
+                    @press-enter="onSearch"
+                    @clear="onSearch"
+                  />
+                </div>
                 <div class="a9-file-picker__toolbar-actions">
                   <a-tooltip :content="t('admin9Ui.filePicker.refresh')">
                     <a-button
@@ -637,42 +869,42 @@
                       <a-radio value="list" :aria-label="t('admin9Ui.filePicker.listView')"><icon-list /></a-radio>
                     </a-tooltip>
                   </a-radio-group>
-                  <a-tooltip v-if="canUpload" :content="uploadTooltip">
-                    <span>
-                      <AFileUploader
-                        ref="uploader"
-                        :service="resolvedService"
-                        :file-type="uploadFileType"
-                        :group-id="uploadGroupId"
-                        :accept="accept"
-                        :button-text="t('admin9Ui.filePicker.upload')"
-                        @success="onUploadResponse"
-                        @error="onUploadError"
-                        @complete="onUploadComplete"
-                      />
-                    </span>
-                  </a-tooltip>
+                  <div v-if="canUpload" class="a9-file-picker__upload">
+                    <AFileUploader
+                      ref="uploader"
+                      :service="resolvedService"
+                      :file-types="allowedFileTypes"
+                      :group-id="uploadGroupId"
+                      :accept="accept"
+                      :button-text="t('admin9Ui.filePicker.upload')"
+                      @success="onUploadResponse"
+                      @error="onUploadError"
+                      @complete="onUploadComplete"
+                      @tasks-change="onUploadTasksChange"
+                    >
+                      <template #result="{ succeededCount, dismiss }">
+                        <Teleport v-if="uploadFeedback" :to="uploadFeedback">
+                          <div v-if="succeededCount" class="a9-file-picker__upload-result" role="status">
+                            <span>{{ t('admin9Ui.filePicker.uploaded', { count: succeededCount }) }}</span>
+                            <a-button v-if="hasFilters" type="text" size="mini" @click="clearFilters">{{
+                              t('admin9Ui.filePicker.clearFilters')
+                            }}</a-button>
+                            <a-button
+                              type="text"
+                              size="mini"
+                              :aria-label="t('admin9Ui.fileUploader.dismissResult')"
+                              @click="dismiss"
+                              ><template #icon><icon-close /></template
+                            ></a-button>
+                          </div>
+                        </Teleport>
+                      </template>
+                    </AFileUploader>
+                  </div>
                 </div>
               </div>
 
-              <div v-if="hasGroupNavigation" class="a9-file-picker__groups">
-                <a-alert v-if="groupError" type="error" class="a9-file-picker__group-error">
-                  {{ t('admin9Ui.filePicker.groupLoadFailed') }}
-                  <a-button type="text" size="mini" data-testid="file-picker-retry-groups" @click="fetchGroups">
-                    {{ t('admin9Ui.filePicker.retry') }}
-                  </a-button>
-                </a-alert>
-                <a-spin v-else :loading="groupLoading" class="a9-file-picker__group-spin">
-                  <a-select v-model="compactGroupValue" :aria-label="t('admin9Ui.filePicker.groups')">
-                    <a-option :value="GROUP_ALL">{{ t('admin9Ui.filePicker.groupAll') }}</a-option>
-                    <a-option :value="GROUP_UNGROUPED">{{ t('admin9Ui.filePicker.groupUngrouped') }}</a-option>
-                    <a-option v-for="group in groups" :key="group.id" :value="groupOptionValue(group.id)">
-                      {{ group.name }}{{ group.count === undefined ? '' : ` (${group.count})` }}
-                    </a-option>
-                  </a-select>
-                </a-spin>
-              </div>
-
+              <div ref="uploadFeedback" class="a9-file-picker__feedback" />
               <a-alert v-if="listError" type="error" class="a9-file-picker__list-error">
                 {{ t('admin9Ui.filePicker.loadFailed') }}
                 <a-button type="text" size="small" data-testid="file-picker-retry-list" @click="fetchList">
@@ -688,6 +920,7 @@
                   :data-view="view"
                   :aria-label="t('admin9Ui.filePicker.results')"
                   :role="multiple ? 'group' : 'radiogroup'"
+                  tabindex="-1"
                   :model-value="multiple ? undefined : selectedDraftId"
                   @update:model-value="selectSingleItem"
                 >
@@ -697,6 +930,7 @@
                     class="a9-file-picker__item"
                     :class="{ 'is-selected': draftMap.has(item.id), 'is-disabled': !isSelectable(item) }"
                     :data-file-id="item.id"
+                    @click="onCardClick($event, item)"
                   >
                     <a-checkbox
                       v-if="multiple"
@@ -728,12 +962,22 @@
                       :selected="draftMap.has(item.id)"
                       :view="view"
                     >
-                      <FileItemView :item="item" :available="isSelectable(item)" :status-label="statusLabel(item)" />
+                      <FileItemView
+                        :item="item"
+                        :available="isSelectable(item)"
+                        :status-label="statusLabel(item)"
+                        :preview-enabled="visible && !interactionDisabled"
+                        @preview-open="activePreview = item.id"
+                        @preview-close="restorePreviewFocus($event, item.id)"
+                      />
                     </slot>
                   </article>
                 </component>
                 <div v-else-if="empty" class="a9-file-picker__empty">
-                  <slot name="empty" :constrained="false"><a-empty :description="t('admin9Ui.filePicker.empty')" /></slot>
+                  <slot name="empty" :constrained="false"><a-empty :description="emptyDescription" /></slot>
+                  <a-button v-if="hasFilters" type="text" @click="clearFilters">{{
+                    t('admin9Ui.filePicker.clearFilters')
+                  }}</a-button>
                 </div>
               </a-spin>
             </template>
@@ -741,24 +985,30 @@
         </div>
       </FormItem>
       <template #footer>
-        <div class="a9-file-picker__footer">
-          <div class="a9-file-picker__footer-status" aria-live="polite">
-            {{ t('admin9Ui.filePicker.selectedCount', { count: draftCount }) }}
-          </div>
-          <a-pagination
-            v-if="hasAllowedTypes"
-            :current="current"
-            :page-size="resolvedPageSize"
-            :total="total"
-            simple
-            data-testid="file-picker-pagination"
-            @change="onPageChange"
-          />
-          <div class="a9-file-picker__footer-actions">
-            <a-button @click="close">{{ t('admin9Ui.filePicker.cancel') }}</a-button>
-            <a-button type="primary" :disabled="!hasAllowedTypes" @click="confirm">
-              {{ t('admin9Ui.filePicker.confirm') }}
-            </a-button>
+        <div class="a9-file-picker__footer-content">
+          <div v-if="limitNotice" class="a9-file-picker__limit-notice" role="status">{{
+            t('admin9Ui.filePicker.limitReached', { count: limit })
+          }}</div>
+          <div v-if="!draftCount && needsEmptyCommit" class="a9-file-picker__notice" role="status">{{
+            t('admin9Ui.filePicker.confirmEmpty')
+          }}</div>
+          <div class="a9-file-picker__footer">
+            <span class="a9-file-picker__selected-count" role="status">{{ selectionLabel }}</span>
+            <a-pagination
+              v-if="hasAllowedTypes && total > resolvedPageSize && !listError"
+              :current="current"
+              :page-size="resolvedPageSize"
+              :total="total"
+              simple
+              data-testid="file-picker-pagination"
+              @change="onPageChange"
+            />
+            <div class="a9-file-picker__footer-actions">
+              <a-button :size="narrow ? 'small' : undefined" @click="close">{{ t('admin9Ui.filePicker.cancel') }}</a-button>
+              <a-button type="primary" :size="narrow ? 'small' : undefined" :disabled="!canConfirm" @click="confirm">
+                {{ t('admin9Ui.filePicker.confirm') }}
+              </a-button>
+            </div>
           </div>
         </div>
       </template>
@@ -781,7 +1031,97 @@
     }
 
     &__trigger {
-      display: inline-flex;
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      align-items: flex-start;
+      min-width: 0;
+    }
+
+    &__trigger-row {
+      align-items: flex-start;
+    }
+
+    &__filters {
+      display: flex;
+      flex: 1 1 320px;
+      gap: 8px;
+      min-width: 0;
+      max-width: 440px;
+    }
+
+    &__filters :deep(.a9-file-picker__type-select) {
+      flex: 0 0 112px;
+      width: 112px;
+    }
+
+    &__sidebar-title {
+      padding: 8px 10px;
+      color: var(--color-text-3);
+      font-size: 12px;
+    }
+
+    &__hint {
+      margin: 4px 0;
+      color: var(--color-text-3);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    &__upload {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      max-width: 300px;
+    }
+
+    &__upload-result {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      align-items: center;
+      color: var(--color-text-2);
+      font-size: 12px;
+    }
+
+    &__footer-content {
+      position: relative;
+    }
+
+    &__feedback:empty {
+      display: none;
+    }
+
+    &__feedback:not(:empty) {
+      margin-bottom: 12px;
+    }
+
+    &__compact-groups {
+      margin-bottom: 12px;
+    }
+
+    &__limit-notice {
+      position: absolute;
+      right: 16px;
+      bottom: calc(100% + 8px);
+      left: 16px;
+      padding: 8px 12px;
+      color: var(--color-text-1);
+      text-align: left;
+      background: var(--color-bg-popup);
+      border: 1px solid var(--color-border-2);
+      border-radius: 4px;
+      box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+    }
+
+    &__selected-count {
+      color: var(--color-text-2);
+    }
+
+    &__notice {
+      margin-bottom: 8px;
+      color: var(--color-text-2);
+      text-align: left;
     }
 
     &__workspace {
@@ -789,6 +1129,10 @@
       grid-template-columns: 170px minmax(0, 1fr);
       min-width: 0;
       min-height: 510px;
+
+      &.without-groups {
+        grid-template-columns: minmax(0, 1fr);
+      }
     }
 
     &__sidebar {
@@ -800,7 +1144,52 @@
       border-right: 1px solid var(--color-neutral-3);
     }
 
-    &__type-button {
+    &__group-row {
+      position: relative;
+
+      &.is-child {
+        padding-left: 20px;
+      }
+    }
+
+    &__group-toggle {
+      position: absolute;
+      top: 6px;
+      left: 6px;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      color: var(--color-text-2);
+      background: transparent;
+      border: 0;
+      border-radius: 4px;
+      cursor: pointer;
+
+      &:hover {
+        background: var(--color-fill-3);
+      }
+
+      &:focus-visible {
+        outline: 2px solid rgb(var(--primary-6));
+        outline-offset: -2px;
+      }
+    }
+
+    &__group-icon {
+      flex: none;
+      font-size: 16px;
+
+      &--folder {
+        color: rgb(var(--gold-7));
+        fill: rgb(var(--gold-3));
+      }
+    }
+
+    &__group-button {
       display: flex;
       gap: 8px;
       align-items: center;
@@ -825,6 +1214,16 @@
         text-overflow: ellipsis;
       }
 
+      &:disabled {
+        cursor: not-allowed;
+        opacity: 0.6;
+      }
+
+      small {
+        margin-left: auto;
+        color: var(--color-text-3);
+      }
+
       &:hover {
         background: var(--color-fill-3);
       }
@@ -841,9 +1240,70 @@
       }
     }
 
+    &__group-row.has-children &__group-button {
+      padding-left: 34px;
+    }
+
     &__main {
       min-width: 0;
       padding-left: 16px;
+    }
+
+    &__workspace.without-groups &__main {
+      padding-left: 0;
+    }
+
+    &__committed {
+      width: fit-content;
+      max-width: 100%;
+      max-height: 120px;
+      margin: 8px 0;
+      padding: 0;
+      overflow-y: auto;
+      list-style: none;
+    }
+
+    &__committed li {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      width: fit-content;
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    &__committed li a,
+    &__committed li > span {
+      flex: 0 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    &__committed li a,
+    &__committed li a:visited {
+      color: rgb(var(--primary-7));
+      text-decoration: none;
+    }
+
+    &__committed li a:hover {
+      color: rgb(var(--primary-8));
+      text-decoration: underline;
+    }
+
+    &__committed li a:focus-visible {
+      outline: 2px solid rgb(var(--primary-6));
+      outline-offset: 2px;
+    }
+
+    &__committed li > svg {
+      flex: none;
+      color: var(--color-text-2);
+    }
+
+    &__committed li button {
+      flex: none;
     }
 
     &__constraint-empty {
@@ -851,27 +1311,29 @@
     }
 
     &__toolbar {
+      flex-wrap: wrap;
       justify-content: space-between;
       min-width: 0;
       margin-bottom: 12px;
     }
 
-    &__search {
-      width: min(100%, 320px);
+    &__filters :deep(.a9-file-picker__search) {
+      flex: 1;
+      min-width: 0;
     }
 
     &__toolbar-actions {
       flex: none;
+      margin-left: auto;
     }
 
-    &__groups,
     &__list-error {
       margin-bottom: 12px;
     }
 
     &__group-spin {
       display: block;
-      width: min(100%, 320px);
+      width: 100%;
     }
 
     &__spin {
@@ -895,25 +1357,60 @@
       background: var(--color-bg-2);
       border: 1px solid var(--color-neutral-3);
       border-radius: 6px;
+      cursor: pointer;
 
       &.is-selected {
         border-color: rgb(var(--primary-6));
         box-shadow: 0 0 0 1px rgb(var(--primary-6));
       }
 
+      &:not(.is-disabled, .is-selected):hover {
+        background: var(--color-fill-1);
+        border-color: var(--color-neutral-6);
+      }
+
       &.is-disabled {
-        opacity: 0.72;
+        cursor: not-allowed;
       }
     }
 
     &__checkbox {
       position: absolute;
-      top: 14px;
-      right: 14px;
+      top: 10px;
+      right: 10px;
       z-index: 3;
-      padding: 3px;
-      background: var(--color-bg-2);
+      padding: 0;
+      background: transparent;
       border-radius: 4px;
+    }
+
+    &__checkbox :deep(.arco-checkbox-icon),
+    &__checkbox :deep(.arco-radio-icon) {
+      background-color: var(--color-bg-2);
+      border-color: var(--color-neutral-8);
+    }
+
+    &__checkbox :deep(.arco-checkbox-icon-check),
+    &__checkbox :deep(.arco-radio-icon-dot) {
+      color: #fff;
+    }
+
+    &__checkbox :deep(input:focus-visible ~ .arco-checkbox-icon-hover .arco-checkbox-icon),
+    &__checkbox :deep(input:focus-visible ~ .arco-radio-icon-hover .arco-radio-icon) {
+      outline: 2px solid rgb(var(--primary-6));
+      outline-offset: 2px;
+    }
+
+    &__checkbox.arco-checkbox-checked :deep(.arco-checkbox-icon),
+    &__checkbox.arco-radio-checked :deep(.arco-radio-icon) {
+      background-color: rgb(var(--primary-6));
+      border-color: rgb(var(--primary-6));
+    }
+
+    &__item.is-disabled &__checkbox :deep(.arco-checkbox-icon),
+    &__item.is-disabled &__checkbox :deep(.arco-radio-icon) {
+      background-color: var(--color-fill-2);
+      border-color: var(--color-neutral-5);
     }
 
     &__selection-label {
@@ -932,27 +1429,61 @@
       grid-template-columns: minmax(0, 1fr);
 
       .a9-file-picker__item {
-        padding-right: 44px;
+        padding: 8px 44px 8px 8px;
       }
 
       :deep(.a9-file-item) {
         display: grid;
-        grid-template-columns: 96px minmax(0, 1fr);
+        grid-template-columns: 64px minmax(0, 1fr) auto;
         gap: 12px;
         align-items: center;
       }
 
+      .a9-file-picker__checkbox {
+        top: 50%;
+        transform: translateY(-50%);
+      }
+
       :deep(.a9-file-item__visual) {
-        height: 64px;
+        grid-column: 1;
+        height: 48px;
       }
 
       :deep(.a9-file-item__details) {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
         padding-top: 0;
+      }
+    }
+
+    &__items[data-view='list'] :deep(.a9-file-item__name) {
+      margin-top: 0;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      &__item :deep(.a9-file-item__actions) {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      &__item:hover :deep(.a9-file-item__actions),
+      &__item:focus-within :deep(.a9-file-item__actions) {
+        opacity: 1;
+        pointer-events: auto;
+      }
+    }
+
+    @media (any-pointer: coarse) {
+      &__item :deep(.a9-file-item__actions) {
+        opacity: 1;
+        pointer-events: auto;
       }
     }
 
     &__empty {
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       min-height: 320px;
@@ -978,17 +1509,13 @@
       }
 
       &__sidebar {
-        flex-direction: row;
+        flex-direction: column;
+        max-height: 180px;
         padding-right: 0;
         padding-bottom: 10px;
-        overflow-x: auto;
+        overflow: auto;
         border-right: 0;
         border-bottom: 1px solid var(--color-neutral-3);
-      }
-
-      &__type-button {
-        flex: 0 0 auto;
-        width: auto;
       }
 
       &__main {
@@ -1001,8 +1528,13 @@
         align-items: stretch;
       }
 
-      &__search {
-        width: 100%;
+      &__filters {
+        flex-basis: auto;
+        max-width: none;
+      }
+
+      &__upload {
+        max-width: 100%;
       }
 
       &__toolbar-actions {
@@ -1014,8 +1546,20 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
+      &__selected-count {
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
       &__footer {
-        flex-wrap: wrap;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+      }
+
+      &__footer :deep(.arco-pagination) {
+        grid-row: 2;
+        grid-column: 1 / -1;
+        justify-self: center;
       }
 
       &__footer-actions {

@@ -65,6 +65,7 @@ function choose(id: string) {
   click(`[data-file-id="${id}"] input`);
 }
 async function confirm() {
+  await nextTick();
   click('.a9-file-picker__footer-actions .arco-btn-primary');
   await flush();
 }

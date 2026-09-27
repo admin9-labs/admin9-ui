@@ -50,6 +50,7 @@ function deferred<T>() {
 afterEach(() => {
   apps.splice(0).forEach((app) => app.unmount());
   document.body.innerHTML = '';
+  vi.unstubAllGlobals();
 });
 
 describe('real Arco 2.57 component contracts', () => {
@@ -363,7 +364,7 @@ describe('real Arco 2.57 component contracts', () => {
     const exposed = ref<AFileUploaderExposed>();
     const disabled = ref(false);
     mount(() =>
-      h(AFileUploader, { ref: exposed, service: { upload }, fileType: 'image', maxFileSize: 1, disabled: disabled.value })
+      h(AFileUploader, { ref: exposed, service: { upload }, fileTypes: ['image'], maxFileSize: 1, disabled: disabled.value })
     );
     const result = await exposed.value!.upload([new File(['too large'], 'large.png', { type: 'image/png' })]);
     exposed.value!.retry(result.failed[0].task.id);
@@ -399,5 +400,153 @@ describe('real Arco 2.57 component contracts', () => {
     exposed.value!.resetFields();
     await flush();
     expect(model.name).toBe('initial');
+  });
+  it('selects a whole file card once while native checkboxes and preview remain independent', async () => {
+    const file = { id: 'image', name: 'Image.png', type: 'image' as const, groupId: null, url: '/image.png' };
+    const selection = vi.fn();
+    mount(() =>
+      h(AFilePicker, {
+        service: { list: async () => ({ list: [file], pagination: { page: 1, pageSize: 24, total: 1, hasMore: false } }) },
+        multiple: true,
+        onSelectionChange: selection,
+      })
+    );
+    document.querySelector<HTMLButtonElement>('[data-testid="file-picker-trigger"]')!.click();
+    await flush();
+    document.querySelector<HTMLElement>('.a9-file-item__name')!.click();
+    await flush();
+    expect(selection).toHaveBeenCalledTimes(1);
+    expect(selection).toHaveBeenLastCalledWith([file]);
+    document.querySelector<HTMLInputElement>('.a9-file-picker__checkbox input')!.click();
+    await flush();
+    expect(selection).toHaveBeenCalledTimes(2);
+    expect(selection).toHaveBeenLastCalledWith([]);
+    document.querySelector<HTMLButtonElement>('[aria-label="Preview Image.png"]')!.click();
+    await flush();
+    expect(selection).toHaveBeenCalledTimes(2);
+    expect(document.querySelector('.arco-image-preview')).not.toBeNull();
+    expect(document.querySelector('.a9-file-picker__sidebar')).toBeNull();
+    expect(document.querySelector('.a9-file-picker__search button')?.textContent).toBe('Search');
+  });
+  it('keeps a passive count on narrow screens and commits card deselection only on confirm', async () => {
+    const viewport = new EventTarget() as EventTarget & { matches: boolean };
+    viewport.matches = true;
+    const originalMatchMedia = window.matchMedia.bind(window);
+    vi.stubGlobal('matchMedia', (query: string) => (query === '(max-width: 720px)' ? viewport : originalMatchMedia(query)));
+    const update = vi.fn();
+    const file = { id: 'narrow', name: 'Narrow.png', type: 'image' as const, groupId: 'work', url: '/narrow.png' };
+    mount(() =>
+      h(AFilePicker, {
+        'service': {
+          list: async () => ({ list: [file], pagination: { page: 1, pageSize: 24, total: 1, hasMore: false } }),
+          listGroups: async () => [{ id: 'work', name: 'Work' }],
+        },
+        'multiple': true,
+        'modelValue': [file],
+        'onUpdate:modelValue': update,
+      })
+    );
+    document.querySelector<HTMLButtonElement>('[data-testid="file-picker-trigger"]')!.click();
+    await flush();
+    expect(document.querySelector('.a9-file-picker__sidebar')).toBeNull();
+    expect(document.querySelector('.a9-file-picker__compact-groups .arco-select')).not.toBeNull();
+    const count = document.querySelector<HTMLElement>('.a9-file-picker__selected-count')!;
+    expect(count.textContent).toBe('1 selected');
+    expect(count.tabIndex).toBe(-1);
+    count.click();
+    await flush();
+    expect(document.querySelector('.a9-file-picker__selection-panel')).toBeNull();
+    document.querySelector<HTMLInputElement>('.a9-file-picker-modal input[type="checkbox"]')!.click();
+    await flush();
+    expect(update).not.toHaveBeenCalled();
+    expect(count.textContent).toBe('0 selected');
+    viewport.matches = false;
+    viewport.dispatchEvent(new Event('change'));
+    await flush();
+    expect(document.querySelector('.a9-file-picker__compact-groups')).toBeNull();
+    expect(document.querySelector('.a9-file-picker__sidebar')).not.toBeNull();
+    expect(document.querySelector<HTMLButtonElement>('.a9-file-picker__footer-actions button:last-child')!.disabled).toBe(
+      false
+    );
+    document.querySelector<HTMLButtonElement>('.a9-file-picker__footer-actions button:last-child')!.click();
+    await flush();
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledWith([]);
+  });
+  it('makes image preview controls keyboard accessible and restores the actual trigger', async () => {
+    const file = { id: 'preview', name: 'Preview.png', type: 'image' as const, groupId: null, url: '/preview.png' };
+    const selection = vi.fn();
+    mount(() =>
+      h(AFilePicker, {
+        service: { list: async () => ({ list: [file], pagination: { page: 1, pageSize: 24, total: 1, hasMore: false } }) },
+        multiple: true,
+        onSelectionChange: selection,
+      })
+    );
+    document.querySelector<HTMLButtonElement>('[data-testid="file-picker-trigger"]')!.click();
+    await flush();
+    const trigger = document.querySelector<HTMLButtonElement>('[aria-label="Preview Preview.png"]')!;
+    trigger.focus();
+    trigger.click();
+    await flush();
+    const host = document.querySelector<HTMLElement>('.a9-file-image-preview')!;
+    const close = host.querySelector<HTMLElement>('[aria-label="Close preview"]')!;
+    expect(document.activeElement).toBe(close);
+    const img = host.querySelector<HTMLImageElement>('img')!;
+    Object.defineProperty(img, 'naturalWidth', { value: 640 });
+    Object.defineProperty(img, 'naturalHeight', { value: 480 });
+    img.dispatchEvent(new Event('load'));
+    await flush();
+    expect(host.querySelectorAll('[role="button"][tabindex="0"]')).toHaveLength(7);
+    close.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Fit to screen');
+    const rotate = host.querySelector<HTMLElement>('[aria-label="Rotate right"]')!;
+    rotate.focus();
+    document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await flush();
+    expect(img.style.transform).toContain('rotate(90deg)');
+    expect(document.activeElement).toBe(rotate);
+    document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
+    await flush();
+    expect(img.style.transform).toContain('rotate(180deg)');
+    expect(document.activeElement).toBe(rotate);
+    document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Rotate left');
+    close.focus();
+    close.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await flush();
+    expect(document.querySelector('.a9-file-image-preview')).toBeNull();
+    expect(document.querySelector('.a9-file-picker-modal')).not.toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    expect(selection).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the search when a previewed card disappears and to the outside trigger on disable', async () => {
+    const file = { id: 'fallback', name: 'Fallback.png', type: 'image' as const, groupId: null, url: '/fallback.png' };
+    let files = [file];
+    const disabled = ref(false);
+    const picker = ref<import('../src').AFilePickerExposed>();
+    const service = {
+      list: async () => ({ list: files, pagination: { page: 1, pageSize: 24, total: files.length, hasMore: false } }),
+    };
+    mount(() => h(AFilePicker, { ref: picker, service, disabled: disabled.value }));
+    document.querySelector<HTMLButtonElement>('[data-testid="file-picker-trigger"]')!.click();
+    await flush();
+    document.querySelector<HTMLButtonElement>('[aria-label="Preview Fallback.png"]')!.click();
+    await flush();
+    files = [];
+    await picker.value!.refresh();
+    await flush();
+    expect(document.querySelector('.a9-file-image-preview')).toBeNull();
+    expect(document.activeElement).toBe(document.querySelector('.a9-file-picker__search input'));
+    files = [file];
+    await picker.value!.refresh();
+    await flush();
+    document.querySelector<HTMLButtonElement>('[aria-label="Preview Fallback.png"]')!.click();
+    await flush();
+    disabled.value = true;
+    await flush();
+    expect(document.querySelector('.a9-file-image-preview')).toBeNull();
+    expect(document.activeElement?.closest('.a9-file-image-preview')).toBeNull();
   });
 });

@@ -1,5 +1,11 @@
 /* eslint-disable import/no-duplicates, @typescript-eslint/no-unused-vars -- Independent negative imports verify removed public types. */
 import type {
+  FileListParams,
+  FileGroup,
+  FileUploadRejection,
+  FileUploadFailureReason,
+  FileUploadOptions,
+  FileBrowseCapability,
   AIconPickerProps,
   AIconPickerExposed,
   ACoordinatePickerProps,
@@ -121,3 +127,29 @@ export function checkImagePicker(
   emit('visibleChange', false);
   return pending;
 }
+
+export const mixedGroupQuery: FileListParams = { page: 1, pageSize: 24, groupId: 'campaign', fileTypes: ['image', 'document'] };
+export const ungroupedQuery: FileListParams = { page: 1, pageSize: 24, groupId: null };
+export const globalGroups: FileBrowseCapability['listGroups'] = async () => [{ id: 'campaign', name: 'Campaign' }];
+export const mixedUploader: AFileUploaderProps = { fileTypes: ['image', 'document'], groupId: 'campaign' };
+export function uploadConstraints(options: FileUploadOptions) {
+  const allowed: readonly string[] = options.fileTypes;
+  // @ts-expect-error Uploads no longer assign a single file type.
+  const removed = options.fileType;
+  return { allowed, removed };
+}
+// @ts-expect-error Single-type and multi-type query filters remain mutually exclusive.
+export const invalidTypeQuery: FileListParams = { page: 1, pageSize: 24, fileType: 'image', fileTypes: ['document'] };
+// @ts-expect-error The uploader uses allowed type sets.
+export const legacyUploader: AFileUploaderProps = { fileType: 'image' };
+
+export const rejectedType: FileUploadRejection = { code: 'unsupported-file-type' };
+export const rejectedFormat: FileUploadRejection = { code: 'unsupported-file-format', allowedFormats: ['PNG', 'JPG'] };
+export const rejectionReasons: FileUploadFailureReason[] = ['file-type', 'file-format'];
+// @ts-expect-error Arbitrary transport codes do not enter the controlled rejection contract.
+export const arbitraryRejection: FileUploadRejection = { code: 'ECONNRESET' };
+
+export const nestedGroups: FileGroup[] = [
+  { id: 'campaign', name: 'Campaign' },
+  { id: 'event', name: 'Event assets', parentId: 'campaign' },
+];

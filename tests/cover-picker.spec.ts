@@ -256,8 +256,11 @@ function selectFile(id: string) {
   click(`[data-file-id="${id}"] .a9-file-picker__checkbox`);
 }
 
-function confirmFilePicker() {
-  const button = Array.from(document.querySelectorAll('button')).find((item) => item.textContent?.trim() === 'Confirm');
+async function confirmFilePicker() {
+  await nextTick();
+  const button = Array.from(document.querySelectorAll('button')).find(
+    (item) => item.textContent?.trim() === 'Confirm selection'
+  );
   if (!button) throw new Error('Missing file picker confirm button');
   button.click();
 }
@@ -287,13 +290,13 @@ describe('ACoverPicker', () => {
       groupId: undefined,
     });
     selectFile('image-3');
-    confirmFilePicker();
+    await confirmFilePicker();
     await flush();
 
     expect(model.value).toEqual({ mode: 'triple', images: [images[0], null, images[2]] });
     click('[data-testid="cover-picker-slot-1"]');
     await flush();
-    expect(document.querySelector('.a9-file-picker__footer-status')?.textContent).toContain('0 selected');
+    expect(document.querySelector('.a9-file-picker__selected-count')?.textContent).toContain('0 selected');
     click('[data-testid="modal-cancel"]');
     await flush();
     click('[data-testid="cover-picker-remove-0"]');
@@ -338,7 +341,7 @@ describe('ACoverPicker', () => {
 
     click('[data-testid="cover-picker-slot-0"]');
     await flush();
-    confirmFilePicker();
+    await confirmFilePicker();
     await flush();
     expect(emitted.change).toBeUndefined();
     expect(document.activeElement).toBe(document.querySelector('[data-testid="cover-picker-slot-0"]'));
@@ -357,8 +360,8 @@ describe('ACoverPicker', () => {
 
     click('[data-testid="cover-picker-slot-0"]');
     await flush();
-    expect(document.querySelector('.a9-file-picker__footer-status')?.textContent).toContain('0 selected');
-    confirmFilePicker();
+    expect(document.querySelector('.a9-file-picker__selected-count')?.textContent).toContain('0 selected');
+    await confirmFilePicker();
     await flush();
 
     expect(model.value).toEqual({ mode: 'single', images: [null] });
@@ -418,7 +421,7 @@ describe('ACoverPicker', () => {
     await checkSize('large');
     await checkSize('medium');
 
-    confirmFilePicker();
+    await confirmFilePicker();
     await flush();
     expect(model.value).toEqual({ mode: 'triple', images: [images[0], null, images[2]] });
     expect(emitted.change).toHaveLength(1);

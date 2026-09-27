@@ -3,12 +3,18 @@ import type { FileItem, FileType, FileUploadCapability } from '../../services/ty
 
 export type FileUploadTaskStatus = 'pending' | 'uploading' | 'succeeded' | 'failed' | 'cancelled';
 
-export type FileUploadFailureReason = 'upload-failed' | 'invalid-result' | 'file-count' | 'file-size';
+export type FileUploadFailureReason =
+  | 'upload-failed'
+  | 'invalid-result'
+  | 'file-count'
+  | 'file-size'
+  | 'file-type'
+  | 'file-format';
 
 export interface FileUploadTask {
   id: string;
   file: File;
-  fileType: FileType;
+  fileTypes: readonly FileType[];
   groupId: string | null;
   status: FileUploadTaskStatus;
   progress?: number;
@@ -31,7 +37,7 @@ export interface FileUploadBatchResult {
 
 export interface AFileUploaderProps {
   service?: Partial<FileUploadCapability>;
-  fileType?: FileType;
+  fileTypes?: readonly FileType[];
   groupId?: string | null;
   accept?: string;
   multiple?: boolean;

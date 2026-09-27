@@ -57,11 +57,11 @@ export type FileType = 'image' | 'video' | 'audio' | 'document' | 'archive' | 'o
 
 export interface FileBrowseCapability {
   list(params: FileListParams): Promise<FileListResult>;
-  listGroups?(fileType: FileType): Promise<FileGroup[]>;
+  listGroups?(): Promise<FileGroup[]>;
 }
 
 export interface FileUploadCapability {
-  upload(options: FileUploadOptions & { fileType: FileType }): Promise<FileItem>;
+  upload(options: FileUploadOptions): Promise<FileItem>;
 }
 
 export type FilePickerAdapter = FileBrowseCapability & Partial<FileUploadCapability>;
@@ -81,7 +81,7 @@ app.use(Admin9UI, {
 
 - 聚合查询省略 `fileTypes` 表示全部六种类型，显式空数组表示无匹配结果；
 - adapter 必须先在完整数据集上筛选，再分页并返回准确的 `pagination.total`；
-- 只有具体 `fileType` 查询可以携带 `groupId`，上传和 `listGroups` 始终使用具体类型；
+- 分组与类型独立，所有查询均可叠加 `groupId`；`listGroups()` 返回跨类型分组平面数组，可用 `parentId` 表达二级关系；指定分组仅查询直属文件，上传传递 `fileTypes` 允许集合并由 adapter/后端识别真实类型；
 - 多个本地文件通过现有单文件 `upload` 能力逐项处理，不增加 batch service；
 - 删除、移动、分组管理及其权限属于应用，不进入公共 service 契约。
 

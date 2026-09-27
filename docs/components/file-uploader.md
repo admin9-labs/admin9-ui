@@ -12,8 +12,8 @@
   import type { FileUploadBatchResult, FileUploadCapability } from '@admin9-labs/admin9-ui';
 
   const uploadService: FileUploadCapability = {
-    upload: ({ file, fileType, groupId, onProgress, signal }) =>
-      api.uploadFile({ file, fileType, groupId, onProgress, signal }),
+    upload: ({ file, fileTypes, groupId, onProgress, signal }) =>
+      api.uploadFile({ file, fileTypes, groupId, onProgress, signal }),
   };
 
   const onComplete = (result: FileUploadBatchResult) => {
@@ -24,7 +24,7 @@
 <template>
   <AFileUploader
     :service="uploadService"
-    file-type="image"
+    :file-types="['image']"
     group-id="design"
     accept="image/*"
     :limit="10"
@@ -41,8 +41,8 @@
 | Prop          | 类型                            | 默认值             | 说明                                                               |
 | ------------- | ------------------------------- | ------------------ | ------------------------------------------------------------------ |
 | `service`     | `Partial<FileUploadCapability>` | 插件 `fileService` | 实际上传时必须提供 `upload`                                        |
-| `fileType`    | `FileType \| undefined`         | `undefined`        | 队列绑定的具体真实类型；缺省时入口禁用，程序调用 `upload()` 会拒绝 |
-| `groupId`     | `string \| null`                | `null`             | 当前真实类型下的目标分组；`null` 表示未分组                        |
+| `fileTypes` | `readonly FileType[]` | 六种真实类型 | 允许类型集合；显式空数组禁用上传；实际类型由 adapter/后端识别 |
+| `groupId`     | `string \| null`                | `null`             | 跨类型的目标分组；`null` 表示未分组                        |
 | `accept`      | `string`                        | `undefined`        | 可选的原生文件选择提示；默认不限制格式，不用于业务分类或安全校验   |
 | `multiple`    | `boolean`                       | `true`             | 是否允许本地文件选择器一次选择多个文件                             |
 | `limit`       | `number`                        | `0`                | 当前队列最多记录数；`0` 表示不限制，清除已完成记录后可释放额度     |
@@ -70,11 +70,12 @@
 | 插槽      | 参数                      | 说明                                          |
 | --------- | ------------------------- | --------------------------------------------- |
 | `trigger` | `{ disabled, uploading }` | 替换上传触发器；文件 input 与队列仍由组件维护 |
+| `result` | `{ succeededCount, dismiss }` | 替换成功提示，供 Picker 补充“勾选后确认”说明 |
 | `task`    | `{ task }`                | 替换单条任务内容与操作区                      |
 
 `defineExpose` 提供：
 
-- `upload(files): Promise<FileUploadBatchResult>`：把本地文件加入当前具体类型/分组队列并等待队列稳定；
+- `upload(files): Promise<FileUploadBatchResult>`：把本地文件加入当前允许类型集合/分组队列并等待队列稳定；
 - `cancel(taskId?)`：取消指定活动任务；省略 ID 时取消全部活动任务；
 - `retry(taskId)`：重试 failed 或 cancelled 任务；
 - `remove(taskId)`：移除非活动任务记录；
@@ -83,12 +84,12 @@
 
 ## 队列与生命周期
 
-- 每个本地 `File` 单独调用一次 `upload({ file, fileType, groupId, onProgress, signal })`，应用不需要提供 batch 接口。
+- 每个本地 `File` 单独调用一次 `upload({ file, fileTypes, groupId, onProgress, signal })`，应用不需要提供 batch 接口。
 - adapter 调用 `onProgress` 时显示确定进度；未提供进度时显示不确定进度。
 - 每个任务独立成功或失败，可取消、重试或移除；取消依赖 `AbortSignal`，即使 adapter 忽略信号，迟到响应也不会改变已取消任务。
-- 队列仍有活动任务时保持面板可见并提供取消入口，文件选择器同时保持可用，新文件追加到当前具体类型/分组队列。全部成功后面板自动关闭并清空；存在失败或取消时保留面板供重试或移除。关闭面板后焦点会回到上传触发器。
-- `fileType`、`groupId` 或 service 变化时取消并清空旧上下文队列；组件卸载时中止活动请求并屏蔽迟到回调。
-- 同一队列只能绑定一个 concrete `FileType` 和其下的 `groupId/null`。多选表示同一上下文选择多个文件，不表示混合业务类型。
+- 队列仍有活动任务时保持面板可见并提供取消入口，文件选择器同时保持可用，新文件追加到当前允许类型集合/分组队列。全部成功后面板自动关闭并清空；存在失败或取消时保留面板供重试或移除。关闭面板后焦点会回到上传触发器。成功摘要独立显示，保留到主动关闭、下一批上传或组件关闭。
+- `fileTypes` 规范集合、`groupId` 或 service 变化时取消并清空旧上下文队列；组件卸载时中止活动请求并屏蔽迟到回调。
+- 同一队列绑定一个目标分组和允许类型集合，可以混合上传不同类型；adapter 必须识别真实类型并在持久化前拒绝不允许的文件。组件按返回项的 `type` 校验集合，不通过扩展名替后端分类。
 
 ## 与文件组件组合
 
@@ -104,3 +105,30 @@
 limit 是当前队列数量上限，maxFileSize 以字节计；retry 会重新验证两个限制。accept 沿用原生选择提示，不对 File 内容作安全保证。通过验证的返回文件必须有合法 HTTP(S)、相对或 blob URL。
 
 class/style 及未声明的原生属性交给根节点，不透传为 Arco Upload 的网络请求配置。导出 Props、Exposed 和任务／批次类型；公开任务快照不暴露 AbortController 或内部回调。
+
+## 操作提示
+
+组件直接展示传入的数量、大小和 accept 提示，未配置的限制不显示。大小使用 B/KB/MB/GB，按 1024 换算。大小、数量失败在队列中优先提供移除，网络失败和已取消任务提供重试；实例 retry 方法仍会重新校验约束。
+
+`FileUploadOptions.fileTypes` 与任务快照的 `fileTypes` 均为允许集合，不再包含强制分类 `fileType`。详见 [迁移说明](./file-service-migration.md)。
+
+## 受控上传拒绝
+
+adapter 可抛出 `FileUploadRejection`，同步抛出和 Promise 拒绝行为一致：
+
+```ts
+export type FileUploadRejection =
+  | { code: 'unsupported-file-type' }
+  | { code: 'unsupported-file-format'; allowedFormats?: readonly string[] };
+
+throw Object.assign(new Error('Upload rejected'), {
+  code: 'unsupported-file-format',
+  allowedFormats: ['PNG', 'JPG'],
+} satisfies FileUploadRejection);
+```
+
+类型拒绝产生 `file-type` 失败原因，提示中的类型取任务允许集合；格式拒绝产生 `file-format`，只展示适配器提供的非空字符串格式列表，去除空白与重复项。没有可靠格式列表时只提示更换文件。组件不展示任意 error.message 或响应正文，原始错误保留在 error/complete 载荷中。
+
+类型和格式拒绝不显示重试，实例 retry 同样不再次请求；更换文件后通过上传入口建立新任务。普通 Error 或未知 code 保持通用失败与重试；返回 FileItem 不合格仍属于 invalid-result。使用失败原因穷举分支的消费方需增加 file-type、file-format。
+
+编辑器的粘贴/拖放直接上传也识别相同拒绝对象，沿用 unsupported-image 事件并保留 cause；占位节点与提示一致，拒绝任务不可重试，但可删除、撤销和重做。未改变保存阻断和节点替换规则。

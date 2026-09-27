@@ -265,9 +265,10 @@ function click(selector: string) {
   return element;
 }
 
-function confirmPicker() {
+async function confirmPicker() {
+  await nextTick();
   const button = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid="file-picker-modal"] button')).find(
-    (candidate) => candidate.textContent?.trim() === 'Confirm'
+    (candidate) => candidate.textContent?.trim() === 'Confirm selection'
   );
   if (!button) throw new Error('Missing picker confirm button');
   button.click();
@@ -306,7 +307,7 @@ describe('ATiptapEditor real AFilePicker integration', () => {
       groupId: undefined,
     });
     click(`[data-file-id="${currentFiles[type].id}"] .a9-file-picker__checkbox`);
-    confirmPicker();
+    await confirmPicker();
     await flush();
 
     const media = new DOMParser().parseFromString(instance.getHTML(), 'text/html').querySelector(tagName);
@@ -327,7 +328,7 @@ describe('ATiptapEditor real AFilePicker integration', () => {
 
     expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ fileType: 'image' }));
     click('[data-file-id="image-2"] .a9-file-picker__checkbox');
-    confirmPicker();
+    await confirmPicker();
     await flush();
 
     const documentHtml = new DOMParser().parseFromString(instance.getHTML(), 'text/html');
@@ -351,7 +352,7 @@ describe('ATiptapEditor real AFilePicker integration', () => {
     click('button[aria-label="Insert audio"]');
     await flush();
     click('[data-file-id="audio-1"] .a9-file-picker__checkbox');
-    const confirm = confirmPicker();
+    const confirm = await confirmPicker();
     confirm.click();
     await flush();
     expect(new DOMParser().parseFromString(instance.getHTML(), 'text/html').querySelectorAll('audio')).toHaveLength(1);

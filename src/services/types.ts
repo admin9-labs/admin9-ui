@@ -13,10 +13,13 @@
 /** 真实文件类型；“全部”仅由查询中的 undefined 表示，不属于 FileType。 */
 export type FileType = 'image' | 'video' | 'audio' | 'document' | 'archive' | 'other';
 
-/** 当前真实文件类型下的单级分组。 */
+/** 跨文件类型的分组，支持一级分组及其二级子分组。 */
 export interface FileGroup {
   id: string;
   name: string;
+  /** 一级分组省略或为 null；二级分组指向同一列表中的一级分组。 */
+  parentId?: string | null;
+  /** 分组内所有类型的文件总数，不随类型筛选改变。 */
   count?: number;
 }
 
@@ -25,7 +28,7 @@ export interface FileItem {
   id: string;
   name: string;
   type: FileType;
-  /** null 表示未分组；分组始终隶属于同一真实文件类型。 */
+  /** null 表示未分组；同一分组可以包含不同文件类型。 */
   groupId: string | null;
   /** 可访问或下载的文件地址；处理中或失败记录可以为 null。 */
   url: string | null;
@@ -43,18 +46,17 @@ interface FileListParamsBase {
   page: number;
   pageSize: number;
   keyword?: string;
+  /** undefined 表示全部分组，null 表示未分组，字符串表示指定分组。 */
+  groupId?: string | null;
 }
 
 /**
- * 文件查询是判别联合：聚合查询不能携带 groupId；具体类型查询必须显式携带 fileType。
+ * 分组与类型独立；fileType 与 fileTypes 互斥。
  * 聚合查询省略 fileTypes 表示六类全部；提供 fileTypes 时由 adapter 对该集合执行服务端筛选和准确分页。
  * 空 fileTypes 表示无匹配结果，不能退化为六类全部。
  */
 export type FileListParams = FileListParamsBase &
-  (
-    | { fileType?: undefined; fileTypes?: readonly FileType[]; groupId?: never }
-    | { fileType: FileType; fileTypes?: never; groupId?: string | null }
-  );
+  ({ fileType?: undefined; fileTypes?: readonly FileType[] } | { fileType: FileType; fileTypes?: never });
 
 export interface FilePagination {
   page: number;
@@ -70,7 +72,8 @@ export interface FileListResult {
 
 export interface FileUploadOptions {
   file: File;
-  fileType: FileType;
+  /** adapter/后端识别真实类型并在持久化前校验允许集合。 */
+  fileTypes: readonly FileType[];
   groupId: string | null;
   onProgress?: (percent: number) => void;
   signal?: AbortSignal;
@@ -78,13 +81,18 @@ export interface FileUploadOptions {
 
 export interface FileBrowseCapability {
   list(params: FileListParams): Promise<FileListResult>;
-  /** 分组只能按一个真实文件类型查询。 */
-  listGroups?(fileType: FileType): Promise<FileGroup[]>;
+  /** 返回跨类型的真实分组，不包含“我的上传”等业务虚拟筛选。 */
+  listGroups?(): Promise<FileGroup[]>;
 }
 
 export interface FileUploadCapability {
   upload(options: FileUploadOptions): Promise<FileItem>;
 }
+
+/** Adapter 提供的受控上传拒绝信息；不直接向用户展示任意异常 message。 */
+export type FileUploadRejection =
+  | { code: 'unsupported-file-type' }
+  | { code: 'unsupported-file-format'; allowedFormats?: readonly string[] };
 
 /** AFilePicker only requires browsing; upload remains an optional capability. */
 export type FilePickerAdapter = FileBrowseCapability & Partial<FileUploadCapability>;

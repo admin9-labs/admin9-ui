@@ -681,8 +681,8 @@
           <div class="field-label">设计稿图片上传</div>
           <AFileUploader
             :service="fileUploaderService"
-            file-type="image"
-            group-id="image-design"
+            :file-types="['image']"
+            group-id="campaign"
             :limit="5"
             :max-file-size="5242880"
             data-testid="standalone-file-uploader"
@@ -728,6 +728,7 @@
               v-model="filePickerValue"
               :service="filePickerService"
               :file-types="filePickerTypes"
+              default-view="list"
               :page-size="6"
               :limit="4"
               :multiple="filePickerMultiple"

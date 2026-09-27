@@ -6,6 +6,8 @@
 
 本文记录 `AFileUploader` 成为独立公开组件时的关键取舍，不是当前 API 定义。现行契约以 [AFileUploader](../components/file-uploader.md)、[AFilePicker](../components/file-picker.md) 和源码为准。
 
+> 后续调整：当前版本已将类型所属分组与单类型上传队列替换为统一分组及允许类型集合。下文保留首次实施时的决策背景，升级以 [文件服务迁移](../components/file-service-migration.md) 为准。
+
 ## 背景
 
 `AFilePicker` 原本同时负责文件浏览、选择和上传队列，职责偏重，也无法让其他应用页面复用上传交互。需要将上传事务抽成独立能力，同时保持 Picker 的选择确认语义。

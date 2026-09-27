@@ -1,15 +1,35 @@
 <script setup lang="ts">
-  import { computed } from 'vue';
+  import { computed, onBeforeUnmount, ref, watch } from 'vue';
   import { useI18n } from 'vue-i18n';
+  import FileImagePreview from './file-image-preview.vue';
   import safeFileUrl from './file-url';
+  import formatFileSize from './file-size';
   import type { FileItem } from '../services/types';
 
   const props = defineProps<{
     item: FileItem;
     available: boolean;
     statusLabel: string;
+    previewEnabled: boolean;
   }>();
 
+  const emit = defineEmits<{
+    (e: 'previewOpen'): void;
+    (e: 'previewClose', trigger?: HTMLElement): void;
+  }>();
+  const previewVisible = ref(false);
+  let previewTrigger: HTMLElement | undefined;
+  const openPreview = (event: MouseEvent) => {
+    if (!props.previewEnabled) return;
+    previewTrigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined;
+    previewVisible.value = true;
+    emit('previewOpen');
+  };
+  const closePreview = () => {
+    if (!previewVisible.value) return;
+    previewVisible.value = false;
+    emit('previewClose', previewTrigger);
+  };
   const url = computed(() => safeFileUrl(props.item.url));
   const thumbnail = computed(() => safeFileUrl(props.item.thumbnail));
   const { t } = useI18n();
@@ -32,11 +52,10 @@
   const sizeLabel = computed(() => {
     const { size } = props.item;
     if (size === undefined || !Number.isFinite(size) || size < 0) return '';
-    if (size < 1024) return `${size} B`;
-    if (size < 1024 ** 2) return `${(size / 1024).toFixed(size < 10 * 1024 ? 1 : 0)} KB`;
-    if (size < 1024 ** 3) return `${(size / 1024 ** 2).toFixed(size < 10 * 1024 ** 2 ? 1 : 0)} MB`;
-    return `${(size / 1024 ** 3).toFixed(1)} GB`;
+    return formatFileSize(size);
   });
+  watch(() => [url.value, props.available, props.item.id, props.previewEnabled], closePreview);
+  onBeforeUnmount(closePreview);
   const meta = computed(() => [extension.value, sizeLabel.value, durationLabel.value].filter(Boolean).join(' · '));
 </script>
 
@@ -51,7 +70,8 @@
       <a-image
         v-if="item.type === 'image' && (thumbnail || url)"
         :src="thumbnail || url"
-        :preview="available && Boolean(url)"
+        :alt="item.name"
+        :preview="false"
         width="100%"
         height="100%"
         fit="cover"
@@ -60,6 +80,7 @@
       <a-image
         v-else-if="item.type === 'video' && thumbnail"
         :src="thumbnail"
+        :alt="item.name"
         :preview="false"
         width="100%"
         height="100%"
@@ -77,38 +98,49 @@
       <span v-if="durationLabel && (item.type === 'video' || item.type === 'audio')" class="a9-file-item__duration">
         {{ durationLabel }}
       </span>
-      <span v-if="!available" class="a9-file-item__status">{{ statusLabel }}</span>
     </div>
     <div class="a9-file-item__details">
       <span class="a9-file-item__name" :title="item.name">{{ item.name }}</span>
-      <span v-if="meta" class="a9-file-item__meta">{{ meta }}</span>
+      <span v-if="meta" class="a9-file-item__meta" :title="meta">{{ meta }}</span>
+      <span v-if="!available" class="a9-file-item__status" :class="{ 'is-pending': item.status === 'pending' }">{{
+        statusLabel
+      }}</span>
     </div>
-    <a
-      v-if="available && url"
-      class="a9-file-item__open"
-      :href="url"
-      target="_blank"
-      rel="noopener noreferrer"
-      :aria-label="t('admin9Ui.filePicker.openItem', { name: item.name })"
-      @click.stop
-    >
-      <icon-launch />
-    </a>
+    <div v-if="available && url" class="a9-file-item__actions">
+      <button
+        v-if="item.type === 'image'"
+        type="button"
+        class="a9-file-item__open"
+        :aria-label="t('admin9Ui.filePicker.previewItem', { name: item.name })"
+        @click.stop="openPreview"
+        >{{ t('admin9Ui.filePicker.preview') }}</button
+      >
+      <a
+        v-else
+        class="a9-file-item__open"
+        :href="url"
+        target="_blank"
+        rel="noopener noreferrer"
+        :aria-label="t('admin9Ui.filePicker.openItem', { name: item.name })"
+        @click.stop
+        >{{ t('admin9Ui.filePicker.open') }}</a
+      >
+    </div>
+    <FileImagePreview v-if="previewVisible && url" :src="url" :name="item.name" @close="closePreview" />
   </div>
 </template>
 
 <style lang="less" scoped>
   .a9-file-item {
     position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     min-width: 0;
-
-    &.is-unavailable {
-      opacity: 0.68;
-    }
 
     &__visual {
       position: relative;
       display: flex;
+      grid-column: 1 / -1;
       align-items: center;
       justify-content: center;
       width: 100%;
@@ -116,7 +148,7 @@
       overflow: hidden;
       color: var(--color-text-3);
       background: var(--color-fill-2);
-      border: 1px solid var(--color-neutral-3);
+      border: 0;
       border-radius: 4px;
     }
 
@@ -125,44 +157,37 @@
       font-size: 42px;
     }
 
-    &__duration,
-    &__status {
+    &__duration {
       position: absolute;
-      z-index: 1;
-      max-width: calc(100% - 12px);
+      right: 6px;
+      bottom: 6px;
       padding: 0 6px;
-      overflow: hidden;
       color: #fff;
       font-size: 12px;
       line-height: 20px;
-      white-space: nowrap;
-      text-overflow: ellipsis;
-      background: rgb(0 0 0 / 68%);
+      background: rgb(0 0 0 / 75%);
       border-radius: 3px;
     }
 
-    &__duration {
-      right: 6px;
-      bottom: 6px;
-    }
-
     &__status {
-      top: 6px;
-      right: 6px;
-      background: rgb(var(--danger-6));
+      grid-column: 1 / -1;
+      color: rgb(var(--danger-7));
+      font-size: 12px;
+      line-height: 20px;
+
+      &.is-pending {
+        color: var(--color-text-2);
+      }
     }
 
     &__details {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      justify-content: space-between;
-      min-width: 0;
-      padding-top: 8px;
+      display: contents;
     }
 
     &__name {
+      grid-column: 1 / -1;
       min-width: 0;
+      margin-top: 8px;
       overflow: hidden;
       color: var(--color-text-1);
       font-size: 13px;
@@ -174,9 +199,9 @@
     &__meta {
       flex: 0 1 auto;
       min-width: 0;
-      max-width: 55%;
+      max-width: 100%;
       overflow: hidden;
-      color: var(--color-text-3);
+      color: var(--color-text-2);
       font-size: 12px;
       line-height: 20px;
       white-space: nowrap;
@@ -184,22 +209,43 @@
       text-overflow: ellipsis;
     }
 
+    &__actions {
+      display: flex;
+      flex: none;
+      align-items: center;
+      justify-content: flex-end;
+      min-width: 36px;
+      padding-left: 8px;
+    }
+
     &__open {
-      position: absolute;
-      top: 6px;
-      left: 6px;
       display: inline-flex;
       align-items: center;
-      justify-content: center;
-      width: 28px;
-      height: 28px;
-      color: #fff;
-      background: rgb(0 0 0 / 68%);
-      border-radius: 4px;
+      min-height: 24px;
+      padding: 0;
+      color: rgb(var(--primary-7));
+      font: inherit;
+      font-size: 12px;
+      line-height: 20px;
+      white-space: nowrap;
+      text-decoration: none;
+      background: transparent;
+      border: 0;
+      border-radius: 2px;
+      cursor: pointer;
+
+      &:visited {
+        color: rgb(var(--primary-7));
+      }
+
+      &:hover {
+        color: rgb(var(--primary-8));
+        text-decoration: underline;
+      }
 
       &:focus-visible {
         outline: 2px solid rgb(var(--primary-6));
-        outline-offset: 1px;
+        outline-offset: 2px;
       }
     }
   }

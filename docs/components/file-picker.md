@@ -17,7 +17,7 @@
   const attachments = ref<FileItem[]>([]);
   const fileService: FilePickerAdapter = {
     list: (params) => api.listFiles(params),
-    listGroups: (fileType) => api.listFileGroups(fileType),
+    listGroups: () => api.listFileGroups(),
     upload: (options) => api.uploadFile(options),
   };
 </script>
@@ -89,26 +89,36 @@ TypeScript 声明使用 `selectionChange`、`visibleChange`、`uploadSuccess`、
 - `clear(): void`：清空已提交值；弹窗关闭时静默同步草稿，弹窗打开时若草稿真实变化则同时发出一次 `selection-change`，且不会关闭弹窗；
 - `refresh(): Promise<void>`：刷新当前列表与适用分组。
 
-## 查询契约
+## 分组与查询契约
 
-`FileListParams` 的聚合与具体类型分支不能混用：
+左侧展示跨类型分组，支持一级分组与二级子分组，搜索框前通过下拉框筛选文件类型。`listGroups()` 不接受类型参数；分组可同时包含图片、视频、文档等，`count` 是全类型总数，选择器不展示该数量以免与筛选结果混淆。没有 `listGroups` 时隐藏左栏。业务虚拟筛选（我的上传、收藏等）不能当作真实分组。
 
 ```ts
-type FileListParams = FileListParamsBase &
-  (
-    | { fileType?: undefined; fileTypes?: readonly FileType[]; groupId?: never }
-    | { fileType: FileType; fileTypes?: never; groupId?: string | null }
-  );
+type FileListParams = {
+  page: number;
+  pageSize: number;
+  keyword?: string;
+  groupId?: string | null;
+} & (
+  | { fileType?: undefined; fileTypes?: readonly FileType[] }
+  | { fileType: FileType; fileTypes?: never }
+);
 ```
 
-- 仅允许一种类型时，Picker 直接查询 `{ fileType }`；如果 adapter 实现 `listGroups`，该真实类型可继续按分组浏览。
-- 允许 2-5 种类型时，“全部允许类型”查询显式传 `fileTypes: normalizedAllowedTypes`。
-- 六种类型全部允许时，聚合查询省略 `fileTypes`。
-- 空数组零请求、零匹配，绝不能退化成全部。
-- 聚合查询禁止 `groupId`；具体类型查询禁止 `fileTypes`。
-- adapter 必须先在完整数据集上按类型集合、关键词和分组筛选，再分页并返回准确 `pagination.total`。Picker 不过滤当前页冒充准确总数。
+- `listGroups()` 仍返回平面数组；一级分组的 `parentId` 省略或为 `null`，二级分组的 `parentId` 指向同一数组中的一级分组。父、子分组都可选择；父分组默认展开，首次选择父分组名称时同时展开子分组，再次点击已选父分组名称切换展开/收起；文件夹图标与实际展开状态一致，桌面也可通过图标独立切换，窄屏显示“父分组 / 子分组”完整路径。服务必须返回完整两级关系，不支持循环或更深层级。
+- `groupId` 缺省表示全部分组，`null` 表示仅未分组，字符串表示指定分组的直属文件，不汇总其子分组；均可叠加类型和搜索。上传进入当前选中的实际分组 ID。
+- 一种允许类型直接查询 `fileType`；2–5 种类型的“全部”查询携带 `fileTypes`；六类全部允许时省略集合。
+- `fileType` 与 `fileTypes` 互斥。空数组零请求、零匹配，绝不能退化成全部。
+- adapter 必须先在完整数据集上按类型集合、关键词和分组筛选，再分页并返回准确总数。不能过滤当前页冒充正确分页。
+- 切换类型保留分组，切换分组保留类型和搜索；筛选或 pageSize 变化回到第一页。类型切换不重新请求分组，迟到列表响应不能覆盖当前筛选。
 
-类型、分组、搜索和 pageSize 变化都会回到第 1 页。较早请求的迟到结果不会覆盖较新的列表、分组或上传结果。
+## 展示与选择
+
+卡片和行的非操作区域用于选择，图片预览和文件打开使用独立入口。文件名与元信息分行，处理状态不遮挡选择控件。底部仅以纯文本展示已选数量及上限，不提供折叠清单或已选面板；取消选择通过文件卡片或选择控件完成。正常选满只显示数量；再次尝试新增时显示约 3 秒的局部提示，不改变底部高度。重复尝试延长提示，取消选择、清空、关闭或更改上限会清除提示。
+
+默认单选无值时显示选择按钮，有值时仅显示文件名、替换和一个移除入口；多选保留选择按钮和逐项移除，两项及以上提供文字“清空选择”。移除只更新字段，不删除文件库资产，遵守 `allowClear`、disabled 和 readonly。自定义 `trigger` 插槽完整替换该区域，不重复展示默认清单。
+
+原字段和草稿都为空时禁止确认；空草稿仍可确认清空已有字段或显式清理非法外部值，界面在此场景提示清空结果。搜索空态、类型无匹配和分组空态分别显示；单页、空结果和加载失败不显示分页。初始视图由 `defaultView` 决定，之后保留用户在当前实例选择的视图。每次重新打开时，分组、类型、关键词和页码统一恢复初始状态，草稿由已提交值重建。
 
 ## 选择与事务边界
 
@@ -124,24 +134,36 @@ Picker value 只表达可以交付给业务字段的文件：
 
 ## 上传、展示与可访问性
 
-- 上传始终解析为一个真实 `FileType`；聚合“全部”永不把 `undefined` 或 `all` 传给 `upload`。
-- 聚合视图同样可以选择并上传文件：目标类型依次使用最近选择的具体类型和允许类型中的第一项，目标分组为 `null`；提示文字会显示实际上传目标。
-- 本地多选文件由 `AFileUploader` 分项调用现有单文件 `upload` capability；Picker 不再维护上传请求、进度、取消或重试状态。
-- 上传完成后只刷新当前具体类型和分组的列表，不自动选择新文件，也不改变已提交值；用户需要在刷新后的列表中显式选择并确认。
-- 上传队列在 Picker 弹窗内连续操作。队列完成后刷新当前具体类型和分组；关闭 Picker 会取消活动上传并屏蔽迟到回调。
-- `accept` 只提供原生选择提示，不决定 `FileItem.type`。adapter/后端必须验证真实 MIME、扩展名、内容、大小、恶意文件、身份、资源归属和授权。
-- 图片使用可用 URL/缩略图预览；视频/音频显示类型和时长；PDF、Office、压缩包与其他文件显示图标和元数据，不承诺在线 Office 预览。
+- 上传向 adapter 传递字段的允许类型集合，不沿用当前或上次浏览的类型。真实类型由 adapter/后端识别并在持久化前校验，组件再次校验返回项。
+- 指定分组内上传到该分组；全部文件与未分组视图上传到未分组。
+- 上传只刷新当前列表，不自动选中，不写回字段。组件显示“已上传 N 个文件，请勾选后确认”；有类型/搜索筛选时提供“清除筛选”，不会主动改动浏览范围。
+- 成功提示通过已有 Uploader `result` 插槽展示在工具栏下方的独立区域，不挤动工具栏；结果提示保留到主动关闭、开始下一批或关闭弹窗。上传队列完全成功后仍自动收起。
+- 上传期间可搜索、切换类型，分组切换暂时禁用。关闭弹窗或服务/允许类型约束变化时取消旧上传并屏蔽迟到回调。
+- `accept` 是原生选择提示，不是类型判断或安全保证；后端负责文件内容、权限和归属验证。
+- 图片使用可用 URL/缩略图；视频/音频显示类型和时长，其他文件显示图标和元数据，不承诺在线 Office 预览。
 - 文件结果使用语义分组，每张卡片/行使用真正的 checkbox 或 radio 暴露选中与禁用状态，支持 Tab、Space 和 Enter；打开链接是独立命令，点击不会切换选择。
-- 文件名、extension 等极长元数据在网格/列表中省略；`720px` 以下类型导航横向滚动、工具栏和 footer 换行，不造成页面横向溢出。
+- 文件名、extension 等极长元数据在网格/列表中省略；`720px` 及以下使用分组下拉，类型下拉框与搜索框同行；底部仅显示已选数量、取消和确认，多页分页另起一行。大于 `720px` 使用分组侧栏，不造成页面横向溢出。
 
 `canUpload` 只是界面能力开关，不代表后端授权。使用本组件库的应用仍需负责 API、认证、状态、路由和业务权限。
 
 ## 表单与受控值
 
-`disabled`、`readonly` 默认 false；任一为 true 或外层 Form 禁用时不能打开、清空或提交。`size?: Size` 控制触发按钮，未设置时继承 Form／Arco 配置；不压缩文件浏览工作区。`allowClear` 默认 true，控制外层清空按钮。class/style 及其他原生属性落在组件根节点，不是弹层属性。
+`disabled`、`readonly` 默认 false；任一为 true 或外层 Form 禁用时不能打开、清空或提交。`size?: Size` 控制触发按钮，未设置时继承 Form／Arco 配置；不压缩文件浏览工作区。`allowClear` 默认 true，控制默认字段的移除与批量清空。自定义触发器继续保留原有外层清空入口。class/style 及其他原生属性落在组件根节点，不是弹层属性。
 
 回显仅更新归一化后的展示，不触发 update/change/selection-change。弹层草稿与外层字段隔离，只有正式提交才触发 change 校验。单选清空为 undefined，多选清空为 []。`confirm` 始终为数组，适合不需要保存选择值的编辑器插入命令。
 
 导出 `AFilePickerProps`、`AFilePickerExposed`、`FilePickerValue`、`FilePickerView`。defaultView 只决定初始视图。文件预览、下载和选中值只接受 HTTP(S)、相对路径和 blob URL；不渲染可执行协议或 data 文档。
 
 自定义触发区域有多个操作控件时，关闭弹窗优先恢复到本次实际触发控件；控件失效时回退到区域内可用入口。
+
+升级旧文件服务请参阅 [统一分组与上传类型集合迁移](./file-service-migration.md)。
+
+## 文件条目的操作与状态
+
+默认网格将预览/打开放在元信息右侧，列表放在独立操作列；不再覆盖缩略图。图片使用站内预览，其他类型打开安全链接。仅纯精细指针且支持悬停的环境按 hover/focus-within 显示次要操作；触屏、粗指针和混合输入环境常驻。操作区预留空间，Tab 可到达透明的操作并立即显示。
+
+原生 checkbox/radio 提供普通、悬停、聚焦、选中和禁用状态；禁用只阻止选择，不把名称与原因整体淡化。默认字段采用紧凑文件行，名称可收缩，操作不收缩；自定义 trigger/item 插槽继续控制其内容。
+
+桌面与窄屏的已选数量均为状态文本，不可展开、不占用 Tab 焦点；数量变化通过状态区域播报。
+
+图片预览保留 Arco 缩放、旋转和鼠标行为，由内部包装补充独立控件语义与键盘操作。打开聚焦关闭按钮；Tab/Shift+Tab 循环，Enter/Space 激活当前控件，Escape 只关闭预览。关闭后返回原按钮；按钮失效时回到卡片选择控件、结果区域或搜索入口。Picker 同时关闭时交给外部触发器恢复，不抢回焦点。
