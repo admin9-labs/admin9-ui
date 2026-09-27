@@ -197,7 +197,7 @@ A01–A21 已完成本库内整改；官方差异与可选增强按前文决定�
 | 类别    | API           | 决定                                          |
 | ------- | ------------- | --------------------------------------------- |
 | Props   | `service`     | 保持：职责清晰，未发现需要改变的契约          |
-| Props   | `fileType`    | 保持：职责清晰，未发现需要改变的契约          |
+| Props   | `fileTypes`   | 调整：允许类型集合，实际类型由 adapter 识别   |
 | Props   | `groupId`     | 保持：职责清晰，未发现需要改变的契约          |
 | Props   | `accept`      | 保持：职责清晰，未发现需要改变的契约          |
 | Props   | `multiple`    | 保持：职责清晰，未发现需要改变的契约          |
@@ -212,6 +212,7 @@ A01–A21 已完成本库内整改；官方差异与可选增强按前文决定�
 | Events  | `complete`    | 保持：职责清晰，未发现需要改变的契约          |
 | Events  | `tasksChange` | 保持：职责清晰，未发现需要改变的契约          |
 | Slots   | `trigger`     | 保持：职责清晰，未发现需要改变的契约          |
+| Slots   | `result`      | 补充：上传成功摘要及关闭操作                  |
 | Slots   | `task`        | 保持：职责清晰，未发现需要改变的契约          |
 | Exposed | `upload`      | 保持：职责清晰，未发现需要改变的契约          |
 | Exposed | `cancel`      | 保持：职责清晰，未发现需要改变的契约          |
@@ -392,8 +393,8 @@ A01–A21 已完成本库内整改；官方差异与可选增强按前文决定�
 ### 支撑契约与透传
 
 - `Admin9UIPluginOptions.fileService`、`FileBrowseCapability.list/listGroups`、`FileUploadCapability.upload`、`FilePickerAdapter`：保持按用途拆分和使用点优先，无应用网络逻辑；上传失败、取消及结果验证由 UI 状态机处理。
-- `FileItem` 的 id/name/type/groupId/url/path/size/mime/extension/thumbnail/duration/createdAt/status：保持后端无关结构。`FileListParams` 的 page/pageSize/keyword 与聚合 fileTypes／具体 fileType/groupId 判别联合保持；`FileListResult.list/pagination` 和 page/pageSize/total/hasMore 保持服务端准确分页契约。
-- `FileUploadOptions.file/fileType/groupId/onProgress/signal`、任务与批次结构保持。`response` 是原始 adapter 响应，`success` 是验证通过，二者不同职责；不删除 response。Form 禁用不强制取消已发出的上传，仍允许主动取消释放资源。
+- `FileItem` 的 id/name/type/groupId/url/path/size/mime/extension/thumbnail/duration/createdAt/status：保持后端无关结构。`FileGroup.parentId` 可表达二级分组；`FileListParams` 的 page/pageSize/keyword/groupId 可与聚合 `fileTypes` 或具体 `fileType` 组合；`FileListResult.list/pagination` 和 page/pageSize/total/hasMore 保持服务端准确分页契约。
+- `FileUploadOptions.file/fileTypes/groupId/onProgress/signal`、任务与批次结构保持。`fileTypes` 是允许集合，实际类型由 adapter／后端识别；`response` 是原始 adapter 响应，`success` 是验证通过，二者不同职责；不删除 response。Form 禁用不强制取消已发出的上传，仍允许主动取消释放资源。
 - `CoordinateValue` 与 Selection 的 source/title/address、地图建议类型保持；编辑器格式、媒体错误和上传状态类型保持；聊天消息及状态/slot 类型保持。新增 Props/Exposed 类型从组件入口导出，用真实 tarball 类型夹具验证。
 - `ProTableAction`/`ProTableActionSlot` 取代泛化 Action/Slot；`Admin9UIOptions` 删除。`ProTablePermission` 只是调用方谓词，不引入权限仓库或鉴权机制。
 - locale 的 messages/localePrefix/zhCN/enUS、根入口与 locale 子路径、样式入口保持。只暴露组件支撑类型，不导出内部 URL 函数、loading/visible hooks。
