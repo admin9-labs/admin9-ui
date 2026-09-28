@@ -6,6 +6,11 @@ import type {
   FileUploadFailureReason,
   FileUploadOptions,
   FileBrowseCapability,
+  FileGroupCreateOptions,
+  FileGroupCreateCapability,
+  FileDeleteCapability,
+  FileMoveCapability,
+  FileMoveOptions,
   AIconPickerProps,
   AIconPickerExposed,
   ACoordinatePickerProps,
@@ -40,6 +45,11 @@ export const icon: AIconPickerProps = { size: 'mini', readonly: true };
 export const coordinate: ACoordinatePickerProps = { apiKey: '', size: 'mini', allowSearch: false };
 export const files: AFilePickerProps = { size: 'mini', disabled: true, readonly: true, defaultView: 'list', allowClear: false };
 export const upload: AFileUploaderProps = { limit: 2, maxFileSize: 100, size: 'mini' };
+export const newGroup: FileGroupCreateOptions = { name: 'Child', parentId: 'root' };
+export const groupCreation: FileGroupCreateCapability = { createGroup: async (input) => ({ id: 'created', ...input }) };
+export const fileDeletion: FileDeleteCapability = { deleteFiles: async (ids) => ids };
+export const fileMove: FileMoveCapability = { moveFiles: async ({ ids }) => ids };
+export const moveOptions: FileMoveOptions = { ids: ['file'], groupId: null };
 export const composer: AChatComposerProps = {
   modelValue: '',
   size: 'mini',
@@ -97,6 +107,7 @@ export function checkConcreteEditor(instance: InstanceType<typeof import('@admin
 export const imagePickerDisplayMode: ImagePickerDisplayMode = 'banner';
 export const imagePickerFit: ImagePickerFit = 'cover';
 export const imagePickerProps: AImagePickerProps = {
+  canCreateGroup: true,
   multiple: true,
   limit: 2,
   showFileList: false,

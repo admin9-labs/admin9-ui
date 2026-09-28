@@ -101,6 +101,27 @@ describe('AFileUploader', () => {
     expect(result.failed[0].reason).toBe('invalid-result');
   });
 
+  it('keeps size/count constraints but never renders the native accept value as copy', () => {
+    mountUploader({}, { accept: 'image/*', limit: 2, maxFileSize: 1024 });
+    const text = document.querySelector('.a9-file-uploader__constraints')?.textContent;
+    expect(text).toContain('Up to 2 files per batch');
+    expect(text).toContain('Up to 1 KB per file');
+    expect(text).not.toContain('image/*');
+  });
+
+  it('omits zero counts and includes cancelled tasks in the queue summary', async () => {
+    const pending = deferred<FileItem>();
+    const uploader = mountUploader({ upload: () => pending.promise });
+    const batch = uploader.upload([new File(['one'], 'one.png')]);
+    await flush();
+    expect(document.querySelector('.a9-file-uploader__summary')?.textContent).toBe('1 uploading');
+    uploader.cancel(uploader.tasks[0].id);
+    await batch;
+    await flush();
+    expect(document.querySelector('.a9-file-uploader__summary')?.textContent).toBe('1 cancelled');
+    pending.resolve(validItem('ignored', 'one.png'));
+  });
+
   it('rejects executable URLs returned by an upload adapter', async () => {
     // eslint-disable-next-line no-script-url -- Adversarial adapter result must be rejected.
     const uploader = mountUploader({ upload: async () => validItem('unsafe', 'unsafe.png', { url: 'javascript:alert(1)' }) });

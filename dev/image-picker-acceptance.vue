@@ -17,6 +17,9 @@
   const disabled = ref(false);
   const readonly = ref(false);
   const canUpload = ref(true);
+  const canCreateGroup = ref(true);
+  const canDeleteFiles = ref(true);
+  const canMoveFiles = ref(true);
   const showFileList = ref(true);
   const displayMode = ref<ImagePickerDisplayMode>('square');
   const fit = ref<ImagePickerFit>('contain');
@@ -45,6 +48,9 @@
       <label><input v-model="disabled" type="checkbox" /> Form disabled</label>
       <label><input v-model="readonly" type="checkbox" /> Readonly</label>
       <label><input v-model="canUpload" type="checkbox" /> 弹窗上传</label>
+      <label><input v-model="canCreateGroup" type="checkbox" /> 新增分组</label>
+      <label><input v-model="canDeleteFiles" type="checkbox" /> 删除素材</label>
+      <label><input v-model="canMoveFiles" type="checkbox" /> 移动素材</label>
       <label><input v-model="showFileList" type="checkbox" /> 显示图片列表</label>
       <label
         >展示模式
@@ -94,6 +100,9 @@
             :limit="2"
             :service="service"
             :can-upload="canUpload"
+            :can-create-group="canCreateGroup"
+            :can-delete-files="canDeleteFiles"
+            :can-move-files="canMoveFiles"
             :readonly="readonly"
             :show-file-list="showFileList"
             :display-mode="displayMode"

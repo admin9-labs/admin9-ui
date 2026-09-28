@@ -46,6 +46,11 @@ export type {
   FileUploadRejection,
   FileBrowseCapability,
   FileUploadCapability,
+  FileGroupCreateOptions,
+  FileGroupCreateCapability,
+  FileDeleteCapability,
+  FileMoveOptions,
+  FileMoveCapability,
   FilePickerAdapter,
 } from './services/types';
 

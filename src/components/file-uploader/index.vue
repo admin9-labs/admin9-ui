@@ -88,7 +88,6 @@
     [
       props.limit > 0 ? t('admin9Ui.fileUploader.limitHint', { count: props.limit }) : '',
       props.maxFileSize > 0 ? t('admin9Ui.fileUploader.sizeHint', { size: formatFileSize(props.maxFileSize) }) : '',
-      props.accept ? t('admin9Ui.fileUploader.acceptHint', { accept: props.accept }) : '',
     ]
       .filter(Boolean)
       .join(' · ')
@@ -98,7 +97,11 @@
     const succeeded = internalTasks.value.filter((task) => task.status === 'succeeded').length;
     const failed = internalTasks.value.filter((task) => task.status === 'failed').length;
     const active = internalTasks.value.filter((task) => task.status === 'pending' || task.status === 'uploading').length;
-    return t('admin9Ui.fileUploader.summary', { succeeded, failed, active });
+    const cancelled = internalTasks.value.filter((task) => task.status === 'cancelled').length;
+    return Object.entries({ active, succeeded, failed, cancelled })
+      .filter(([, count]) => count > 0)
+      .map(([status, count]) => t(`admin9Ui.fileUploader.summaryParts.${status}`, { count }))
+      .join(' · ');
   });
 
   const snapshotTask = (task: InternalTask): FileUploadTask => ({
@@ -482,7 +485,7 @@
           </a-button>
         </a-tooltip>
       </header>
-      <div class="a9-file-uploader__summary" aria-live="polite">{{ summary }}</div>
+      <div v-if="summary" class="a9-file-uploader__summary" aria-live="polite">{{ summary }}</div>
       <ul class="a9-file-uploader__tasks">
         <li v-for="task in tasks" :key="task.id" class="a9-file-uploader__task" :data-upload-task-id="task.id">
           <slot name="task" :task="task">

@@ -72,6 +72,9 @@
       canUploadVideo?: boolean;
       canUploadAudio?: boolean;
       canUploadAttachment?: boolean;
+      canCreateGroup?: boolean;
+      canDeleteFiles?: boolean;
+      canMoveFiles?: boolean;
       defaultImageDisplay?: TiptapImageDisplay;
     }>(),
     {
@@ -87,6 +90,9 @@
       canUploadVideo: false,
       canUploadAudio: false,
       canUploadAttachment: false,
+      canCreateGroup: false,
+      canDeleteFiles: false,
+      canMoveFiles: false,
       defaultImageDisplay: 'block',
     }
   );
@@ -1267,6 +1273,9 @@
           :file-types="['document', 'archive', 'other']"
           multiple
           :can-upload="props.canUploadAttachment"
+          :can-create-group="props.canCreateGroup"
+          :can-delete-files="props.canDeleteFiles"
+          :can-move-files="props.canMoveFiles"
           @confirm="insertAttachments"
         >
           <template #trigger="{ open }">
@@ -1297,6 +1306,9 @@
             :file-types="['image']"
             :service="resolvedFileService"
             :can-upload="canUploadImage"
+            :can-create-group="props.canCreateGroup"
+            :can-delete-files="props.canDeleteFiles"
+            :can-move-files="props.canMoveFiles"
             @confirm="insertImagesFromPicker"
             @visible-change="onMediaPickerVisibleChange"
           >
@@ -1327,6 +1339,9 @@
             :file-types="['video']"
             :service="resolvedFileService"
             :can-upload="canUploadVideo"
+            :can-create-group="props.canCreateGroup"
+            :can-delete-files="props.canDeleteFiles"
+            :can-move-files="props.canMoveFiles"
             @confirm="insertVideosFromPicker"
             @visible-change="onMediaPickerVisibleChange"
           >
@@ -1357,6 +1372,9 @@
             :file-types="['audio']"
             :service="resolvedFileService"
             :can-upload="canUploadAudio"
+            :can-create-group="props.canCreateGroup"
+            :can-delete-files="props.canDeleteFiles"
+            :can-move-files="props.canMoveFiles"
             @confirm="insertAudiosFromPicker"
             @visible-change="onMediaPickerVisibleChange"
           >
@@ -1758,6 +1776,9 @@
             v-if="resolvedFileService"
             v-model="replacementPickerValue"
             class="a9-tiptap-editor__media-picker a9-tiptap-editor__replacement-picker"
+            :can-create-group="props.canCreateGroup"
+            :can-delete-files="props.canDeleteFiles"
+            :can-move-files="props.canMoveFiles"
             data-media-replace
             :file-types="[
               selectedMedia.type === 'blockImage' || selectedMedia.type === 'inlineImage' ? 'image' : selectedMedia.type,

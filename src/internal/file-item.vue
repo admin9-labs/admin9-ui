@@ -1,7 +1,6 @@
 <script setup lang="ts">
-  import { computed, onBeforeUnmount, ref, watch } from 'vue';
+  import { computed } from 'vue';
   import { useI18n } from 'vue-i18n';
-  import FileImagePreview from './file-image-preview.vue';
   import safeFileUrl from './file-url';
   import formatFileSize from './file-size';
   import type { FileItem } from '../services/types';
@@ -11,24 +10,15 @@
     available: boolean;
     statusLabel: string;
     previewEnabled: boolean;
+    view?: 'grid' | 'list';
   }>();
 
   const emit = defineEmits<{
-    (e: 'previewOpen'): void;
-    (e: 'previewClose', trigger?: HTMLElement): void;
+    (e: 'previewOpen', trigger?: HTMLElement): void;
   }>();
-  const previewVisible = ref(false);
-  let previewTrigger: HTMLElement | undefined;
   const openPreview = (event: MouseEvent) => {
     if (!props.previewEnabled) return;
-    previewTrigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined;
-    previewVisible.value = true;
-    emit('previewOpen');
-  };
-  const closePreview = () => {
-    if (!previewVisible.value) return;
-    previewVisible.value = false;
-    emit('previewClose', previewTrigger);
+    emit('previewOpen', event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined);
   };
   const url = computed(() => safeFileUrl(props.item.url));
   const thumbnail = computed(() => safeFileUrl(props.item.thumbnail));
@@ -54,18 +44,17 @@
     if (size === undefined || !Number.isFinite(size) || size < 0) return '';
     return formatFileSize(size);
   });
-  watch(() => [url.value, props.available, props.item.id, props.previewEnabled], closePreview);
-  onBeforeUnmount(closePreview);
   const meta = computed(() => [extension.value, sizeLabel.value, durationLabel.value].filter(Boolean).join(' · '));
 </script>
 
 <template>
   <div
     class="a9-file-item"
-    :class="[`is-${item.type}`, { 'is-unavailable': !available }]"
+    :class="[`is-${item.type}`, { 'is-unavailable': !available, 'is-list': view === 'list' }]"
     :data-file-type="item.type"
     :data-available="String(available)"
   >
+    <div v-if="view === 'list' && $slots.selection" class="a9-file-item__selection"><slot name="selection" /></div>
     <div class="a9-file-item__visual">
       <a-image
         v-if="item.type === 'image' && (thumbnail || url)"
@@ -100,7 +89,10 @@
       </span>
     </div>
     <div class="a9-file-item__details">
-      <span class="a9-file-item__name" :title="item.name">{{ item.name }}</span>
+      <div class="a9-file-item__heading">
+        <slot v-if="view !== 'list'" name="selection" />
+        <span class="a9-file-item__name" :title="item.name">{{ item.name }}</span>
+      </div>
       <span v-if="meta" class="a9-file-item__meta" :title="meta">{{ meta }}</span>
       <span v-if="!available" class="a9-file-item__status" :class="{ 'is-pending': item.status === 'pending' }">{{
         statusLabel
@@ -126,7 +118,6 @@
         >{{ t('admin9Ui.filePicker.open') }}</a
       >
     </div>
-    <FileImagePreview v-if="previewVisible && url" :src="url" :name="item.name" @close="closePreview" />
   </div>
 </template>
 
@@ -184,10 +175,17 @@
       display: contents;
     }
 
-    &__name {
+    &__heading {
+      display: flex;
       grid-column: 1 / -1;
+      gap: 8px;
+      align-items: center;
       min-width: 0;
       margin-top: 8px;
+    }
+
+    &__name {
+      min-width: 0;
       overflow: hidden;
       color: var(--color-text-1);
       font-size: 13px;

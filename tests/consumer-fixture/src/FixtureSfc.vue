@@ -68,7 +68,16 @@
 
 <template>
   <section data-testid="host-baseline-sfc">
-    <AImagePicker ref="imagePicker" v-model="image" :service="filePickerService" display-mode="landscape" fit="cover" />
+    <AImagePicker
+      ref="imagePicker"
+      v-model="image"
+      :service="filePickerService"
+      display-mode="landscape"
+      fit="cover"
+      can-create-group
+      can-delete-files
+      can-move-files
+    />
     <AImagePicker v-model="attachments" :service="filePickerService" multiple :limit="2"
       ><template #trigger="{ open, disabled, selectedCount, limitReached }"
         ><button :disabled="disabled" :data-full="limitReached" @click="open">{{ selectedCount }}</button></template
@@ -95,10 +104,21 @@
         <button :data-size="size" :disabled="disabled || (!generating && !canSubmit)" @click="activate">Send</button>
       </template>
     </AChatComposer>
-    <ACoverPicker v-model="cover" :size="coverSize" :service="filePickerService" />
+    <ACoverPicker
+      v-model="cover"
+      :size="coverSize"
+      :service="filePickerService"
+      can-create-group
+      can-delete-files
+      can-move-files
+    />
     <AIconPicker model-value="" />
     <ATiptapEditor
       ref="editorRef"
+      :service="filePickerService"
+      can-create-group
+      can-delete-files
+      can-move-files
       v-model="htmlContent"
       @change="(value) => onHTMLChange(value)"
       @update:model-value="onHTMLChange"
@@ -146,7 +166,16 @@
       :can-upload-video="false"
       :can-upload-audio="false"
     />
-    <AFilePicker v-model="attachments" :service="filePickerService" :file-types="['image', 'document']" :limit="3" multiple />
+    <AFilePicker
+      v-model="attachments"
+      :service="filePickerService"
+      :file-types="['image', 'document']"
+      :limit="3"
+      multiple
+      can-create-group
+      can-delete-files
+      can-move-files
+    />
     <AFileUploader :service="fileUploaderService" :file-types="['image']" group-id="fixture-images" accept="image/*" />
   </section>
 </template>

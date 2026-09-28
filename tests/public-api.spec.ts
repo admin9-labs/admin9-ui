@@ -12,6 +12,11 @@ import type {
   CoordinateSelection,
   CoordinateValue,
   FilePickerAdapter,
+  FileGroupCreateCapability,
+  FileGroupCreateOptions,
+  FileDeleteCapability,
+  FileMoveCapability,
+  FileMoveOptions,
   AImagePickerProps,
   ImagePickerDisplayMode,
   ImagePickerFit,
@@ -90,12 +95,31 @@ describe('package public API', () => {
     expect(result).toEqual({ succeeded: [], failed: [], cancelled: [] });
   });
 
+  it('exports optional file group creation independently of uploading', async () => {
+    const options: FileGroupCreateOptions = { name: 'Child', parentId: 'root' };
+    const capability: FileGroupCreateCapability = { createGroup: async (input) => ({ id: 'child', ...input }) };
+    const adapter: FilePickerAdapter = {
+      list: async () => ({ list: [], pagination: { page: 1, pageSize: 24, total: 0, hasMore: false } }),
+      ...capability,
+    };
+    expect(await adapter.createGroup?.(options)).toEqual({ id: 'child', name: 'Child', parentId: 'root' });
+    expect(adapter.upload).toBeUndefined();
+  });
+
   it('exports the image picker display contract', () => {
     const displayMode: ImagePickerDisplayMode = 'landscape';
     const fit: ImagePickerFit = 'cover';
     const props: AImagePickerProps = { displayMode, fit };
 
     expect(props).toEqual({ displayMode: 'landscape', fit: 'cover' });
+  });
+
+  it('exports independent optional file deletion and move capabilities', async () => {
+    const deletion: FileDeleteCapability = { deleteFiles: async (ids) => ids.slice(0, 1) };
+    const moving: FileMoveCapability = { moveFiles: async ({ ids }) => ids };
+    const options: FileMoveOptions = { ids: ['one', 'two'], groupId: null };
+    expect(await deletion.deleteFiles(options.ids)).toEqual(['one']);
+    expect(await moving.moveFiles(options)).toEqual(['one', 'two']);
   });
 
   it('exports the fixed-position cover picker contract', () => {

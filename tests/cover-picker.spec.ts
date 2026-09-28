@@ -1,6 +1,6 @@
 /* eslint-disable vue/one-component-per-file */
 import { createApp, defineComponent, h, inject, nextTick, provide, ref, shallowRef, type App, type Ref } from 'vue';
-import { Form, FormItem } from '@arco-design/web-vue';
+import { Checkbox, Form, FormItem } from '@arco-design/web-vue';
 import { createI18n } from 'vue-i18n';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ACoverPicker from '../src/components/cover-picker/index.vue';
@@ -168,7 +168,7 @@ function installStubs(app: App) {
   app.component('APagination', PaginationStub);
   app.component('ASelect', Transparent);
   app.component('AOption', Transparent);
-  app.component('ACheckbox', Transparent);
+  app.component('ACheckbox', Checkbox);
   app.component('ARadioGroup', RadioGroupStub);
   app.component('ARadio', RadioStub);
   [
@@ -296,7 +296,8 @@ describe('ACoverPicker', () => {
     expect(model.value).toEqual({ mode: 'triple', images: [images[0], null, images[2]] });
     click('[data-testid="cover-picker-slot-1"]');
     await flush();
-    expect(document.querySelector('.a9-file-picker__selected-count')?.textContent).toContain('0 selected');
+    expect(document.querySelector('.a9-file-picker__selected-count')).toBeNull();
+    expect(document.querySelector('.a9-file-picker__item.is-selected')).toBeNull();
     click('[data-testid="modal-cancel"]');
     await flush();
     click('[data-testid="cover-picker-remove-0"]');
@@ -360,7 +361,8 @@ describe('ACoverPicker', () => {
 
     click('[data-testid="cover-picker-slot-0"]');
     await flush();
-    expect(document.querySelector('.a9-file-picker__selected-count')?.textContent).toContain('0 selected');
+    expect(document.querySelector('.a9-file-picker__selected-count')).toBeNull();
+    expect(document.querySelector('.a9-file-picker__item.is-selected')).toBeNull();
     await confirmFilePicker();
     await flush();
 

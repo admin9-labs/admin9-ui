@@ -89,13 +89,40 @@ export interface FileUploadCapability {
   upload(options: FileUploadOptions): Promise<FileItem>;
 }
 
+export interface FileGroupCreateOptions {
+  name: string;
+  /** Omit or use null for a root; children must refer to an existing root. */
+  parentId?: string | null;
+}
+
+export interface FileGroupCreateCapability {
+  createGroup(options: FileGroupCreateOptions): Promise<FileGroup>;
+}
+
+/** Batch operations return only IDs that actually succeeded; other requested IDs failed. */
+export interface FileDeleteCapability {
+  deleteFiles(ids: readonly string[]): Promise<readonly string[]>;
+}
+
+export interface FileMoveOptions {
+  ids: readonly string[];
+  /** null moves files to Ungrouped; a real ID may identify a root or child group. */
+  groupId: string | null;
+}
+
+export interface FileMoveCapability {
+  /** Idempotent: IDs already in the target group also count as successful. */
+  moveFiles(options: FileMoveOptions): Promise<readonly string[]>;
+}
+
 /** Adapter 提供的受控上传拒绝信息；不直接向用户展示任意异常 message。 */
 export type FileUploadRejection =
   | { code: 'unsupported-file-type' }
   | { code: 'unsupported-file-format'; allowedFormats?: readonly string[] };
 
-/** AFilePicker only requires browsing; upload remains an optional capability. */
-export type FilePickerAdapter = FileBrowseCapability & Partial<FileUploadCapability>;
+/** AFilePicker only requires browsing; writes remain optional capabilities. */
+export type FilePickerAdapter = FileBrowseCapability &
+  Partial<FileUploadCapability & FileGroupCreateCapability & FileDeleteCapability & FileMoveCapability>;
 
 /** Plugin installation options for app.use(Admin9UI, options). */
 export interface Admin9UIPluginOptions {

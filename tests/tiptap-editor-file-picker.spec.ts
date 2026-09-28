@@ -2,6 +2,7 @@
 import { createApp, defineComponent, h, inject, nextTick, provide, type App, type ComponentPublicInstance } from 'vue';
 import type { Editor } from '@tiptap/core';
 import { createI18n } from 'vue-i18n';
+import { Checkbox } from '@arco-design/web-vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ATiptapEditor from '../src/components/tiptap-editor/index.vue';
 import { messages } from '../src/locale';
@@ -172,7 +173,7 @@ function installStubs(app: App) {
   app.component('ADoption', TransparentStub);
   app.component('APopover', TransparentStub);
   app.component('AUpload', TransparentStub);
-  app.component('ACheckbox', TransparentStub);
+  app.component('ACheckbox', Checkbox);
   [
     'IconAlignCenter',
     'IconAlignLeft',

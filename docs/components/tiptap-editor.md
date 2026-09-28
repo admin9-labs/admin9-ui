@@ -120,6 +120,9 @@ JSON 使用本组件当前 Tiptap schema，支持现有文字标记、表格以�
 | `canUploadVideo`      | `boolean`                  | `false`             | 视频素材弹窗是否允许上传                           |
 | `canUploadAudio`      | `boolean`                  | `false`             | 音频素材弹窗是否允许上传                           |
 | `canUploadAttachment` | `boolean`                  | `false`             | 附件弹窗是否允许上传                               |
+| `canCreateGroup` | `boolean` | `false` | 在所有素材选择／更换弹窗开启一级／二级分组创建；要求 listGroups 和 createGroup，独立于上传开关 |
+| `canDeleteFiles` | `boolean` | `false` | 在素材弹窗启用删除选中；要求 deleteFiles，不自动删除正文节点或检查引用 |
+| `canMoveFiles` | `boolean` | `false` | 在素材弹窗启用移至分组；要求 listGroups 和 moveFiles，不修改正文 |
 | `defaultImageDisplay` | `'block' \| 'inline'`      | `'block'`           | 新图片默认独占一行或跟随文字，不按素材尺寸推断     |
 
 `maxLength` 可动态调整。降低限制时不会截断已有内容，但会阻止内容继续增长；提高限制或改为 `0` 后，新的限制会从下一次编辑立即生效。

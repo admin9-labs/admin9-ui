@@ -239,6 +239,32 @@ export default function createFakeFilePickerService(state: AcceptanceState): Fil
       }));
     },
 
+    async createGroup({ name, parentId }) {
+      await wait(state === 'loading' ? 5000 : 260);
+      if (state === 'error' || name === 'fail') throw new Error('Simulated group creation failure');
+      if (groups.some((group) => group.name === name && (group.parentId ?? null) === (parentId ?? null))) {
+        throw new Error('Duplicate group name');
+      }
+      const group = { id: `group-${groups.length + 1}`, name, parentId: parentId ?? null };
+      groups.push(group);
+      return { ...group };
+    },
+
+    async deleteFiles(ids) {
+      await wait(260);
+      const succeeded = ids.filter((id) => files.some((item) => item.id === id));
+      files = files.filter((item) => !succeeded.includes(item.id));
+      return succeeded;
+    },
+
+    async moveFiles({ ids, groupId }) {
+      await wait(260);
+      if (groupId !== null && !groups.some((group) => group.id === groupId)) throw new Error('Unknown group');
+      const succeeded = ids.filter((id) => files.some((item) => item.id === id));
+      files = files.map((item) => (succeeded.includes(item.id) ? { ...item, groupId } : item));
+      return succeeded;
+    },
+
     async upload(options: FileUploadOptions) {
       const extension = options.file.name.split('.').pop()?.toLowerCase() ?? '';
       const formats: Partial<Record<FileType, RegExp>> = {

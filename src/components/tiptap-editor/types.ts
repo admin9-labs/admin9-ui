@@ -65,6 +65,9 @@ interface TiptapEditorCommonProps {
   /** Enable audio upload in the picker. Defaults to false and requires upload capability when enabled. */
   canUploadAudio?: boolean;
   canUploadAttachment?: boolean;
+  canCreateGroup?: boolean;
+  canDeleteFiles?: boolean;
+  canMoveFiles?: boolean;
   defaultImageDisplay?: TiptapImageDisplay;
 }
 

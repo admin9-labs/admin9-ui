@@ -258,7 +258,7 @@ describe('real Arco 2.57 component contracts', () => {
     await flush();
     document.querySelector<HTMLButtonElement>('button[aria-label="Insert image"]')!.click();
     await flush();
-    document.querySelector<HTMLInputElement>('[data-file-id="image"] input[type="radio"]')!.click();
+    document.querySelector<HTMLInputElement>('[data-file-id="image"] input[type="checkbox"]')!.click();
     await flush();
     expect(values).toEqual([]);
     document.querySelector<HTMLButtonElement>('.a9-file-picker__footer-actions .arco-btn-primary')!.click();
@@ -428,6 +428,122 @@ describe('real Arco 2.57 component contracts', () => {
     expect(document.querySelector('.a9-file-picker__sidebar')).toBeNull();
     expect(document.querySelector('.a9-file-picker__search button')?.textContent).toBe('Search');
   });
+
+  it.each(['grid', 'list'] as const)('toggles a single %s item off while keeping at most one selected draft', async (view) => {
+    const first = { id: 'first', name: 'First.png', type: 'image' as const, groupId: null, url: '/first.png' };
+    const second = { ...first, id: 'second', name: 'Second.png', url: '/second.png' };
+    const update = vi.fn();
+    mount(() =>
+      h(AFilePicker, {
+        'service': {
+          list: async () => ({ list: [first, second], pagination: { page: 1, pageSize: 24, total: 2, hasMore: false } }),
+        },
+        'defaultView': view,
+        'fileTypes': ['image'],
+        'onUpdate:modelValue': update,
+      })
+    );
+    document.querySelector<HTMLButtonElement>('[data-testid="file-picker-trigger"]')!.click();
+    await flush();
+    const card = document.querySelector<HTMLElement>('[data-file-id="first"]')!;
+    card.click();
+    await flush();
+    expect(card.classList.contains('is-selected')).toBe(true);
+    if (view === 'grid') expect(card.querySelector('.a9-file-picker__selection-order')?.textContent).toBe('1');
+    card.click();
+    await flush();
+    expect(card.classList.contains('is-selected')).toBe(false);
+    expect(card.querySelector('.a9-file-picker__selection-order')).toBeNull();
+    expect(update).not.toHaveBeenCalled();
+    const input = card.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await flush();
+    expect(input.checked).toBe(true);
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await flush();
+    expect(input.checked).toBe(false);
+    card.click();
+    document.querySelector<HTMLElement>('[data-file-id="second"]')!.click();
+    await flush();
+    expect(document.querySelectorAll('.a9-file-picker__item.is-selected')).toHaveLength(1);
+    expect(card.classList.contains('is-selected')).toBe(false);
+    document.querySelector<HTMLButtonElement>('.a9-file-picker__footer-actions button:last-child')!.click();
+    await flush();
+    expect(update).toHaveBeenCalledOnce();
+    expect(update).toHaveBeenCalledWith(second);
+  });
+
+  it('renumbers selected grid cards and appends reselected items to the draft order', async () => {
+    const first = { id: 'first', name: 'First.png', type: 'image' as const, groupId: null, url: '/first.png' };
+    const second = { ...first, id: 'second', name: 'Second.png' };
+    mount(() =>
+      h(AFilePicker, {
+        multiple: true,
+        service: {
+          list: async () => ({ list: [first, second], pagination: { page: 1, pageSize: 24, total: 2, hasMore: false } }),
+        },
+      })
+    );
+    document.querySelector<HTMLButtonElement>('[data-testid="file-picker-trigger"]')!.click();
+    await flush();
+    const firstCard = document.querySelector<HTMLElement>('[data-file-id="first"]')!;
+    const secondCard = document.querySelector<HTMLElement>('[data-file-id="second"]')!;
+    firstCard.click();
+    secondCard.click();
+    await flush();
+    expect(firstCard.querySelector('.a9-file-picker__selection-order')?.textContent).toBe('1');
+    expect(secondCard.querySelector('.a9-file-picker__selection-order')?.textContent).toBe('2');
+    firstCard.click();
+    await flush();
+    expect(secondCard.querySelector('.a9-file-picker__selection-order')?.textContent).toBe('1');
+    firstCard.click();
+    await flush();
+    expect(firstCard.querySelector('.a9-file-picker__selection-order')?.textContent).toBe('2');
+  });
+
+  it.each(['list', 'custom'] as const)(
+    'keeps %s selection controls outside thumbnails and independent of item markup',
+    async (view) => {
+      const file = { id: 'image', name: 'Image.png', type: 'image' as const, groupId: null, url: '/image.png' };
+      const selection = vi.fn();
+      mount(() =>
+        h(
+          AFilePicker,
+          {
+            service: { list: async () => ({ list: [file], pagination: { page: 1, pageSize: 24, total: 1, hasMore: false } }) },
+            defaultView: 'list',
+            multiple: true,
+            onSelectionChange: selection,
+          },
+          view === 'custom'
+            ? {
+                item: ({
+                  item,
+                  available,
+                  selected,
+                  view: itemView,
+                }: {
+                  item: typeof file;
+                  available: boolean;
+                  selected: boolean;
+                  view: string;
+                }) => h('div', { class: 'custom-file-item' }, `${item.name}:${available}:${selected}:${itemView}`),
+              }
+            : {}
+        )
+      );
+      document.querySelector<HTMLButtonElement>('[data-testid="file-picker-trigger"]')!.click();
+      await flush();
+      const control = document.querySelector<HTMLInputElement>('.a9-file-picker__item input[type="checkbox"]')!;
+      expect(control.closest('.a9-file-item__visual')).toBeNull();
+      if (view === 'list') expect(control.closest('.a9-file-item__selection')).not.toBeNull();
+      else expect(control.closest('.custom-file-item')).toBeNull();
+      control.click();
+      await flush();
+      expect(selection).toHaveBeenCalledOnce();
+      expect(selection).toHaveBeenCalledWith([file]);
+    }
+  );
   it('keeps a passive count on narrow screens and commits card deselection only on confirm', async () => {
     const viewport = new EventTarget() as EventTarget & { matches: boolean };
     viewport.matches = true;
@@ -476,11 +592,13 @@ describe('real Arco 2.57 component contracts', () => {
   it('makes image preview controls keyboard accessible and restores the actual trigger', async () => {
     const file = { id: 'preview', name: 'Preview.png', type: 'image' as const, groupId: null, url: '/preview.png' };
     const selection = vi.fn();
+    const visibility = vi.fn();
     mount(() =>
       h(AFilePicker, {
         service: { list: async () => ({ list: [file], pagination: { page: 1, pageSize: 24, total: 1, hasMore: false } }) },
         multiple: true,
         onSelectionChange: selection,
+        onVisibleChange: visibility,
       })
     );
     document.querySelector<HTMLButtonElement>('[data-testid="file-picker-trigger"]')!.click();
@@ -519,6 +637,9 @@ describe('real Arco 2.57 component contracts', () => {
     expect(document.querySelector('.a9-file-picker-modal')).not.toBeNull();
     expect(document.activeElement).toBe(trigger);
     expect(selection).not.toHaveBeenCalled();
+    document.documentElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await flush();
+    expect(visibility).toHaveBeenLastCalledWith(false);
   });
 
   it('falls back to the search when a previewed card disappears and to the outside trigger on disable', async () => {
@@ -526,10 +647,11 @@ describe('real Arco 2.57 component contracts', () => {
     let files = [file];
     const disabled = ref(false);
     const picker = ref<import('../src').AFilePickerExposed>();
+    const visibility = vi.fn();
     const service = {
       list: async () => ({ list: files, pagination: { page: 1, pageSize: 24, total: files.length, hasMore: false } }),
     };
-    mount(() => h(AFilePicker, { ref: picker, service, disabled: disabled.value }));
+    mount(() => h(AFilePicker, { ref: picker, service, disabled: disabled.value, onVisibleChange: visibility }));
     document.querySelector<HTMLButtonElement>('[data-testid="file-picker-trigger"]')!.click();
     await flush();
     document.querySelector<HTMLButtonElement>('[aria-label="Preview Fallback.png"]')!.click();
@@ -539,6 +661,11 @@ describe('real Arco 2.57 component contracts', () => {
     await flush();
     expect(document.querySelector('.a9-file-image-preview')).toBeNull();
     expect(document.activeElement).toBe(document.querySelector('.a9-file-picker__search input'));
+    document.documentElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await flush();
+    expect(visibility).toHaveBeenLastCalledWith(false);
+    picker.value!.open();
+    await flush();
     files = [file];
     await picker.value!.refresh();
     await flush();

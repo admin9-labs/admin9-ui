@@ -7,19 +7,28 @@
   const emit = defineEmits<{ (e: 'close'): void }>();
   const { t } = useI18n();
   const host = ref<HTMLElement>();
+  const visible = ref(true);
   const actions = ['fullScreen', 'rotateRight', 'rotateLeft', 'zoomIn', 'zoomOut', 'originalSize'];
   let observer: MutationObserver | undefined;
   let mounted = true;
+  const close = async () => {
+    if (!visible.value) return;
+    visible.value = false;
+    // Let Arco unregister this dialog before its parent removes the preview.
+    await nextTick();
+    if (mounted) emit('close');
+  };
+  defineExpose({ close });
 
   // Arco 2.57 renders preview actions as divs. Keep its image transforms and
   // click handlers, but scope accessible controls and keyboard handling here.
   const prepareControls = () => {
     const root = host.value;
     if (!root) return;
-    const close = root.querySelector<HTMLElement>('.arco-image-preview-close-btn');
-    close?.setAttribute('role', 'button');
-    close?.setAttribute('tabindex', '0');
-    close?.setAttribute('aria-label', t('admin9Ui.filePicker.closePreview'));
+    const closeControl = root.querySelector<HTMLElement>('.arco-image-preview-close-btn');
+    closeControl?.setAttribute('role', 'button');
+    closeControl?.setAttribute('tabindex', '0');
+    closeControl?.setAttribute('aria-label', t('admin9Ui.filePicker.closePreview'));
     root.querySelector('img')?.setAttribute('alt', props.name);
     root.querySelectorAll<HTMLElement>('.arco-image-preview-toolbar-action').forEach((control, index) => {
       const disabled = control.classList.contains('arco-image-preview-toolbar-action-disabled');
@@ -34,7 +43,7 @@
     event.stopPropagation();
     if (event.key === 'Escape') {
       event.preventDefault();
-      emit('close');
+      close();
       return;
     }
     const controls = Array.from(host.value?.querySelectorAll<HTMLElement>('[role="button"][tabindex="0"]') ?? []);
@@ -83,11 +92,11 @@
     >
       <ImagePreview
         :src="src"
-        :visible="true"
+        :visible="visible"
         :render-to-body="false"
         :keyboard="false"
         :actions-layout="actions"
-        @close="emit('close')"
+        @close="close"
       />
     </div>
   </Teleport>

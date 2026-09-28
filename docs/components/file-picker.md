@@ -1,6 +1,6 @@
 # AFilePicker
 
-`AFilePicker` 是后端无关的完整文件选择工作流，适合表单、弹窗和附件字段。它负责打开文件库、浏览筛选、维护草稿选择和确认写回，并复用 `AFileUploader` 的上传队列；不提供移动、删除或分组管理。
+`AFilePicker` 是后端无关的完整文件选择工作流，适合表单、弹窗和附件字段。它负责打开文件库、浏览筛选、维护草稿选择和确认写回，并复用 `AFileUploader` 的上传队列；可按独立开关启用新增分组、删除选中和移至分组。
 
 图片字段需要卡片、预览、更换与移除时，使用组合组件 [AImagePicker](./image-picker.md)。
 
@@ -48,6 +48,9 @@
 | `buttonText`  | `string`                              | locale 文案        | 默认触发按钮文案                                         |
 | `accept`      | `string`                              | `undefined`        | 可选的原生 MIME/扩展名提示；默认不限制可选择格式         |
 | `canUpload`   | `boolean`                             | `false`            | 显示上传入口；开启时要求 `upload` capability             |
+| `canCreateGroup` | `boolean` | `false` | 显示新增分组入口；要求 `listGroups` 和 `createGroup`，独立于上传权限 |
+| `canDeleteFiles` | `boolean` | `false` | 显示删除选中；要求 `deleteFiles`，不检查文件是否被业务使用 |
+| `canMoveFiles` | `boolean` | `false` | 显示移至分组；要求 `listGroups` 和 `moveFiles` |
 | `defaultView` | `'grid' \| 'list'`                    | `'grid'`           | 弹窗初始视图                                             |
 | `service`     | `FilePickerAdapter`                   | 插件 `fileService` | 使用点优先的后端无关 adapter                             |
 | `disabled`    | `boolean`                             | `false`            | 禁止交互，同时继承 Form 禁用                             |
@@ -114,7 +117,11 @@ type FileListParams = {
 
 ## 展示与选择
 
-卡片和行的非操作区域用于选择，图片预览和文件打开使用独立入口。文件名与元信息分行，处理状态不遮挡选择控件。底部仅以纯文本展示已选数量及上限，不提供折叠清单或已选面板；取消选择通过文件卡片或选择控件完成。正常选满只显示数量；再次尝试新增时显示约 3 秒的局部提示，不改变底部高度。重复尝试延长提示，取消选择、清空、关闭或更改上限会清除提示。
+仅允许图片时标题为“选择图片”；类型下拉只在允许多种类型时显示。图片范围的搜索和分组空态明确使用“图片”，不把查询无结果表述为整个素材库为空。
+
+网格不显示常驻选择控件，选中后展示边框和顺序编号；列表保留行首勾选框。单选、多选都支持点击同一项取消，单选最多保留一项；多选取消后重新选中会进入草稿末尾，编号相应更新。自定义 item 内容沿用相同选择规则，不需要配合内部 DOM。单选不展示已选计数，多选保留计数与上限，分页居中、操作靠右。
+
+卡片和行的非操作区域用于选择，图片预览和文件打开使用独立入口。文件名与元信息分行，处理状态不遮挡选择控件。多选时底部以纯文本展示已选数量及上限，不提供折叠清单或已选面板；取消选择通过文件卡片或选择控件完成。正常选满只显示数量；再次尝试新增时显示约 3 秒的局部提示，不改变底部高度。重复尝试延长提示，取消选择、清空、关闭或更改上限会清除提示。
 
 默认单选无值时显示选择按钮，有值时仅显示文件名、替换和一个移除入口；多选保留选择按钮和逐项移除，两项及以上提供文字“清空选择”。移除只更新字段，不删除文件库资产，遵守 `allowClear`、disabled 和 readonly。自定义 `trigger` 插槽完整替换该区域，不重复展示默认清单。
 
@@ -141,8 +148,8 @@ Picker value 只表达可以交付给业务字段的文件：
 - 上传期间可搜索、切换类型，分组切换暂时禁用。关闭弹窗或服务/允许类型约束变化时取消旧上传并屏蔽迟到回调。
 - `accept` 是原生选择提示，不是类型判断或安全保证；后端负责文件内容、权限和归属验证。
 - 图片使用可用 URL/缩略图；视频/音频显示类型和时长，其他文件显示图标和元数据，不承诺在线 Office 预览。
-- 文件结果使用语义分组，每张卡片/行使用真正的 checkbox 或 radio 暴露选中与禁用状态，支持 Tab、Space 和 Enter；打开链接是独立命令，点击不会切换选择。
-- 文件名、extension 等极长元数据在网格/列表中省略；`720px` 及以下使用分组下拉，类型下拉框与搜索框同行；底部仅显示已选数量、取消和确认，多页分页另起一行。大于 `720px` 使用分组侧栏，不造成页面横向溢出。
+- 文件结果使用语义分组，每张卡片/行使用真正的 checkbox 暴露选中与禁用状态，支持 Tab、Space 和 Enter；打开链接是独立命令，点击不会切换选择。
+- 文件名、extension 等极长元数据在网格/列表中省略；`720px` 及以下使用分组下拉，类型下拉框与搜索框同行；底部显示多选计数、取消和确认，多页分页另起一行。大于 `720px` 使用分组侧栏，不造成页面横向溢出。
 
 `canUpload` 只是界面能力开关，不代表后端授权。使用本组件库的应用仍需负责 API、认证、状态、路由和业务权限。
 
@@ -162,8 +169,54 @@ Picker value 只表达可以交付给业务字段的文件：
 
 默认网格将预览/打开放在元信息右侧，列表放在独立操作列；不再覆盖缩略图。图片使用站内预览，其他类型打开安全链接。仅纯精细指针且支持悬停的环境按 hover/focus-within 显示次要操作；触屏、粗指针和混合输入环境常驻。操作区预留空间，Tab 可到达透明的操作并立即显示。
 
-原生 checkbox/radio 提供普通、悬停、聚焦、选中和禁用状态；禁用只阻止选择，不把名称与原因整体淡化。默认字段采用紧凑文件行，名称可收缩，操作不收缩；自定义 trigger/item 插槽继续控制其内容。
+原生 checkbox 提供普通、悬停、聚焦、选中和禁用状态；禁用只阻止选择，不把名称与原因整体淡化。默认字段采用紧凑文件行，名称可收缩，操作不收缩；自定义 trigger/item 插槽继续控制其内容。
 
-桌面与窄屏的已选数量均为状态文本，不可展开、不占用 Tab 焦点；数量变化通过状态区域播报。
+桌面与窄屏仅多选展示已选数量，作为状态文本播报，不可展开、不占用 Tab 焦点。
+
+## 创建分组
+
+`canCreateGroup` 默认关闭。启用时 adapter 必须同时提供 `listGroups()` 和 `createGroup(options)`，否则给出开发配置错误；开关由消费方按业务权限传入，与 `canUpload` 无关。桌面入口位于“文件分组”标题右侧，窄屏入口位于分组下拉右侧。禁用、只读、上传中及分组尚未成功加载时不能创建。
+
+```ts
+import type { FileGroupCreateOptions, FileGroupCreateCapability } from '@admin9-labs/admin9-ui';
+
+const groupCreation: FileGroupCreateCapability = {
+  createGroup: (options: FileGroupCreateOptions) => api.createFileGroup(options),
+};
+// options: { name: string; parentId?: string | null }
+// 返回 FileGroup。parentId 为 null 或省略表示一级分组，二级分组只能引用一级分组。
+```
+
+表单默认创建一级分组，可选一级分组作为上级。名称去除首尾空白并检查非空；重名、长度、授权等业务规则由 adapter/后端校验。失败保留输入并显示通用重试提示，不暴露任意异常文本。
+
+成功后选中新分组并展开其上级，清空搜索词并回到第一页，保留类型和文件选择草稿；刷新失败保留已创建项并提供重试。创建和取消不提交字段、不触发外层表单校验。关闭选择器、切换 service、禁用、只读或卸载后，旧响应不再影响新会话。已经创建的分组不会因取消选图而删除。
+
+AImagePicker、ACoverPicker 和 ATiptapEditor 提供同名开关并透传。消费方负责将契约映射到自己的 API 和权限，组件库不包含具体接口或权限标识。
+
+## 删除与移动素材
+
+`canDeleteFiles` 和 `canMoveFiles` 独立于上传和分组创建，默认均关闭。开启对应能力但 adapter 缺少所需方法时抛出开发配置错误。全局开关由消费方传入；每个文件是否有权删除或移动，始终由 adapter/后端校验。未选择文件时操作不可用。
+
+```ts
+import type { FileDeleteCapability, FileMoveCapability, FileMoveOptions } from '@admin9-labs/admin9-ui';
+
+const deletion: FileDeleteCapability = {
+  deleteFiles: (ids) => api.deleteFiles(ids),
+};
+const moving: FileMoveCapability = {
+  moveFiles: (options: FileMoveOptions) => api.moveFiles(options),
+};
+// deleteFiles(ids: readonly string[]): Promise<readonly string[]>
+// moveFiles({ ids: readonly string[], groupId: string | null }): Promise<readonly string[]>
+// 返回实际成功的 ID；请求中未返回的 ID 视为失败。部分成功必须返回成功 ID，不能整体抛错丢失结果。
+```
+
+操作针对当前完整选择草稿，包含跨页选择。删除需要确认，成功后从当前列表与草稿移除成功项，失败项保留供重试；无关或重复的响应 ID 不会影响其他文件。移动可选一级、二级分组或未分组（`null`），不允许“全部文件”作为目标；每次提交完整的选中 ID，不依据字段中可能过期的 `groupId` 跳过文件。adapter/后端应幂等处理已在目标分组的项，并将确认已处于目标分组的 ID 计入成功结果。成功移动保留选中顺序，只更新草稿中对应项的 `groupId`，不改 ID 或 URL，当前浏览分组不跳转。操作后刷新列表和分组，末页被清空时回退到有效页。
+
+**素材管理与字段引用各管各的。** 删除不检查文件是否正在使用，也不自动移除表单、封面或编辑器中的引用；移动不会修改已提交的字段对象。两种操作均不触发字段的 `update:modelValue`、`change`、`confirm` 或表单校验，草稿变化仍可触发 `selectionChange`。用户之后点击确认时，才按当时的草稿正常提交字段；取消选图不撤销已经成功的删除或移动。
+
+请求进行时锁定选择、筛选、上传和重复操作；删除确认框在提交期间不可再次提交或取消。组件关闭、服务/记录切换、权限收回、禁用或卸载后忽略旧响应，但不会撤销已经发送到服务端的操作。不显示任意后端异常文本；成功、全部失败和部分失败使用组件统一反馈。
+
+AImagePicker、ACoverPicker、ATiptapEditor 提供同名开关。Web 的删除可映射既有 `removeFiles([...ids])`；移动需要消费方提供真实接口后才能启用。本仓库 fake service 的演示不代表 Web/后端已经接入。
 
 图片预览保留 Arco 缩放、旋转和鼠标行为，由内部包装补充独立控件语义与键盘操作。打开聚焦关闭按钮；Tab/Shift+Tab 循环，Enter/Space 激活当前控件，Escape 只关闭预览。关闭后返回原按钮；按钮失效时回到卡片选择控件、结果区域或搜索入口。Picker 同时关闭时交给外部触发器恢复，不抢回焦点。

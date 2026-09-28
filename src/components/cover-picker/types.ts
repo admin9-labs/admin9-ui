@@ -14,6 +14,9 @@ export interface ACoverPickerProps {
   size?: CoverPickerSize;
   service?: FilePickerAdapter;
   canUpload?: boolean;
+  canCreateGroup?: boolean;
+  canDeleteFiles?: boolean;
+  canMoveFiles?: boolean;
   accept?: string;
   disabled?: boolean;
   readonly?: boolean;

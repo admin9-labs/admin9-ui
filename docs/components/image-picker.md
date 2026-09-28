@@ -22,7 +22,7 @@
 </template>
 ```
 
-也可通过 `app.use(Admin9UI, { fileService })` 注入默认 service；使用点的 service 优先。沿用 `FilePickerAdapter`，必须提供 list，canUpload 为 true 时必须提供 upload；没有独立的图片 adapter 或删除接口。
+也可通过 `app.use(Admin9UI, { fileService })` 注入默认 service；使用点的 service 优先。沿用 `FilePickerAdapter`，必须提供 list，canUpload 为 true 时必须提供 upload；不另设图片专属 adapter。
 
 ## Props
 
@@ -36,6 +36,9 @@
 | fit          | `'contain' \| 'cover'`                              | `contain`        | 缩略图在卡片内的填充方式                                      |
 | service      | FilePickerAdapter                                   | 插件 fileService | 后端无关的浏览和可选上传能力                                  |
 | canUpload    | boolean                                             | false            | 开启内部选图弹窗的上传入口                                    |
+| canCreateGroup | boolean | false | 开启内部弹窗的一级／二级分组创建；要求 service 提供 listGroups 和 createGroup，独立于上传权限 |
+| canDeleteFiles | boolean | false | 开启内部弹窗的删除选中；要求 deleteFiles，不自动清理字段引用 |
+| canMoveFiles | boolean | false | 开启内部弹窗的移至分组；要求 listGroups 和 moveFiles，不自动修改字段 |
 | accept       | string                                              | `image/*`        | 传给内部上传入口的原生文件选择提示                            |
 | disabled     | boolean                                             | false            | 禁止修改和预览，同时继承 Form disabled                        |
 | readonly     | boolean                                             | false            | 禁止修改，保留图片预览                                        |

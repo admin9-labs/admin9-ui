@@ -4,7 +4,7 @@
 
 ## 分组与查询
 
-- `listGroups(fileType)` 改为 `listGroups()`。返回跨类型的真实分组平面数组；通过可选 `FileGroup.parentId` 表达二级关系，一级省略或为 `null`，子分组指向同一列表中的一级分组。一个文件仍只有一个 `groupId`。旧平面分组无需新增字段；库不增加目录管理，也不支持更深层级。
+- `listGroups(fileType)` 改为 `listGroups()`。返回跨类型的真实分组平面数组；通过可选 `FileGroup.parentId` 表达二级关系，一级省略或为 `null`，子分组指向同一列表中的一级分组。一个文件仍只有一个 `groupId`。旧平面分组无需新增字段；仍不支持更深层级。可选的分组创建与素材操作见 AFilePicker 文档，默认关闭。
 - `FileGroup.count` 如果提供，必须是分组内所有文件类型的总数。类型筛选不会改变分组列表。
 - `FileListParams.groupId` 缺省为全部分组，`null` 为仅未分组，字符串为具体分组的直属文件（不汇总子分组）；三种情况均可组合 `keyword` 与类型条件。
 - `fileType` 和 `fileTypes` 仍互斥。未提供类型表示全部；类型集合必须由后端先筛选再分页，空集合表示零结果。不能请求全量页再在前端过滤，也不能忽略 `null` 后当作全部文件。

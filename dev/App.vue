@@ -212,6 +212,7 @@
   };
   const filePickerConstraint = ref<'all' | 'subset' | 'empty'>('subset');
   const filePickerMultiple = ref(true);
+  const filePickerCustomItem = ref(false);
   const filePickerValue = ref<FileItem | FileItem[] | undefined>([]);
   const coverPickerValue = ref<CoverPickerValue>({ mode: 'single', images: [null] });
   const coverPickerDisabled = ref(false);
@@ -626,6 +627,9 @@
             max-height="min(640px, 60dvh)"
             :max-length="2000"
             :can-upload-image="true"
+            can-create-group
+            can-delete-files
+            can-move-files
             :can-upload-video="true"
             :can-upload-audio="true"
             placeholder="请输入公告正文"
@@ -703,6 +707,7 @@
               <a-radio :value="true">多选</a-radio>
               <a-radio :value="false">单选</a-radio>
             </a-radio-group>
+            <label><input v-model="filePickerCustomItem" type="checkbox" /> 自定义文件卡片</label>
             <a-radio-group
               v-model="filePickerConstraint"
               type="button"
@@ -733,10 +738,19 @@
               :limit="4"
               :multiple="filePickerMultiple"
               can-upload
+              can-create-group
+              can-delete-files
+              can-move-files
               data-testid="file-picker"
               @change="recordFilePickerEvent"
               @selection-change="recordFilePickerEvent"
-            />
+            >
+              <template v-if="filePickerCustomItem" #item="{ item }">
+                <span style="min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis">{{
+                  item.name
+                }}</span>
+              </template>
+            </AFilePicker>
           </div>
           <dl class="event-readout" aria-live="polite">
             <dt>选择模式</dt>
@@ -779,6 +793,9 @@
               :service="filePickerService"
               :disabled="coverPickerDisabled"
               can-upload
+              can-create-group
+              can-delete-files
+              can-move-files
               data-testid="cover-picker"
               @change="recordCoverPickerEvent"
             />

@@ -62,6 +62,9 @@ export type CoverPickerValue =
 | `size`       | `CoverPickerSize`   | `'medium'`                           | 封面格、图标和操作按钮尺寸                                       |
 | `service`    | `FilePickerAdapter` | 插件 `fileService`                   | 使用点优先的后端无关 adapter                                     |
 | `canUpload`  | `boolean`           | `false`                              | 在文件选择弹窗显示上传入口                                       |
+| `canCreateGroup` | `boolean` | `false` | 透传至文件选择器，开启一级／二级分组创建；要求 listGroups 和 createGroup |
+| `canDeleteFiles` | `boolean` | `false` | 透传删除素材开关；要求 deleteFiles，删除不自动清理封面位置 |
+| `canMoveFiles` | `boolean` | `false` | 透传移动素材开关；要求 listGroups 和 moveFiles |
 | `accept`     | `string`            | `'image/*'`                          | 原生文件选择提示，不代替后端校验                                 |
 | `disabled`   | `boolean`           | `false`                              | 禁用模式切换、选择、替换和移除；同时继承外层 Arco 表单的禁用状态 |
 | `readonly`   | `boolean`           | `false`                              | 禁止模式切换、选择和移除                                         |

@@ -12,6 +12,9 @@ export interface AFilePickerProps {
   buttonText?: string;
   accept?: string;
   canUpload?: boolean;
+  canCreateGroup?: boolean;
+  canDeleteFiles?: boolean;
+  canMoveFiles?: boolean;
   defaultView?: FilePickerView;
   service?: FilePickerAdapter;
   disabled?: boolean;

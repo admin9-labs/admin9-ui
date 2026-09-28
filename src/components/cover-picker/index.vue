@@ -14,6 +14,9 @@
     size: undefined,
     service: undefined,
     canUpload: false,
+    canCreateGroup: false,
+    canDeleteFiles: false,
+    canMoveFiles: false,
     accept: 'image/*',
     disabled: false,
     readonly: false,
@@ -328,6 +331,9 @@
           :service="service"
           :file-types="['image']"
           :can-upload="canUpload"
+          :can-create-group="canCreateGroup"
+          :can-delete-files="canDeleteFiles"
+          :can-move-files="canMoveFiles"
           :accept="accept"
           :multiple="false"
           @confirm="onPickerChange"

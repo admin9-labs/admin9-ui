@@ -74,7 +74,13 @@ const fileService: FilePickerAdapter = {
     };
   },
 };
-const filePickerService: FilePickerAdapter = { list: fileService.list };
+const filePickerService: FilePickerAdapter = {
+  list: fileService.list,
+  listGroups: async () => [{ id: 'root', name: 'Root' }],
+  createGroup: async (input) => ({ id: 'new-group', ...input }),
+  deleteFiles: async (ids) => ids,
+  moveFiles: async ({ ids }) => ids,
+};
 const coverItem: FileItem = {
   id: 'fixture-cover',
   name: 'Fixture cover.png',

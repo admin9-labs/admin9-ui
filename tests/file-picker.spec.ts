@@ -623,7 +623,7 @@ describe('AFilePicker', () => {
     expect(document.querySelectorAll('.a9-file-picker__item.is-selected')).toHaveLength(eventsBeforeOpen);
   });
 
-  it('gives real Arco checkbox and radio inputs names through native labels', async () => {
+  it('gives toggleable selection inputs native labels in both single and multiple selection', async () => {
     const invalid = { ...image, id: 'failed', name: 'failed.png', status: 'failed' as const };
     const checkboxMount = mountPicker({
       service: makeService({ list: vi.fn().mockResolvedValue(result([image, invalid])) }),
@@ -636,6 +636,8 @@ describe('AFilePicker', () => {
     const checkbox = item('image-1').querySelector<HTMLInputElement>('input[type="checkbox"]');
     const disabledCheckbox = item('failed').querySelector<HTMLInputElement>('input[type="checkbox"]');
     expect(checkbox?.labels).toHaveLength(1);
+    expect(checkbox?.closest('.a9-file-item__heading')).not.toBeNull();
+    expect(checkbox?.closest('.a9-file-item__visual')).toBeNull();
     expect(checkbox?.labels?.[0]?.textContent?.trim()).toBe('Select dashboard.png');
     expect(checkbox?.getAttribute('aria-label')).toBeNull();
     expect(checkbox?.checked).toBe(false);
@@ -656,17 +658,20 @@ describe('AFilePicker', () => {
     click('[data-testid="file-picker-trigger"]');
     await flush();
 
-    const radioGroup = document.querySelector<HTMLElement>('.a9-file-picker__items[role="radiogroup"]');
-    const radio = item('image-1').querySelector<HTMLInputElement>('input[type="radio"]');
-    expect(radioGroup?.getAttribute('aria-label')).toBe('File results');
-    expect(radio?.labels).toHaveLength(1);
-    expect(radio?.labels?.[0]?.textContent?.trim()).toBe('Select dashboard.png');
-    radio?.click();
+    const group = document.querySelector<HTMLElement>('.a9-file-picker__items[role="group"]');
+    const single = item('image-1').querySelector<HTMLInputElement>('input[type="checkbox"]');
+    expect(group?.getAttribute('aria-label')).toBe('File results');
+    expect(single?.labels).toHaveLength(1);
+    expect(single?.labels?.[0]?.textContent?.trim()).toBe('Select dashboard.png');
+    single?.click();
     await nextTick();
-    expect(radio?.checked).toBe(true);
+    expect(single?.checked).toBe(true);
+    single?.click();
+    await nextTick();
+    expect(single?.checked).toBe(false);
   });
 
-  it('constrains the real Arco modal to a 700px viewport with a scrollable body', async () => {
+  it('preserves real Arco centering with a bounded scrollable body outside the header and footer', async () => {
     vi.stubGlobal('innerWidth', 700);
     vi.stubGlobal('innerHeight', 800);
     mountPicker({
@@ -679,18 +684,22 @@ describe('AFilePicker', () => {
     await flush();
 
     const modal = document.querySelector<HTMLElement>('.a9-file-picker-modal');
+    const header = modal?.querySelector<HTMLElement>('.arco-modal-header');
     const body = modal?.querySelector<HTMLElement>('.arco-modal-body');
     const workspace = body?.querySelector<HTMLElement>('.a9-file-picker__workspace');
     const footer = modal?.querySelector<HTMLElement>('.arco-modal-footer');
     expect(modal?.style.width).toBe('calc(100vw - 32px)');
     expect(modal?.style.maxWidth).toBe('1040px');
-    expect(modal?.style.top).toBe('16px');
-    expect(modal?.style.display).toBe('flex');
+    // Geometry and scroll bounds require real-browser acceptance; happy-dom only checks this contract.
+    expect(modal?.parentElement?.classList.contains('arco-modal-wrapper-align-center')).toBe(true);
+    expect(modal?.style.top).toBe('');
+    expect(modal?.style.display).toBe('inline-flex');
     expect(modal?.style.maxHeight).toBe('calc(100dvh - 32px)');
     expect(modal?.style.flexDirection).toBe('column');
     expect(body?.style.minHeight).toBe('0');
     expect(body?.style.overflow).toBe('auto');
     expect(workspace?.parentElement).toBe(body);
+    expect(header?.parentElement).toBe(modal);
     expect(footer?.parentElement).toBe(modal);
   });
 

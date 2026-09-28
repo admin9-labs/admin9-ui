@@ -83,7 +83,7 @@ app.use(Admin9UI, {
 - adapter 必须先在完整数据集上筛选，再分页并返回准确的 `pagination.total`；
 - 分组与类型独立，所有查询均可叠加 `groupId`；`listGroups()` 返回跨类型分组平面数组，可用 `parentId` 表达二级关系；指定分组仅查询直属文件，上传传递 `fileTypes` 允许集合并由 adapter/后端识别真实类型；
 - 多个本地文件通过现有单文件 `upload` 能力逐项处理，不增加 batch service；
-- 删除、移动、分组管理及其权限属于应用，不进入公共 service 契约。
+- 分组创建、删除选中和移动分组是选择器的可选 service 能力，分别由独立开关启用；具体 API、授权及引用关系属于应用。素材管理不自动修改表单、封面或编辑器内容。
 
 完整字段和行为见 [AFilePicker](./docs/components/file-picker.md) 与 [AFileUploader](./docs/components/file-uploader.md)。
 

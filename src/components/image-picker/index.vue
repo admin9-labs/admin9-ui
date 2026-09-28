@@ -28,6 +28,9 @@
     fit: 'contain',
     service: undefined,
     canUpload: false,
+    canCreateGroup: false,
+    canDeleteFiles: false,
+    canMoveFiles: false,
     accept: 'image/*',
     disabled: false,
     readonly: false,
@@ -197,6 +200,9 @@
         :size="mergedSize"
         :accept="accept"
         :can-upload="canUpload"
+        :can-create-group="canCreateGroup"
+        :can-delete-files="canDeleteFiles"
+        :can-move-files="canMoveFiles"
         :page-size="pageSize"
         :default-view="defaultView"
         @confirm="confirm"

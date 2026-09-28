@@ -77,7 +77,7 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 
 ## 集成边界
 
-- `ACoverPicker`、`AImagePicker`、`AFilePicker` 和 `AFileUploader` 只负责选择与上传交互。文件管理页面以及删除、移动、分组、权限和业务字段由应用实现。
+- `ACoverPicker`、`AImagePicker`、`AFilePicker` 和 `AFileUploader` 提供选择与上传交互；选择器可独立开启分组创建、删除选中和移动分组。真实 API、授权及业务引用由应用负责，素材操作不自动修改业务字段。
 - 文件 adapter 必须在完整数据集上筛选并分页，返回准确的总数；组件不会通过过滤当前页模拟服务端结果。
 - 上传能力开关只控制界面。应用后端仍需校验文件内容、类型、大小、身份、资源归属和操作权限。
 - `ACoordinatePicker` 的浏览器端 Key、来源白名单、额度和坐标系转换由应用管理。
