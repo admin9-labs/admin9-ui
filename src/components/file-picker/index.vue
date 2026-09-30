@@ -1,6 +1,6 @@
 <script setup lang="ts">
-  import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue';
-  import { Cascader, Form, FormItem, Input, Modal, Pagination, Popover, useFormItem } from '@arco-design/web-vue';
+  import { computed, getCurrentInstance, inject, nextTick, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue';
+  import { Cascader, Form, FormItem, Input, Message, Modal, Pagination, Popover, useFormItem } from '@arco-design/web-vue';
   import { useI18n } from 'vue-i18n';
   import type {
     AFilePickerProps,
@@ -161,7 +161,6 @@
   const moreTrigger = ref<HTMLElement>();
   const deleteVisible = ref(false);
   const deleteIds = ref<string[]>([]);
-  const fileActionFeedback = ref<{ action: 'delete' | 'move'; succeeded: number; failed: number }>();
   let fileActionGeneration = 0;
   let deleteTrigger: HTMLElement | undefined;
   const draftMap = ref(new Map<string, FileItem>());
@@ -182,20 +181,38 @@
   const previewItem = ref<{ id: string; name: string; url: string }>();
   const preview = ref<InstanceType<typeof FileImagePreview>>();
   let previewTrigger: HTMLElement | undefined;
-  const uploadFeedback = ref<HTMLElement>();
-  const limitNotice = ref(false);
-  let limitTimer: ReturnType<typeof setTimeout> | undefined;
+  const instance = getCurrentInstance();
+  const messagePrefix = `a9-file-picker-${instance?.uid}`;
+  type FeedbackKind = 'limit' | 'action' | 'upload';
+  const messageHandles = new Map<FeedbackKind, ReturnType<typeof Message.info>>();
+  const closeMessage = (kind: FeedbackKind) => {
+    messageHandles.get(kind)?.close();
+    messageHandles.delete(kind);
+  };
+  const clearMessages = () => {
+    messageHandles.forEach((handle) => handle.close());
+    messageHandles.clear();
+  };
+  const showMessage = (
+    kind: FeedbackKind,
+    type: 'info' | 'success' | 'warning' | 'error',
+    content: string,
+    duration: number
+  ) => {
+    if (!visible.value || interactionDisabled.value) return;
+    // A fresh render function also updates identical notices, restarting Arco's duration.
+    messageHandles.set(
+      kind,
+      Message[type]({ id: `${messagePrefix}-${kind}`, content: () => content, duration }, instance?.appContext)
+    );
+  };
   let viewportQuery: MediaQueryList | undefined;
   let heightQuery: MediaQueryList | undefined;
   const clearLimitNotice = () => {
-    clearTimeout(limitTimer);
-    limitTimer = undefined;
-    limitNotice.value = false;
+    closeMessage('limit');
   };
   const showLimitNotice = () => {
-    clearLimitNotice();
-    limitNotice.value = true;
-    limitTimer = setTimeout(clearLimitNotice, 3000);
+    showMessage('limit', 'warning', t('admin9Ui.filePicker.limitReached', { count: props.limit }), 3000);
   };
   const updateViewport = () => {
     narrow.value = viewportQuery?.matches ?? false;
@@ -231,13 +248,20 @@
       creatingGroup.value ||
       draftItems.value.length === 0
   );
-  const fileActionMessage = computed(() => {
-    const result = fileActionFeedback.value;
-    if (!result) return '';
+  const showFileActionResult = (action: 'delete' | 'move', succeeded: number, failed: number) => {
     let suffix = 'Success';
-    if (result.failed > 0) suffix = result.succeeded > 0 ? 'Partial' : 'Failed';
-    return t(`admin9Ui.filePicker.fileActions.${result.action}${suffix}`, { count: result.succeeded, failed: result.failed });
-  });
+    let type: 'success' | 'warning' | 'error' = 'success';
+    if (failed > 0) {
+      suffix = succeeded > 0 ? 'Partial' : 'Failed';
+      type = succeeded > 0 ? 'warning' : 'error';
+    }
+    showMessage(
+      'action',
+      type,
+      t(`admin9Ui.filePicker.fileActions.${action}${suffix}`, { count: succeeded, failed }),
+      failed > 0 ? 5000 : 3000
+    );
+  };
   const moveOptions = computed(() => [
     { value: 'ungrouped', label: t('admin9Ui.filePicker.groupUngrouped') },
     ...rootGroups.value.map((group) => {
@@ -376,7 +400,7 @@
     fileActionBusy.value = false;
     deleteVisible.value = false;
     deleteIds.value = [];
-    fileActionFeedback.value = undefined;
+    closeMessage('action');
   };
   const syncExternalModel = () => {
     const next = sanitizeItems(itemsFromModel(props.modelValue));
@@ -386,6 +410,7 @@
     if (visible.value) replaceDraft(next, false);
   };
   const invalidateRequests = () => {
+    clearMessages();
     viewGeneration += 1;
     latestListRequest += 1;
     latestGroupRequest += 1;
@@ -623,7 +648,7 @@
       service === resolvedService.value &&
       (action === 'delete' ? props.canDeleteFiles : props.canMoveFiles);
     fileActionBusy.value = true;
-    fileActionFeedback.value = undefined;
+    closeMessage('action');
     // Invalidate reads begun before this write; they must not restore deleted/moved rows.
     latestListRequest += 1;
     latestGroupRequest += 1;
@@ -646,9 +671,9 @@
           .map(moved)
           .filter((item) => activeGroupId.value === undefined || item.groupId === activeGroupId.value);
       }
-      fileActionFeedback.value = { action, succeeded: succeeded.size, failed: ids.length - succeeded.size };
+      showFileActionResult(action, succeeded.size, ids.length - succeeded.size);
     } catch {
-      if (isCurrent()) fileActionFeedback.value = { action, succeeded: 0, failed: ids.length };
+      if (isCurrent()) showFileActionResult(action, 0, ids.length);
     }
     if (!isCurrent()) return;
     await Promise.all([fetchList(true), fetchGroups()]);
@@ -916,8 +941,7 @@
       (element) => element.dataset.fileId === id
     );
     const control = card?.querySelector<HTMLElement>('input:not(:disabled)');
-    const items = workspace.value.querySelector<HTMLElement>('.a9-file-picker__items');
-    (control ?? items ?? workspace.value.querySelector<HTMLElement>('.a9-file-picker__search input'))?.focus();
+    (control ?? workspace.value.querySelector<HTMLElement>('.a9-file-picker__search input'))?.focus();
   };
   const openPreview = (trigger: HTMLElement | undefined, item: FileItem) => {
     const url = safeFileUrl(item.url);
@@ -956,12 +980,34 @@
   };
   const onUploadTasksChange = (tasks: readonly FileUploadTask[]) => {
     uploading.value = tasks.some((task) => task.status === 'pending' || task.status === 'uploading');
+    if (uploading.value) closeMessage('upload');
   };
 
   const onUploadResponse = (item: FileItem) => emit('uploadSuccess', item);
   const onUploadError = (failure: FileUploadFailure) => emit('uploadError', failure.error);
   const onUploadComplete = async (result: FileUploadBatchResult) => {
     if (!visible.value) return;
+    const succeeded = result.succeeded.length;
+    const failed = result.failed.length;
+    const cancelled = result.cancelled.length;
+    if (succeeded || failed) {
+      const summary = [
+        succeeded && t('admin9Ui.filePicker.uploadSummary.succeeded', { count: succeeded }),
+        failed && t('admin9Ui.filePicker.uploadSummary.failed', { count: failed }),
+        cancelled && t('admin9Ui.filePicker.uploadSummary.cancelled', { count: cancelled }),
+      ]
+        .filter(Boolean)
+        .join(t('admin9Ui.filePicker.uploadSummary.separator'));
+      let type: 'success' | 'info' | 'warning' | 'error' = cancelled ? 'info' : 'success';
+      if (failed) type = succeeded ? 'warning' : 'error';
+      showMessage(
+        'upload',
+        type,
+        t('admin9Ui.filePicker.uploadSummary.queue', { summary }) +
+          (succeeded ? t('admin9Ui.filePicker.uploadSummary.select') : ''),
+        5000
+      );
+    }
     const hasResolvedResponse = result.succeeded.length > 0 || result.failed.some((failure) => Boolean(failure.task.item));
     if (hasResolvedResponse) await refresh();
   };
@@ -1153,6 +1199,11 @@
           >
             <div class="a9-file-picker__sidebar-title">
               <span>{{ t('admin9Ui.filePicker.groups') }}</span>
+              <a-tooltip v-if="uploading" :content="t('admin9Ui.filePicker.groupLocked')" :trigger="['hover', 'focus']">
+                <a-button type="text" size="mini" :aria-label="t('admin9Ui.filePicker.groupLocked')"
+                  ><template #icon><icon-info-circle /></template
+                ></a-button>
+              </a-tooltip>
               <a-tooltip v-if="canCreateGroup" :content="t('admin9Ui.filePicker.createGroup')">
                 <a-button
                   type="text"
@@ -1165,6 +1216,12 @@
                   <template #icon><icon-plus /></template>
                 </a-button>
               </a-tooltip>
+            </div>
+            <div v-if="groupError" class="a9-file-picker__group-error" role="alert">
+              <span>{{ t('admin9Ui.filePicker.groupLoadFailed') }}</span>
+              <a-button type="text" size="mini" data-testid="file-picker-retry-groups" @click="fetchGroups">{{
+                t('admin9Ui.filePicker.retry')
+              }}</a-button>
             </div>
             <div class="a9-file-picker__group-list">
               <button
@@ -1248,6 +1305,12 @@
 
             <template v-else>
               <div v-if="hasGroupNavigation && narrow" class="a9-file-picker__compact-groups">
+                <div v-if="groupError" class="a9-file-picker__group-error" role="alert">
+                  <span>{{ t('admin9Ui.filePicker.groupLoadFailed') }}</span>
+                  <a-button type="text" size="mini" data-testid="file-picker-retry-groups" @click="fetchGroups">{{
+                    t('admin9Ui.filePicker.retry')
+                  }}</a-button>
+                </div>
                 <div class="a9-file-picker__group-select">
                   <a-select
                     v-model="groupFilter"
@@ -1261,6 +1324,11 @@
                       row.label
                     }}</a-option>
                   </a-select>
+                  <a-tooltip v-if="uploading" :content="t('admin9Ui.filePicker.groupLocked')" :trigger="['hover', 'focus']">
+                    <a-button type="text" size="mini" :aria-label="t('admin9Ui.filePicker.groupLocked')"
+                      ><template #icon><icon-info-circle /></template
+                    ></a-button>
+                  </a-tooltip>
                   <a-tooltip v-if="canCreateGroup" :content="t('admin9Ui.filePicker.createGroup')">
                     <a-button
                       :disabled="createGroupDisabled"
@@ -1299,6 +1367,14 @@
                     @press-enter="onSearch"
                     @clear="onSearch"
                   />
+                  <a-button
+                    v-if="hasFilters"
+                    type="text"
+                    :disabled="fileActionBusy || uploading"
+                    data-testid="file-picker-clear-filters"
+                    @click="clearFilters"
+                    >{{ t('admin9Ui.filePicker.clearFilters') }}</a-button
+                  >
                 </div>
                 <div v-if="!narrow && (canDeleteFiles || canMoveFiles)" class="a9-file-picker__file-actions">
                   <a-button
@@ -1396,29 +1472,7 @@
                       @complete="onUploadComplete"
                       @tasks-change="onUploadTasksChange"
                     >
-                      <template #result="{ succeededCount, dismiss }">
-                        <Teleport v-if="uploadFeedback" :to="uploadFeedback">
-                          <div v-if="succeededCount" class="a9-file-picker__upload-result" role="status">
-                            <a-tooltip
-                              :content="t('admin9Ui.filePicker.uploaded', { count: succeededCount })"
-                              :trigger="['hover', 'focus']"
-                              ><span tabindex="0">{{
-                                t('admin9Ui.filePicker.uploaded', { count: succeededCount })
-                              }}</span></a-tooltip
-                            >
-                            <a-button v-if="hasFilters" type="text" size="mini" @click="clearFilters">{{
-                              t('admin9Ui.filePicker.clearFilters')
-                            }}</a-button>
-                            <a-button
-                              type="text"
-                              size="mini"
-                              :aria-label="t('admin9Ui.fileUploader.dismissResult')"
-                              @click="dismiss"
-                              ><template #icon><icon-close /></template
-                            ></a-button>
-                          </div>
-                        </Teleport>
-                      </template>
+                      <template #result><span hidden /></template>
                     </AFileUploader>
                   </div>
                 </div>
@@ -1438,7 +1492,6 @@
                     :data-view="view"
                     :aria-label="t('admin9Ui.filePicker.results')"
                     role="group"
-                    tabindex="-1"
                   >
                     <article
                       v-for="(item, index) in list"
@@ -1496,9 +1549,6 @@
                   </div>
                   <div v-else-if="empty" class="a9-file-picker__empty">
                     <slot name="empty" :constrained="false"><a-empty :description="emptyDescription" /></slot>
-                    <a-button v-if="hasFilters" type="text" @click="clearFilters">{{
-                      t('admin9Ui.filePicker.clearFilters')
-                    }}</a-button>
                   </div>
                 </a-spin>
               </div>
@@ -1508,42 +1558,6 @@
       </FormItem>
       <template #footer>
         <div class="a9-file-picker__footer-content" @keydown="onMoreKeydown">
-          <div v-if="limitNotice" class="a9-file-picker__limit-notice" role="status">{{
-            t('admin9Ui.filePicker.limitReached', { count: limit })
-          }}</div>
-          <div class="a9-file-picker__feedback-strip">
-            <div v-if="!draftCount && needsEmptyCommit" class="a9-file-picker__notice" role="status">
-              <a-tooltip :content="t('admin9Ui.filePicker.confirmEmpty')" :trigger="['hover', 'focus']"
-                ><span tabindex="0">{{ t('admin9Ui.filePicker.confirmEmpty') }}</span></a-tooltip
-              >
-            </div>
-            <div v-if="uploading && hasGroupNavigation" class="a9-file-picker__hint" role="status">
-              <a-tooltip :content="t('admin9Ui.filePicker.groupLocked')" :trigger="['hover', 'focus']"
-                ><span tabindex="0">{{ t('admin9Ui.filePicker.groupLocked') }}</span></a-tooltip
-              >
-            </div>
-            <div v-if="groupError" class="a9-file-picker__group-error" role="alert">
-              <a-tooltip :content="t('admin9Ui.filePicker.groupLoadFailed')" :trigger="['hover', 'focus']"
-                ><span tabindex="0">{{ t('admin9Ui.filePicker.groupLoadFailed') }}</span></a-tooltip
-              >
-              <a-button type="text" size="mini" data-testid="file-picker-retry-groups" @click="fetchGroups">{{
-                t('admin9Ui.filePicker.retry')
-              }}</a-button>
-            </div>
-            <div v-if="fileActionFeedback" class="a9-file-picker__file-result" role="status">
-              <a-tooltip :content="fileActionMessage" :trigger="['hover', 'focus']"
-                ><span tabindex="0">{{ fileActionMessage }}</span></a-tooltip
-              >
-              <a-button
-                type="text"
-                size="mini"
-                :aria-label="t('admin9Ui.fileUploader.dismissResult')"
-                @click="fileActionFeedback = undefined"
-                ><template #icon><icon-close /></template
-              ></a-button>
-            </div>
-            <div ref="uploadFeedback" class="a9-file-picker__feedback" />
-          </div>
           <div class="a9-file-picker__footer">
             <span v-if="multiple" class="a9-file-picker__selected-count" role="status">{{ selectionLabel }}</span>
             <div class="a9-file-picker__pagination">
@@ -1559,10 +1573,25 @@
               />
             </div>
             <div class="a9-file-picker__footer-actions">
+              <span v-if="!draftCount && needsEmptyCommit" :id="`${messagePrefix}-confirm-empty`" hidden>{{
+                t('admin9Ui.filePicker.confirmEmpty')
+              }}</span>
               <a-button :size="narrow ? 'small' : undefined" @click="close">{{ t('admin9Ui.filePicker.cancel') }}</a-button>
-              <a-button type="primary" :size="narrow ? 'small' : undefined" :disabled="!canConfirm" @click="confirm">
-                {{ t('admin9Ui.filePicker.confirm') }}
-              </a-button>
+              <a-tooltip
+                :disabled="draftCount > 0 || !needsEmptyCommit"
+                :content="t('admin9Ui.filePicker.confirmEmpty')"
+                :trigger="['hover', 'focus']"
+              >
+                <a-button
+                  type="primary"
+                  :size="narrow ? 'small' : undefined"
+                  :disabled="!canConfirm"
+                  :aria-describedby="!draftCount && needsEmptyCommit ? `${messagePrefix}-confirm-empty` : undefined"
+                  @click="confirm"
+                >
+                  {{ t('admin9Ui.filePicker.confirm') }}
+                </a-button>
+              </a-tooltip>
             </div>
           </div>
         </div>
@@ -1679,7 +1708,8 @@
 
     &__filters {
       display: flex;
-      flex: 1 1 200px;
+      flex: 1 1 320px;
+      flex-wrap: wrap;
       gap: 8px;
       min-width: 0;
     }
@@ -1695,66 +1725,11 @@
       font-size: 12px;
     }
 
-    &__hint {
-      margin: 0;
-      color: var(--color-text-3);
-      font-size: 12px;
-      line-height: 1.5;
-    }
-
     &__upload {
       display: flex;
       flex-direction: column;
       align-items: flex-end;
       max-width: 300px;
-    }
-
-    &__upload-result {
-      display: flex;
-      gap: 4px;
-      align-items: center;
-      min-width: 0;
-      color: var(--color-text-2);
-      font-size: 12px;
-    }
-
-    &__footer-content {
-      position: relative;
-    }
-
-    &__feedback:empty {
-      display: none;
-    }
-
-    &__feedback-strip {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      min-width: 0;
-      height: 24px;
-      margin-bottom: 8px;
-      text-align: left;
-    }
-
-    &__feedback-strip > div,
-    &__feedback-strip :deep(.a9-file-picker__upload-result) {
-      display: flex;
-      flex: 1 1 0;
-      gap: 4px;
-      align-items: center;
-      min-width: 0;
-      margin: 0;
-    }
-
-    &__feedback-strip :deep(span[tabindex='0']) {
-      min-width: 0;
-      overflow: hidden;
-      white-space: nowrap;
-      text-overflow: ellipsis;
-    }
-
-    &__feedback-strip :deep(button) {
-      flex: none;
     }
 
     &__file-actions {
@@ -1771,13 +1746,18 @@
       max-width: 100%;
     }
 
-    &__file-result {
-      color: var(--color-text-2);
-    }
-
     &__compact-groups {
       flex: none;
       margin-bottom: 12px;
+    }
+
+    &__group-error {
+      color: rgb(var(--danger-6));
+      font-size: 12px;
+    }
+
+    &__filters > .arco-btn {
+      flex: none;
     }
 
     &__group-select,
@@ -1799,28 +1779,8 @@
       margin-top: 16px;
     }
 
-    &__limit-notice {
-      position: absolute;
-      right: 16px;
-      bottom: calc(100% + 8px);
-      left: 16px;
-      padding: 8px 12px;
-      color: var(--color-text-1);
-      text-align: left;
-      background: var(--color-bg-popup);
-      border: 1px solid var(--color-border-2);
-      border-radius: 4px;
-      box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
-    }
-
     &__selected-count {
       color: var(--color-text-2);
-    }
-
-    &__notice {
-      margin-bottom: 8px;
-      color: var(--color-text-2);
-      text-align: left;
     }
 
     &__workspace {
@@ -1865,6 +1825,10 @@
       &.is-child {
         padding-left: 20px;
       }
+    }
+
+    &__group-row + &__group-row {
+      margin-top: 4px;
     }
 
     &__group-toggle {
@@ -2037,8 +2001,8 @@
     }
 
     &__filters :deep(.a9-file-picker__search) {
-      flex: 1;
-      min-width: 0;
+      flex: 1 1 180px;
+      min-width: min(180px, 100%);
     }
 
     &__toolbar-actions {
@@ -2099,8 +2063,8 @@
       cursor: pointer;
 
       &.is-selected {
-        border-color: rgb(var(--primary-6));
-        box-shadow: 0 0 0 1px rgb(var(--primary-6));
+        padding: 8px;
+        border: 2px solid rgb(var(--primary-6));
       }
 
       &:not(.is-disabled, .is-selected):hover {
@@ -2172,8 +2136,8 @@
     }
 
     &__items[data-view='grid'] :deep(.a9-file-picker__item:has(input:focus-visible)) {
-      outline: 2px solid rgb(var(--primary-6));
-      outline-offset: 3px;
+      padding: 8px;
+      border: 2px dashed rgb(var(--primary-6));
     }
 
     &__items[data-view='grid'] &__item.is-custom {
@@ -2185,6 +2149,10 @@
 
       .a9-file-picker__item {
         padding: 8px;
+
+        &.is-selected {
+          padding: 7px;
+        }
       }
 
       :deep(.a9-file-item) {

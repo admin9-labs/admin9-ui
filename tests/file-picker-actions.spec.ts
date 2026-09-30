@@ -123,12 +123,32 @@ async function moveTo(label: string) {
   else option.click();
   await flush();
 }
-afterEach(() => {
+afterEach(async () => {
   apps.splice(0).forEach((app) => app.unmount());
+  vi.useRealTimers();
+  await flush();
+  // Let Arco remove its message portal before replacing the body.
+  await vi.waitFor(() => expect(document.querySelector('.arco-message-list')).toBeNull());
   document.body.innerHTML = '';
 });
 
 describe('file library actions in the picker', () => {
+  it('keeps successful deletion feedback separate from a failed refresh and its retry', async () => {
+    const host = mount();
+    await deleteSelected(host.picker);
+    vi.mocked(host.adapter.list).mockRejectedValueOnce(new Error('refresh failed'));
+    confirmDelete();
+    await flush();
+    expect(document.querySelector('.arco-message-success')?.textContent).toContain('Deleted 2 files');
+    expect(document.querySelector('.arco-message-error')).toBeNull();
+    expect(document.querySelector('[data-testid="file-picker-retry-list"]')).not.toBeNull();
+    document.querySelector<HTMLButtonElement>('[data-testid="file-picker-retry-list"]')!.click();
+    await flush();
+    expect(document.querySelector('[data-testid="file-picker-retry-list"]')).toBeNull();
+    expect(host.adapter.deleteFiles).toHaveBeenCalledOnce();
+    expect(host.update).not.toHaveBeenCalled();
+  });
+
   it('keeps old browse-only adapters valid when management is disabled', async () => {
     const host = mount({ noCapabilities: true, props: { canDeleteFiles: false, canMoveFiles: false } });
     host.picker.value!.open();
@@ -155,7 +175,7 @@ describe('file library actions in the picker', () => {
     expect(host.adapter.deleteFiles).toHaveBeenCalledWith(['first', 'second']);
     expect(document.querySelectorAll('.a9-file-picker__item')).toHaveLength(0);
     expect(document.querySelector('.a9-file-picker__selected-count')?.textContent).toBe('0 selected');
-    expect(document.querySelector('.a9-file-picker__file-result')?.textContent).toContain('Deleted 2 files');
+    expect(document.querySelector('.arco-message')?.textContent).toContain('Deleted 2 files');
     expect(host.model.files).toEqual([first, second]);
     expect(host.update).not.toHaveBeenCalled();
     expect(host.change).not.toHaveBeenCalled();
@@ -169,7 +189,7 @@ describe('file library actions in the picker', () => {
     await flush();
     expect(document.querySelector('[data-file-id="first"]')).toBeNull();
     expect(document.querySelector('[data-file-id="second"]')?.classList.contains('is-selected')).toBe(true);
-    expect(document.querySelector('.a9-file-picker__file-result')?.textContent).toContain('Deleted 1 files; 1 failed');
+    expect(document.querySelector('.arco-message')?.textContent).toContain('Deleted 1 files; 1 failed');
     expect(host.update).not.toHaveBeenCalled();
   });
 
@@ -183,7 +203,7 @@ describe('file library actions in the picker', () => {
     confirmDelete();
     await flush();
     expect(document.querySelectorAll('.a9-file-picker__item.is-selected')).toHaveLength(2);
-    expect(document.querySelector('.a9-file-picker__file-result')?.textContent).toContain('Deletion failed');
+    expect(document.querySelector('.arco-message')?.textContent).toContain('Deletion failed');
     expect(document.body.textContent).not.toContain('private detail');
   });
 
@@ -211,7 +231,7 @@ describe('file library actions in the picker', () => {
     host.picker.value!.open();
     await flush();
     await moveTo('Destination');
-    expect(document.querySelector('.a9-file-picker__file-result')?.textContent).toContain('Moved 1 files; 1 failed');
+    expect(document.querySelector('.arco-message')?.textContent).toContain('Moved 1 files; 1 failed');
     await moveTo('Destination');
     expect(host.adapter.moveFiles).toHaveBeenLastCalledWith({ ids: ['first', 'second'], groupId: 'root' });
   });
@@ -296,7 +316,7 @@ describe('file library actions in the picker', () => {
     await flush();
     expect(host.adapter.moveFiles).toHaveBeenCalledOnce();
     expect(host.update).not.toHaveBeenCalled();
-    expect(document.querySelector('.a9-file-picker__file-result')).toBeNull();
+    expect(document.querySelector('.arco-message')).toBeNull();
   });
 
   it.each(['close', 'service', 'model', 'disabled', 'readonly', 'permission', 'unmount'] as const)(
@@ -326,7 +346,7 @@ describe('file library actions in the picker', () => {
       expect(vi.mocked(host.adapter.list).mock.calls).toHaveLength(calls);
       expect(host.update).not.toHaveBeenCalled();
       expect(host.change).not.toHaveBeenCalled();
-      expect(document.querySelector('.a9-file-picker__file-result')).toBeNull();
+      expect(document.querySelector('.arco-message')).toBeNull();
     }
   );
 });

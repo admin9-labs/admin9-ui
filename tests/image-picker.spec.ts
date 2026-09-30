@@ -207,7 +207,10 @@ async function upload(file = new File(['image'], 'upload.png', { type: 'image/pn
 }
 
 beforeEach(() => {
-  vi.spyOn(Message, 'warning').mockReturnValue({ close: () => undefined });
+  // Picker feedback is covered with real Message portals in arco-integration.spec.ts.
+  (['info', 'success', 'warning', 'error'] as const).forEach((type) => {
+    vi.spyOn(Message, type).mockReturnValue({ close: () => undefined });
+  });
 });
 
 afterEach(() => {

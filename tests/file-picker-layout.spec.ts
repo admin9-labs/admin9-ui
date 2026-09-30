@@ -148,9 +148,13 @@ beforeEach(() => {
   });
   vi.stubGlobal('ResizeObserver', MeasuredResizeObserver);
 });
-afterEach(() => {
+afterEach(async () => {
   apps.splice(0).forEach((app) => app.unmount());
   observers.clear();
+  vi.useRealTimers();
+  await flush();
+  // Let Arco remove its message portal before replacing the body.
+  await vi.waitFor(() => expect(document.querySelector('.arco-message-list')).toBeNull());
   document.body.innerHTML = '';
   vi.useRealTimers();
   vi.unstubAllGlobals();
@@ -397,14 +401,17 @@ describe('file picker measured pagination', () => {
     await flush();
     click('[data-file-id="file-1"]');
     await flush();
-    const notice = document.querySelector('.a9-file-picker__notice')!;
+    const notice = document.querySelector('[id$="-confirm-empty"]')!;
     expect(notice.textContent).toContain('clear');
     expect(notice.closest('.arco-modal-footer')).not.toBeNull();
     expect(notice.closest('.a9-file-picker__results')).toBeNull();
     click('[data-file-id="file-1"]');
     click('[data-file-id="file-2"]');
     await flush();
-    expect(document.querySelector('.a9-file-picker__limit-notice')?.closest('.arco-modal-footer')).not.toBeNull();
+    expect(document.querySelector('.arco-message-warning:not(.fade-message-leave-active)')).not.toBeNull();
+    expect(
+      document.querySelector('.arco-message-warning:not(.fade-message-leave-active)')?.closest('.arco-modal-footer')
+    ).toBeNull();
     expect(host.adapter.list).toHaveBeenCalledOnce();
     expect(host.update).not.toHaveBeenCalled();
   });
@@ -488,7 +495,7 @@ describe('file picker measured pagination', () => {
       deleted.resolve(['file-1']);
       await flush();
       expect(host.adapter.list).toHaveBeenCalledOnce();
-      expect(document.querySelector('.a9-file-picker__file-result')).toBeNull();
+      expect(document.querySelector('.arco-message')).toBeNull();
       expect(document.querySelector(`[data-file-id="${expected[0].id}"]`)?.classList.contains('is-selected')).toBe(true);
       expect(host.update).not.toHaveBeenCalled();
       click('.a9-file-picker__footer-actions button:last-child');
@@ -580,7 +587,7 @@ describe('file picker measured pagination', () => {
     expect(host.adapter.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, pageSize: 9 }));
     expect(host.update).not.toHaveBeenCalled();
     expect(document.querySelectorAll('.a9-file-picker__item.is-selected')).toHaveLength(0);
-    expect(document.querySelector('.a9-file-picker__upload-result')?.textContent).toContain('Select them, then confirm');
+    expect(document.querySelector('.arco-message')?.textContent).toContain('Select them, then confirm');
   });
 
   it('closes the move popup, More and the picker one layer per Escape', async () => {

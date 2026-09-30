@@ -402,9 +402,12 @@ describe('AFilePicker', () => {
     uploads.length = 0;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     mountedApps.splice(0).forEach((app) => app.unmount());
     vi.useRealTimers();
+    await flush();
+    // Let Arco remove its message portal before the next test replaces the body.
+    await vi.waitFor(() => expect(document.querySelector('.arco-message-list')).toBeNull());
     vi.unstubAllGlobals();
   });
 
@@ -1223,7 +1226,7 @@ describe('AFilePicker', () => {
     pending.resolve({ ...image, id: 'new-mixed' });
     await flush();
     expect(document.querySelector<HTMLButtonElement>('.a9-file-picker__group-button')?.disabled).toBe(false);
-    expect(document.querySelector('.a9-file-picker__upload-result')?.textContent).toContain('Select them, then confirm');
+    expect(document.querySelector('.arco-message')?.textContent).toContain('Select them, then confirm');
     expect(emitted.selectionChange).toBeUndefined();
     expect(emitted['update:modelValue']).toBeUndefined();
   });
@@ -1237,7 +1240,9 @@ describe('AFilePicker', () => {
     item(video.id).click();
     await flush();
     expect(emitted.selectionChange).toHaveLength(1);
-    expect(document.querySelector('.a9-file-picker__limit-notice')?.textContent).toContain('Select up to 1 files');
+    expect(document.querySelector('.arco-message-warning:not(.fade-message-leave-active)')?.textContent).toContain(
+      'Select up to 1 files'
+    );
     expect(document.querySelector('.a9-file-picker__selected-count')?.textContent).toContain('1 / 1');
     item(image.id).click();
     await flush();
@@ -1282,25 +1287,28 @@ describe('AFilePicker', () => {
     vi.useFakeTimers();
     selectItem(image.id);
     await nextTick();
-    expect(document.querySelector('.a9-file-picker__limit-notice')).toBeNull();
+    expect(document.querySelector('.arco-message-warning:not(.fade-message-leave-active)')).toBeNull();
     selectItem(video.id);
     await nextTick();
-    expect(document.querySelectorAll('.a9-file-picker__limit-notice')).toHaveLength(1);
+    expect(document.querySelectorAll('.arco-message-warning:not(.fade-message-leave-active)')).toHaveLength(1);
     expect(emitted.selectionChange).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(2000);
     selectItem(video.id);
     await nextTick();
     await vi.advanceTimersByTimeAsync(2000);
-    expect(document.querySelectorAll('.a9-file-picker__limit-notice')).toHaveLength(1);
+    expect(document.querySelectorAll('.arco-message-warning:not(.fade-message-leave-active)')).toHaveLength(1);
+    selectItem(video.id);
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(document.querySelectorAll('.arco-message-warning:not(.fade-message-leave-active)')).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(1000);
     await nextTick();
-    expect(document.querySelector('.a9-file-picker__limit-notice')).toBeNull();
+    expect(document.querySelector('.arco-message-warning:not(.fade-message-leave-active)')).toBeNull();
     selectItem(video.id);
     await nextTick();
     selectItem(image.id);
     await nextTick();
-    expect(document.querySelector('.a9-file-picker__limit-notice')).toBeNull();
-    expect(vi.getTimerCount()).toBe(0);
+    expect(document.querySelector('.arco-message-warning:not(.fade-message-leave-active)')).toBeNull();
   });
 
   it('disables an empty confirm while allowing a deliberate normalized empty commit', async () => {
@@ -1320,7 +1328,7 @@ describe('AFilePicker', () => {
     expect(document.querySelector<HTMLButtonElement>('.a9-file-picker__footer-actions button:last-child')?.disabled).toBe(
       false
     );
-    expect(document.querySelector('.a9-file-picker__notice')?.textContent).toContain('clear');
+    expect(document.querySelector('[id$="-confirm-empty"]')?.textContent).toContain('clear');
     click('.a9-file-picker__footer-actions button:last-child');
     await flush();
     expect(invalid.emitted['update:modelValue']).toEqual([[undefined]]);
@@ -1366,8 +1374,8 @@ describe('AFilePicker', () => {
     expect(document.querySelector('[data-group-id="design"] small')).toBeNull();
     click('[data-testid="file-picker-upload"]');
     await flush();
-    expect(document.querySelector('.a9-file-picker__toolbar .a9-file-picker__upload-result')).toBeNull();
-    expect(document.querySelector('.a9-file-picker__feedback .a9-file-picker__upload-result')).not.toBeNull();
+    expect(document.querySelector('.a9-file-picker__toolbar .arco-message')).toBeNull();
+    expect(document.querySelector('.arco-message-success')).not.toBeNull();
   });
   it('shows only a live count without a selected-list entry or focus stop', async () => {
     const { emitted } = mountPicker({ service: makeService(), props: { multiple: true, limit: 4 } });

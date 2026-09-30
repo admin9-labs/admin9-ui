@@ -1,6 +1,6 @@
 /* eslint-disable no-await-in-loop, @typescript-eslint/no-non-null-assertion -- Await Vue flushes and assert mounted fixture elements. */
 import { createApp, defineComponent, h, nextTick, reactive, ref, type App, type Component } from 'vue';
-import ArcoVue, { ConfigProvider, Form, FormItem, Input, type Size } from '@arco-design/web-vue';
+import ArcoVue, { ConfigProvider, Form, FormItem, Input, Message, type Size } from '@arco-design/web-vue';
 import * as Icons from '@arco-design/web-vue/es/icon';
 import { createI18n } from 'vue-i18n';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -47,13 +47,101 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
-afterEach(() => {
+afterEach(async () => {
   apps.splice(0).forEach((app) => app.unmount());
+  vi.useRealTimers();
+  await flush();
+  // Message portals finish their leave transition before the document is reset.
+  await vi.waitFor(() => expect(document.querySelector('.arco-message-list')).toBeNull());
   document.body.innerHTML = '';
   vi.unstubAllGlobals();
 });
 
 describe('real Arco 2.57 component contracts', () => {
+  it('keeps picker messages independent from other pickers and application messages', async () => {
+    const files = ['one', 'two'].map((id) => ({ id, name: `${id}.png`, type: 'image' as const, url: `/${id}.png` }));
+    const service = { list: async () => ({ list: files, pagination: { page: 1, pageSize: 15, total: 2, hasMore: false } }) };
+    const first = ref<import('../src').AFilePickerExposed>();
+    const second = ref<import('../src').AFilePickerExposed>();
+    const disabled = ref(false);
+    mount(() => h(AFilePicker, { ref: first, service, multiple: true, limit: 1 }));
+    mount(() => h(AFilePicker, { ref: second, service, multiple: true, limit: 1, disabled: disabled.value }));
+    const outside = Message.info({ content: 'Application message', duration: 0 });
+    try {
+      first.value!.open();
+      second.value!.open();
+      await flush();
+      document.querySelectorAll('.a9-file-picker__items').forEach((group) => {
+        group.querySelector<HTMLElement>('[data-file-id="one"]')!.click();
+        group.querySelector<HTMLElement>('[data-file-id="two"]')!.click();
+      });
+      await flush();
+      expect(document.querySelectorAll('.arco-message-warning:not(.fade-message-leave-active)')).toHaveLength(2);
+      first.value!.close();
+      await flush();
+      expect(document.querySelectorAll('.arco-message-warning:not(.fade-message-leave-active)')).toHaveLength(1);
+      disabled.value = true;
+      await flush();
+      expect(document.querySelector('.arco-message-warning:not(.fade-message-leave-active)')).toBeNull();
+      expect(document.querySelector('.arco-message-info')?.textContent).toBe('Application message');
+    } finally {
+      outside.close();
+    }
+  });
+
+  it.each(['success', 'partial', 'failed', 'cancelled'] as const)(
+    'summarizes the %s upload queue without a duplicate inline result',
+    async (scenario) => {
+      let retry = false;
+      const pending = deferred<import('../src').FileItem>();
+      const change = vi.fn();
+      const service: import('../src').FilePickerAdapter = {
+        list: async () => ({ list: [], pagination: { page: 1, pageSize: 15, total: 0, hasMore: false } }),
+        upload: async ({ file }) => {
+          if (scenario === 'cancelled') return pending.promise;
+          if (!retry && (scenario === 'failed' || (scenario === 'partial' && file.name === 'two.png')))
+            throw new Error('private backend detail');
+          return { id: file.name, name: file.name, type: 'image', url: `/${file.name}` };
+        },
+      };
+      mount(() => h(AFilePicker, { service, canUpload: true, onChange: change }));
+      document.querySelector<HTMLButtonElement>('[data-testid="file-picker-trigger"]')!.click();
+      await flush();
+      const input = document.querySelector<HTMLInputElement>('.a9-file-uploader input[type="file"]')!;
+      Object.defineProperty(input, 'files', {
+        value: ['one.png', 'two.png'].map((name) => new File(['png'], name, { type: 'image/png' })),
+      });
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      await flush();
+      if (scenario === 'cancelled') {
+        document.querySelector<HTMLButtonElement>('[aria-label="Cancel upload for one.png"]')!.click();
+        document.querySelector<HTMLButtonElement>('[aria-label="Cancel upload for two.png"]')!.click();
+        await flush();
+        pending.resolve({ id: 'late', name: 'late.png', type: 'image', url: '/late.png' });
+        await flush();
+        expect(document.querySelector('.arco-message')).toBeNull();
+      } else {
+        const type = { success: 'success', partial: 'warning', failed: 'error' }[scenario];
+        expect(document.querySelectorAll(`.arco-message-${type}`)).toHaveLength(1);
+        const content = document.querySelector('.arco-message')!.textContent!;
+        expect(content).toContain('Current queue:');
+        expect(content).not.toContain('private backend detail');
+        if (scenario === 'partial') {
+          expect(content).toContain('1 uploaded, 1 failed');
+          retry = true;
+          document.querySelector<HTMLButtonElement>('[aria-label="Retry upload for two.png"]')!.click();
+          await flush();
+          expect(document.querySelector('.arco-message-success')?.textContent).toBe(
+            'Current queue: 2 uploaded. Select them, then confirm.'
+          );
+          expect(document.querySelectorAll('.arco-message:not(.fade-message-leave-active)')).toHaveLength(1);
+        }
+      }
+      expect(document.querySelector('.a9-file-uploader__result')).toBeNull();
+      expect(document.querySelector('.a9-file-picker__feedback-strip')).toBeNull();
+      expect(change).not.toHaveBeenCalled();
+    }
+  );
   it('updates selectedKeys and reports official select arguments from real checkboxes', async () => {
     const keys = ref<(string | number)[]>([]);
     const selection = vi.fn();
@@ -642,38 +730,73 @@ describe('real Arco 2.57 component contracts', () => {
     expect(visibility).toHaveBeenLastCalledWith(false);
   });
 
-  it('falls back to the search when a previewed card disappears and to the outside trigger on disable', async () => {
-    const file = { id: 'fallback', name: 'Fallback.png', type: 'image' as const, groupId: null, url: '/fallback.png' };
-    let files = [file];
-    const disabled = ref(false);
+  it.each([false, true])(
+    'falls back to search when the previewed card disappears (other files remain: %s)',
+    async (hasOtherFiles) => {
+      const file = { id: 'fallback', name: 'Fallback.png', type: 'image' as const, groupId: null, url: '/fallback.png' };
+      const other = { ...file, id: 'other', name: 'Other.png' };
+      let files = [file];
+      const disabled = ref(false);
+      const picker = ref<import('../src').AFilePickerExposed>();
+      const visibility = vi.fn();
+      const service = {
+        list: async () => ({ list: files, pagination: { page: 1, pageSize: 24, total: files.length, hasMore: false } }),
+      };
+      mount(() => h(AFilePicker, { ref: picker, service, disabled: disabled.value, onVisibleChange: visibility }));
+      document.querySelector<HTMLButtonElement>('[data-testid="file-picker-trigger"]')!.click();
+      await flush();
+      document.querySelector<HTMLButtonElement>('[aria-label="Preview Fallback.png"]')!.click();
+      await flush();
+      files = hasOtherFiles ? [other] : [];
+      await picker.value!.refresh();
+      await flush();
+      expect(document.querySelector('.a9-file-image-preview')).toBeNull();
+      expect(document.activeElement).toBe(document.querySelector('.a9-file-picker__search input'));
+      document.documentElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await flush();
+      expect(visibility).toHaveBeenLastCalledWith(false);
+      picker.value!.open();
+      await flush();
+      files = [file];
+      await picker.value!.refresh();
+      await flush();
+      document.querySelector<HTMLButtonElement>('[aria-label="Preview Fallback.png"]')!.click();
+      await flush();
+      disabled.value = true;
+      await flush();
+      expect(document.querySelector('.a9-file-image-preview')).toBeNull();
+      expect(document.activeElement?.closest('.a9-file-image-preview')).toBeNull();
+    }
+  );
+
+  it('restores the same file selection control when its preview button is rebuilt', async () => {
+    const file = { id: 'rebuilt', name: 'Rebuilt.png', type: 'image' as const, url: '/rebuilt.png' };
+    const other = { ...file, id: 'other', name: 'Other.png' };
+    let files = [file, other];
     const picker = ref<import('../src').AFilePickerExposed>();
-    const visibility = vi.fn();
-    const service = {
-      list: async () => ({ list: files, pagination: { page: 1, pageSize: 24, total: files.length, hasMore: false } }),
-    };
-    mount(() => h(AFilePicker, { ref: picker, service, disabled: disabled.value, onVisibleChange: visibility }));
+    mount(() =>
+      h(AFilePicker, {
+        ref: picker,
+        service: { list: async () => ({ list: files, pagination: { page: 1, pageSize: 24, total: 2, hasMore: false } }) },
+      })
+    );
     document.querySelector<HTMLButtonElement>('[data-testid="file-picker-trigger"]')!.click();
     await flush();
-    document.querySelector<HTMLButtonElement>('[aria-label="Preview Fallback.png"]')!.click();
+    const group = document.querySelector<HTMLElement>('.a9-file-picker__items')!;
+    expect(group.getAttribute('role')).toBe('group');
+    expect(group.getAttribute('aria-label')).toBe('File results');
+    expect(group.hasAttribute('tabindex')).toBe(false);
+    const trigger = document.querySelector<HTMLButtonElement>('[aria-label="Preview Rebuilt.png"]')!;
+    trigger.click();
     await flush();
-    files = [];
+    // The rendered key includes the page index: reordering rebuilds the original card.
+    files = [other, file];
     await picker.value!.refresh();
     await flush();
-    expect(document.querySelector('.a9-file-image-preview')).toBeNull();
-    expect(document.activeElement).toBe(document.querySelector('.a9-file-picker__search input'));
-    document.documentElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(trigger.isConnected).toBe(false);
+    expect(document.querySelector('.a9-file-image-preview')).not.toBeNull();
+    document.querySelector<HTMLElement>('[aria-label="Close preview"]')!.click();
     await flush();
-    expect(visibility).toHaveBeenLastCalledWith(false);
-    picker.value!.open();
-    await flush();
-    files = [file];
-    await picker.value!.refresh();
-    await flush();
-    document.querySelector<HTMLButtonElement>('[aria-label="Preview Fallback.png"]')!.click();
-    await flush();
-    disabled.value = true;
-    await flush();
-    expect(document.querySelector('.a9-file-image-preview')).toBeNull();
-    expect(document.activeElement?.closest('.a9-file-image-preview')).toBeNull();
+    expect(document.activeElement).toBe(document.querySelector('[data-file-id="rebuilt"] input[type="checkbox"]'));
   });
 });
