@@ -85,6 +85,7 @@ export default {
     removePosition: 'Remove cover image {index}',
   },
   filePicker: {
+    more: 'More',
     preview: 'Preview',
     open: 'Open',
     closePreview: 'Close preview',

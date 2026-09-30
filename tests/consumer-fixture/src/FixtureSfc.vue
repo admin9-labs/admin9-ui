@@ -78,7 +78,7 @@
       can-delete-files
       can-move-files
     />
-    <AImagePicker v-model="attachments" :service="filePickerService" multiple :limit="2"
+    <AImagePicker v-model="attachments" :service="filePickerService" multiple :limit="2" :page-size="24"
       ><template #trigger="{ open, disabled, selectedCount, limitReached }"
         ><button :disabled="disabled" :data-full="limitReached" @click="open">{{ selectedCount }}</button></template
       ></AImagePicker
@@ -176,6 +176,7 @@
       can-delete-files
       can-move-files
     />
+    <AFilePicker :service="filePickerService" :page-size="24" default-view="list" button-text="Fixed page size" />
     <AFileUploader :service="fileUploaderService" :file-types="['image']" group-id="fixture-images" accept="image/*" />
   </section>
 </template>

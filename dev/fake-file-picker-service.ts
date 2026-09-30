@@ -18,6 +18,7 @@ const demoGroups: FileGroup[] = [
   { id: 'campaign-empty', name: '待补充', parentId: 'campaign' },
   { id: 'brand', name: '品牌素材' },
   { id: 'product', name: '产品资料' },
+  ...Array.from({ length: 18 }, (_, index) => ({ id: `archive-${index + 1}`, name: `历史素材 ${index + 1}` })),
 ];
 
 const demoFiles: FileItem[] = [
@@ -178,9 +179,40 @@ const demoFiles: FileItem[] = [
     extension: 'dat',
     status: 'ready',
   },
+  ...Array.from({ length: 45 }, (_, index): FileItem => {
+    const media = [
+      { url: '/media-board.svg', label: '横图' },
+      { url: '/media-tall.svg', label: '竖图' },
+      { url: '/media-square.svg', label: '方图' },
+    ][index % 3];
+    let status: FileItem['status'] = 'ready';
+    if (index === 43) status = 'pending';
+    if (index === 44) status = 'failed';
+    return {
+      id: `file-pagination-image-${index + 1}`,
+      name: `分页图片-${String(index + 1).padStart(2, '0')}-${media.label}${
+        index % 9 === 0 ? '-长文件名验收'.repeat(8) : ''
+      }.svg`,
+      type: 'image',
+      groupId: ['campaign', 'campaign-event', 'brand', 'product', null][index % 5],
+      url: media.url,
+      thumbnail: media.url,
+      extension: 'svg',
+      size: 18432 + index * 1024,
+      status,
+    };
+  }),
 ];
 
-export default function createFakeFilePickerService(state: AcceptanceState): FilePickerAdapter {
+interface FakeFilePickerOptions {
+  pageSize?: number;
+  onList?: (params: FileListParams, result: FileListResult) => void;
+}
+
+export default function createFakeFilePickerService(
+  state: AcceptanceState,
+  scenario: FakeFilePickerOptions = {}
+): FilePickerAdapter {
   let files = demoFiles.map((item) => ({ ...item }));
   let uploadSequence = 0;
   const failedOnce = new Set<string>();
@@ -188,14 +220,17 @@ export default function createFakeFilePickerService(state: AcceptanceState): Fil
 
   return {
     async list(params: FileListParams): Promise<FileListResult> {
+      const pageSize = scenario.pageSize ?? params.pageSize;
       if (state === 'loading') await wait(5000);
       else await wait(260);
       if (state === 'error') throw new Error('Acceptance host: simulated file list failure');
       if (state === 'empty' || state === 'loading') {
-        return {
+        const result = {
           list: [],
-          pagination: { page: params.page, pageSize: params.pageSize, total: 0, hasMore: false },
+          pagination: { page: params.page, pageSize, total: 0, hasMore: false },
         };
+        scenario.onList?.(params, result);
+        return result;
       }
 
       let requestedTypes: readonly FileType[] = FILE_TYPES;
@@ -209,9 +244,9 @@ export default function createFakeFilePickerService(state: AcceptanceState): Fil
           (params.groupId === undefined || item.groupId === params.groupId) &&
           (!keyword || item.name.toLowerCase().includes(keyword))
       );
-      const offset = (params.page - 1) * params.pageSize;
-      return {
-        list: filtered.slice(offset, offset + params.pageSize).map((item) =>
+      const offset = (params.page - 1) * pageSize;
+      const result = {
+        list: filtered.slice(offset, offset + pageSize).map((item) =>
           item.id === 'file-image-2'
             ? {
                 ...item,
@@ -219,15 +254,17 @@ export default function createFakeFilePickerService(state: AcceptanceState): Fil
                 extension: `svg-${'ext'.repeat(28)}`,
                 mime: `image/svg+xml;profile=${'metadata'.repeat(24)}`,
               }
-            : item
+            : { ...item }
         ),
         pagination: {
           page: params.page,
-          pageSize: params.pageSize,
+          pageSize,
           total: filtered.length,
-          hasMore: offset + params.pageSize < filtered.length,
+          hasMore: offset + pageSize < filtered.length,
         },
       };
+      scenario.onList?.(params, result);
+      return result;
     },
 
     async listGroups() {

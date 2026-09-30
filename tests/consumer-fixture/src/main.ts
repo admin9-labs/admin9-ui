@@ -68,9 +68,24 @@ const fileItem: FileItem = {
 
 const fileService: FilePickerAdapter = {
   async list(params: FileListParams) {
+    const matchesType = params.fileType
+      ? params.fileType === fileItem.type
+      : !params.fileTypes || params.fileTypes.includes(fileItem.type);
+    const filtered = [fileItem].filter(
+      (item) =>
+        matchesType &&
+        (params.groupId === undefined || params.groupId === item.groupId) &&
+        (!params.keyword || item.name.toLowerCase().includes(params.keyword.toLowerCase()))
+    );
+    const offset = (params.page - 1) * params.pageSize;
     return {
-      list: [fileItem],
-      pagination: { page: params.page, pageSize: params.pageSize, total: 1, hasMore: false },
+      list: filtered.slice(offset, offset + params.pageSize),
+      pagination: {
+        page: params.page,
+        pageSize: params.pageSize,
+        total: filtered.length,
+        hasMore: offset + params.pageSize < filtered.length,
+      },
     };
   },
 };

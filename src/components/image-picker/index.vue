@@ -36,7 +36,7 @@
     readonly: false,
     size: undefined,
     buttonText: '',
-    pageSize: 24,
+    pageSize: undefined,
     defaultView: 'grid',
   });
   const emit = defineEmits<AImagePickerEmits>();

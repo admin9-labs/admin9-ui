@@ -44,10 +44,12 @@
 | readonly     | boolean                                             | false            | 禁止修改，保留图片预览                                        |
 | size         | Arco Size                                           | 继承             | 默认按钮尺寸，不改变图片卡片规格                              |
 | buttonText   | string                                              | locale“选择图片” | 默认选择入口文案                                              |
-| pageSize     | number                                              | 24               | 弹窗后端分页容量                                              |
+| pageSize     | number                                              | 未设置           | 默认按弹窗空间自动分页；正整数固定每页请求数量                |
 | defaultView  | `grid \| list`                                      | grid             | 弹窗初始视图                                                  |
 
 class/style、ARIA 及原生属性落在组件根节点，不透传到 Upload 或弹窗。缩略图加载失败回退原图，再失败显示占位；大图预览始终完整展示原图，不继承 fit，也不会裁剪或改写文件。安全 URL 规则与 AFilePicker 相同，只允许 HTTP(S)、相对地址和 blob。
+
+内部选图弹窗使用 [AFilePicker 的稳定布局与响应式分页](./file-picker.md#布局与分页)：默认网格最多五列、三行，图片框固定 4:3 并完整显示原图或服务提供的完整缩略图；`displayMode` 和 `fit` 只控制字段外层卡片。翻页、搜索、分组切换和空结果保持弹窗与底部操作位置稳定。显式 `:page-size="24"` 可保留旧版每页 24 项，必要时仅结果区域滚动；服务端实际容量、超高内容和矮屏正文滚动兜底同 AFilePicker。
 
 ## 展示模式
 

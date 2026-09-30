@@ -213,6 +213,12 @@
   const filePickerConstraint = ref<'all' | 'subset' | 'empty'>('subset');
   const filePickerMultiple = ref(true);
   const filePickerCustomItem = ref(false);
+  const filePickerTallItem = ref(false);
+  const filePickerFixedPageSize = ref(false);
+  const filePickerShowGroups = ref(true);
+  const filePickerServerPageSize = ref(0);
+  const filePickerRequestSummary = ref('尚未请求');
+  const filePickerRequestCount = ref(0);
   const filePickerValue = ref<FileItem | FileItem[] | undefined>([]);
   const coverPickerValue = ref<CoverPickerValue>({ mode: 'single', images: [null] });
   const coverPickerDisabled = ref(false);
@@ -255,7 +261,17 @@
     };
   });
 
-  const filePickerService = computed<FilePickerAdapter>(() => createFakeFilePickerService(filePickerState.value));
+  const filePickerService = computed<FilePickerAdapter>(() => {
+    const adapter = createFakeFilePickerService(filePickerState.value, {
+      pageSize: filePickerServerPageSize.value || undefined,
+      onList: (params, result) => {
+        filePickerRequestCount.value += 1;
+        filePickerRequestSummary.value = `第 ${params.page} 页 · 请求 ${params.pageSize} · 实际 ${result.pagination.pageSize} · 返回 ${result.list.length} / ${result.pagination.total} · ${filePickerRequestCount.value} 次响应`;
+      },
+    });
+    if (!filePickerShowGroups.value) delete adapter.listGroups;
+    return adapter;
+  });
   const fileUploaderService = createFakeFilePickerService('normal');
   const filePickerTypes = computed<readonly FileType[]>(() => {
     if (filePickerConstraint.value === 'empty') return [];
@@ -627,9 +643,9 @@
             max-height="min(640px, 60dvh)"
             :max-length="2000"
             :can-upload-image="true"
-            can-create-group
+            :can-create-group="filePickerShowGroups"
             can-delete-files
-            can-move-files
+            :can-move-files="filePickerShowGroups"
             :can-upload-video="true"
             :can-upload-audio="true"
             placeholder="请输入公告正文"
@@ -708,6 +724,17 @@
               <a-radio :value="false">单选</a-radio>
             </a-radio-group>
             <label><input v-model="filePickerCustomItem" type="checkbox" /> 自定义文件卡片</label>
+            <label><input v-model="filePickerTallItem" type="checkbox" /> 超高自定义内容</label>
+            <label><input v-model="filePickerFixedPageSize" type="checkbox" /> 固定每页 24 项</label>
+            <label><input v-model="filePickerShowGroups" type="checkbox" /> 显示分组</label>
+            <label
+              >服务实际每页
+              <select v-model="filePickerServerPageSize" aria-label="File server page size">
+                <option :value="0">按请求数量</option>
+                <option :value="10">10</option>
+                <option :value="24">24</option>
+              </select></label
+            >
             <a-radio-group
               v-model="filePickerConstraint"
               type="button"
@@ -734,21 +761,23 @@
               :service="filePickerService"
               :file-types="filePickerTypes"
               default-view="list"
-              :page-size="6"
+              :page-size="filePickerFixedPageSize ? 24 : undefined"
               :limit="4"
               :multiple="filePickerMultiple"
               can-upload
-              can-create-group
+              :can-create-group="filePickerShowGroups"
               can-delete-files
-              can-move-files
+              :can-move-files="filePickerShowGroups"
               data-testid="file-picker"
               @change="recordFilePickerEvent"
               @selection-change="recordFilePickerEvent"
             >
-              <template v-if="filePickerCustomItem" #item="{ item }">
-                <span style="min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis">{{
-                  item.name
-                }}</span>
+              <template v-if="filePickerCustomItem || filePickerTallItem" #item="{ item }">
+                <span
+                  :style="{ minHeight: filePickerTallItem ? '420px' : undefined }"
+                  style="display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis"
+                  >{{ item.name }}</span
+                >
               </template>
             </AFilePicker>
           </div>
@@ -761,6 +790,8 @@
             <dd>{{ stateOptions.find((option) => option.value === filePickerState)?.label }}</dd>
             <dt>最近事件</dt>
             <dd>{{ lastFilePickerEvent }}</dd>
+            <dt>分页请求</dt>
+            <dd data-testid="file-picker-request-summary">{{ filePickerRequestSummary }}</dd>
           </dl>
         </div>
       </section>
@@ -793,9 +824,9 @@
               :service="filePickerService"
               :disabled="coverPickerDisabled"
               can-upload
-              can-create-group
+              :can-create-group="filePickerShowGroups"
               can-delete-files
-              can-move-files
+              :can-move-files="filePickerShowGroups"
               data-testid="cover-picker"
               @change="recordCoverPickerEvent"
             />

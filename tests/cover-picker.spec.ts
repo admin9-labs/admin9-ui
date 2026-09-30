@@ -119,12 +119,6 @@ const ImageStub = defineComponent({
   },
 });
 
-const PaginationStub = defineComponent({
-  setup(_, { attrs }) {
-    return () => h('div', attrs);
-  },
-});
-
 const radioGroupKey = Symbol('cover-picker-radio-group');
 const RadioGroupStub = defineComponent({
   props: { modelValue: { type: [String, Boolean], default: undefined } },
@@ -165,7 +159,6 @@ function installStubs(app: App) {
   app.component('AEmpty', Transparent);
   app.component('AImage', ImageStub);
   app.component('AInputSearch', InputSearchStub);
-  app.component('APagination', PaginationStub);
   app.component('ASelect', Transparent);
   app.component('AOption', Transparent);
   app.component('ACheckbox', Checkbox);
@@ -284,7 +277,7 @@ describe('ACoverPicker', () => {
     await flush();
     expect(pickerService.list).toHaveBeenCalledWith({
       page: 1,
-      pageSize: 24,
+      pageSize: 15,
       keyword: undefined,
       fileType: 'image',
       groupId: undefined,

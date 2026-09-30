@@ -79,6 +79,7 @@ export default {
     removePosition: '移除第 {index} 张封面',
   },
   filePicker: {
+    more: '更多',
     preview: '预览',
     open: '打开',
     closePreview: '关闭预览',

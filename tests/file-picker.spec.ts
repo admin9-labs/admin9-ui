@@ -204,16 +204,6 @@ const UploadStub = defineComponent({
       );
   },
 });
-const PaginationStub = defineComponent({
-  props: { current: Number, pageSize: Number, total: Number },
-  emits: ['change'],
-  setup(props, { attrs, emit }) {
-    return () =>
-      h('div', { ...attrs, 'data-current': String(props.current), 'data-total': String(props.total) }, [
-        h('button', { 'data-testid': 'picker-next-page', 'onClick': () => emit('change', (props.current ?? 1) + 1) }, 'Next'),
-      ]);
-  },
-});
 const radioGroupKey = Symbol('file-picker-radio-group');
 const RadioGroupStub = defineComponent({
   props: { modelValue: String },
@@ -271,7 +261,6 @@ function installStubs(app: App, options: { realModal?: boolean; realSelectionCon
   app.component('AOption', OptionStub);
   app.component('ACheckbox', options.realSelectionControls ? Checkbox : CheckboxStub);
   app.component('AUpload', UploadStub);
-  app.component('APagination', PaginationStub);
   app.component('ARadioGroup', options.realSelectionControls ? RadioGroup : RadioGroupStub);
   app.component('ARadio', options.realSelectionControls ? Radio : RadioStub);
   [
@@ -427,7 +416,7 @@ describe('AFilePicker', () => {
 
     click('[data-testid="file-picker-trigger"]');
     await flush();
-    expect(allService.list).toHaveBeenCalledWith({ page: 1, pageSize: 24, keyword: undefined, groupId: undefined });
+    expect(allService.list).toHaveBeenCalledWith({ page: 1, pageSize: 15, keyword: undefined, groupId: undefined });
     expect((allService.list as ReturnType<typeof vi.fn>).mock.calls[0][0]).not.toHaveProperty('fileTypes');
     expect((allService.list as ReturnType<typeof vi.fn>).mock.calls[0][0]).toHaveProperty('groupId', undefined);
 
@@ -440,12 +429,12 @@ describe('AFilePicker', () => {
 
     expect(subsetService.list).toHaveBeenCalledWith({
       page: 1,
-      pageSize: 24,
+      pageSize: 15,
       keyword: undefined,
       fileTypes: ['image', 'document'],
       groupId: undefined,
     });
-    expect(document.querySelector('[data-testid="file-picker-pagination"]')?.getAttribute('data-total')).toBe('30');
+    expect(document.querySelector('.arco-pagination-jumper-total-page')?.textContent).toBe('2');
   });
 
   it('uses a concrete query and real-type groups for one allowed type', async () => {
@@ -456,7 +445,7 @@ describe('AFilePicker', () => {
 
     expect(service.list).toHaveBeenCalledWith({
       page: 1,
-      pageSize: 24,
+      pageSize: 15,
       keyword: undefined,
       fileType: 'image',
       groupId: undefined,
@@ -537,7 +526,7 @@ describe('AFilePicker', () => {
     click('[data-testid="file-picker-trigger"]');
     await flush();
     selectItem('image-1');
-    click('[data-testid="picker-next-page"]');
+    click('[data-testid="file-picker-pagination"] .arco-pagination-item-next');
     await flush();
     selectItem('document-2');
     await nextTick();
@@ -671,7 +660,7 @@ describe('AFilePicker', () => {
     expect(single?.checked).toBe(false);
   });
 
-  it('preserves real Arco centering with a bounded scrollable body outside the header and footer', async () => {
+  it('preserves real Arco centering with a fixed height and results separated from the header and footer', async () => {
     vi.stubGlobal('innerWidth', 700);
     vi.stubGlobal('innerHeight', 800);
     mountPicker({
@@ -697,7 +686,7 @@ describe('AFilePicker', () => {
     expect(modal?.style.maxHeight).toBe('calc(100dvh - 32px)');
     expect(modal?.style.flexDirection).toBe('column');
     expect(body?.style.minHeight).toBe('0');
-    expect(body?.style.overflow).toBe('auto');
+    expect(body?.style.overflow).toBe('visible');
     expect(workspace?.parentElement).toBe(body);
     expect(header?.parentElement).toBe(modal);
     expect(footer?.parentElement).toBe(modal);
@@ -1067,7 +1056,7 @@ describe('AFilePicker', () => {
     await flush();
     expect(document.querySelector('[data-file-id="image-1"]')).toBeNull();
 
-    click('[data-testid="picker-next-page"]');
+    click('[data-testid="file-picker-pagination"] .arco-pagination-item-next');
     const search = document.querySelector<HTMLInputElement>('[data-testid="picker-search"]');
     if (!search) throw new Error('Missing search input');
     search.value = 'launch';
@@ -1113,7 +1102,7 @@ describe('AFilePicker', () => {
     document.querySelectorAll<HTMLButtonElement>('.a9-file-picker__group-button')[1].click();
     await flush();
     expect(service.list).toHaveBeenLastCalledWith(expect.objectContaining({ groupId: null, fileType: 'document' }));
-    expect(document.querySelector('[data-testid="file-picker-pagination"]')).toBeNull();
+    expect(document.querySelector<HTMLElement>('[data-testid="file-picker-pagination"]')?.style.display).toBe('none');
   });
 
   it('browses two-level groups independently and uploads into the selected child', async () => {
@@ -1282,7 +1271,7 @@ describe('AFilePicker', () => {
     click('[data-testid="file-picker-trigger"]');
     await flush();
     expect(service.list).toHaveBeenCalledTimes(1);
-    expect(service.list).toHaveBeenCalledWith({ page: 1, pageSize: 2, keyword: undefined, groupId: undefined });
+    expect(service.list).toHaveBeenCalledWith({ page: 1, pageSize: 15, keyword: undefined, groupId: undefined });
     expect(document.querySelector<HTMLInputElement>('[data-testid="picker-search"]')?.value).toBe('');
   });
 
@@ -1373,7 +1362,7 @@ describe('AFilePicker', () => {
     });
     click('[data-testid="file-picker-trigger"]');
     await flush();
-    expect(document.querySelector('[data-testid="file-picker-pagination"]')).toBeNull();
+    expect(document.querySelector<HTMLElement>('[data-testid="file-picker-pagination"]')?.style.display).toBe('none');
     expect(document.querySelector('[data-group-id="design"] small')).toBeNull();
     click('[data-testid="file-picker-upload"]');
     await flush();

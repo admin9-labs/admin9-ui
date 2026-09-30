@@ -168,7 +168,6 @@ function installStubs(app: App) {
   app.component('AOption', OptionStub);
   app.component('ARadioGroup', RadioGroupStub);
   app.component('ARadio', RadioStub);
-  app.component('APagination', TransparentStub);
   app.component('ADropdown', TransparentStub);
   app.component('ADoption', TransparentStub);
   app.component('APopover', TransparentStub);
@@ -302,7 +301,7 @@ describe('ATiptapEditor real AFilePicker integration', () => {
     expect(document.querySelector('[data-testid="file-picker-modal"]')).not.toBeNull();
     expect(service.list).toHaveBeenCalledWith({
       page: 1,
-      pageSize: 24,
+      pageSize: 15,
       keyword: undefined,
       fileType: expectedType,
       groupId: undefined,

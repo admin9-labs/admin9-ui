@@ -17,6 +17,7 @@ import type {
   FileDeleteCapability,
   FileMoveCapability,
   FileMoveOptions,
+  AFilePickerProps,
   AImagePickerProps,
   ImagePickerDisplayMode,
   ImagePickerFit,
@@ -112,6 +113,18 @@ describe('package public API', () => {
     const props: AImagePickerProps = { displayMode, fit };
 
     expect(props).toEqual({ displayMode: 'landscape', fit: 'cover' });
+  });
+
+  it('keeps numeric page sizes optional for automatic file and image pagination', () => {
+    const automaticFiles: AFilePickerProps = {};
+    const fixedFiles: AFilePickerProps = { pageSize: 24 };
+    const automaticImages: AImagePickerProps = { pageSize: undefined };
+    const fixedImages: AImagePickerProps = { pageSize: 24 };
+
+    expect(automaticFiles.pageSize).toBeUndefined();
+    expect(automaticImages.pageSize).toBeUndefined();
+    expect(fixedFiles.pageSize).toBe(24);
+    expect(fixedImages.pageSize).toBe(24);
   });
 
   it('exports independent optional file deletion and move capabilities', async () => {

@@ -63,7 +63,7 @@
         :preview="false"
         width="100%"
         height="100%"
-        fit="cover"
+        fit="contain"
         show-loader
       />
       <a-image
@@ -73,7 +73,7 @@
         :preview="false"
         width="100%"
         height="100%"
-        fit="cover"
+        fit="contain"
         show-loader
       />
       <span v-else class="a9-file-item__type-icon" aria-hidden="true">
@@ -93,10 +93,14 @@
         <slot v-if="view !== 'list'" name="selection" />
         <span class="a9-file-item__name" :title="item.name">{{ item.name }}</span>
       </div>
-      <span v-if="meta" class="a9-file-item__meta" :title="meta">{{ meta }}</span>
-      <span v-if="!available" class="a9-file-item__status" :class="{ 'is-pending': item.status === 'pending' }">{{
-        statusLabel
-      }}</span>
+      <span
+        v-if="!available"
+        class="a9-file-item__status"
+        :class="{ 'is-pending': item.status === 'pending' }"
+        :title="statusLabel"
+        >{{ statusLabel }}</span
+      >
+      <span v-else class="a9-file-item__meta" :title="meta">{{ meta }}</span>
     </div>
     <div v-if="available && url" class="a9-file-item__actions">
       <button
@@ -125,8 +129,13 @@
   .a9-file-item {
     position: relative;
     display: grid;
+    grid-template-rows: auto 28px 24px;
     grid-template-columns: minmax(0, 1fr) auto;
     min-width: 0;
+
+    &.is-list {
+      grid-template-rows: auto;
+    }
 
     &__visual {
       position: relative;
@@ -135,7 +144,7 @@
       align-items: center;
       justify-content: center;
       width: 100%;
-      height: 124px;
+      aspect-ratio: 4 / 3;
       overflow: hidden;
       color: var(--color-text-3);
       background: var(--color-fill-2);
@@ -162,9 +171,13 @@
 
     &__status {
       grid-column: 1 / -1;
+      min-width: 0;
+      overflow: hidden;
       color: rgb(var(--danger-7));
       font-size: 12px;
       line-height: 20px;
+      white-space: nowrap;
+      text-overflow: ellipsis;
 
       &.is-pending {
         color: var(--color-text-2);

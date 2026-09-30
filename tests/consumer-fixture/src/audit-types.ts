@@ -44,6 +44,8 @@ import type { Slot } from '@admin9-labs/admin9-ui';
 export const icon: AIconPickerProps = { size: 'mini', readonly: true };
 export const coordinate: ACoordinatePickerProps = { apiKey: '', size: 'mini', allowSearch: false };
 export const files: AFilePickerProps = { size: 'mini', disabled: true, readonly: true, defaultView: 'list', allowClear: false };
+export const fixedPageFiles: AFilePickerProps = { pageSize: 24 };
+export const automaticPageFiles: AFilePickerProps = { pageSize: undefined };
 export const upload: AFileUploaderProps = { limit: 2, maxFileSize: 100, size: 'mini' };
 export const newGroup: FileGroupCreateOptions = { name: 'Child', parentId: 'root' };
 export const groupCreation: FileGroupCreateCapability = { createGroup: async (input) => ({ id: 'created', ...input }) };
@@ -116,6 +118,8 @@ export const imagePickerProps: AImagePickerProps = {
   readonly: true,
 };
 export const emptyImagePicker: ImagePickerValue = undefined;
+export const fixedPageImages: AImagePickerProps = { pageSize: 24 };
+export const automaticPageImages: AImagePickerProps = { pageSize: undefined };
 export const imagePickerSlots: AImagePickerSlots = {
   trigger: ({ open, selectedItems, selectedCount, disabled, readonly, limitReached }) => {
     if (!disabled && !readonly) open();

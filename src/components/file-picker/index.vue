@@ -1,6 +1,6 @@
 <script setup lang="ts">
   import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue';
-  import { Cascader, Form, FormItem, Input, Modal, useFormItem } from '@arco-design/web-vue';
+  import { Cascader, Form, FormItem, Input, Modal, Pagination, Popover, useFormItem } from '@arco-design/web-vue';
   import { useI18n } from 'vue-i18n';
   import type {
     AFilePickerProps,
@@ -17,6 +17,7 @@
   import FileImagePreview from '../../internal/file-image-preview.vue';
   import FileFolderIcon from '../../internal/file-folder-icon.vue';
   import admin9UIOptionsKey from '../../internal/options';
+  import resolveFilePickerLayout from './layout';
   import type { FileGroup, FileItem, FileListParams, FilePickerAdapter, FileType } from '../../services/types';
 
   type GroupId = string | null | undefined;
@@ -31,7 +32,7 @@
     fileTypes: () => ['image', 'video', 'audio', 'document', 'archive', 'other'],
     multiple: false,
     limit: 0,
-    pageSize: 24,
+    pageSize: undefined,
     buttonText: '',
     accept: undefined,
     canUpload: false,
@@ -125,7 +126,20 @@
     else collapsedGroups.value.add(id);
   };
   const current = ref(1);
-  const resolvedPageSize = ref(props.pageSize);
+  const configuredPageSize = computed(() =>
+    Number.isInteger(props.pageSize) && Number(props.pageSize) > 0 ? props.pageSize : undefined
+  );
+  const resolvedPageSize = ref(0);
+  const results = ref<HTMLElement>();
+  const gridColumns = ref(1);
+  let layoutObserver: ResizeObserver | undefined;
+  let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+  let targetPageSize = 0;
+  let pendingPageSize: number | undefined;
+  let pendingPageReset = false;
+  let resolveLayout: (() => void) | undefined;
+  let firstListLoad: Promise<void> | undefined;
+  let initialRefresh: Promise<void> | undefined;
   const total = ref(0);
   const keyword = ref('');
   const loading = ref(false);
@@ -142,6 +156,9 @@
   let createGeneration = 0;
   let groupCreateTrigger: HTMLElement | undefined;
   const fileActionBusy = ref(false);
+  const moreVisible = ref(false);
+  const moveVisible = ref(false);
+  const moreTrigger = ref<HTMLElement>();
   const deleteVisible = ref(false);
   const deleteIds = ref<string[]>([]);
   const fileActionFeedback = ref<{ action: 'delete' | 'move'; succeeded: number; failed: number }>();
@@ -159,6 +176,7 @@
   let latestGroupRequest = 0;
   const modelNeedsNormalization = ref(false);
   const narrow = ref(false);
+  const shortViewport = ref(false);
   const workspace = ref<HTMLElement>();
   const activePreview = ref<string>();
   const previewItem = ref<{ id: string; name: string; url: string }>();
@@ -168,6 +186,7 @@
   const limitNotice = ref(false);
   let limitTimer: ReturnType<typeof setTimeout> | undefined;
   let viewportQuery: MediaQueryList | undefined;
+  let heightQuery: MediaQueryList | undefined;
   const clearLimitNotice = () => {
     clearTimeout(limitTimer);
     limitTimer = undefined;
@@ -180,11 +199,14 @@
   };
   const updateViewport = () => {
     narrow.value = viewportQuery?.matches ?? false;
+    shortViewport.value = heightQuery?.matches ?? false;
   };
   onMounted(() => {
     viewportQuery = window.matchMedia('(max-width: 720px)');
+    heightQuery = window.matchMedia('(max-height: 480px)');
     updateViewport();
     viewportQuery.addEventListener('change', updateViewport);
+    heightQuery.addEventListener('change', updateViewport);
   });
 
   const hasGroupNavigation = computed(() => hasAllowedTypes.value && typeof resolvedService.value?.listGroups === 'function');
@@ -372,6 +394,17 @@
     createGeneration += 1;
     createGroupVisible.value = false;
     creatingGroup.value = false;
+    clearTimeout(resizeTimer);
+    resolveLayout?.();
+    resolveLayout = undefined;
+    firstListLoad = undefined;
+    initialRefresh = undefined;
+    targetPageSize = 0;
+    pendingPageSize = undefined;
+    pendingPageReset = false;
+    resolvedPageSize.value = 0;
+    moreVisible.value = false;
+    moveVisible.value = false;
     invalidateFileActions();
   };
   const resetBrowseScope = (resetKeyword: boolean) => {
@@ -411,7 +444,7 @@
     replaceDraft(Array.from(next.values()));
   };
 
-  const fetchList = async () => {
+  const requestList = async () => {
     if (!hasAllowedTypes.value || !visible.value) return;
     const service = requireService();
     const generation = viewGeneration;
@@ -437,6 +470,82 @@
       }
     }
   };
+
+  const applyPendingCapacity = () => {
+    clearTimeout(resizeTimer);
+    if (!pendingPageSize && !pendingPageReset) return false;
+    const next = pendingPageSize ?? resolvedPageSize.value;
+    pendingPageSize = undefined;
+    const reset = pendingPageReset;
+    pendingPageReset = false;
+    if (next === resolvedPageSize.value && !reset) return false;
+    resolvedPageSize.value = next;
+    current.value = 1;
+    list.value = [];
+    return true;
+  };
+
+  const measureLayout = () => {
+    if (!visible.value) return;
+    const element = results.value;
+    const layout = resolveFilePickerLayout(element?.clientWidth ?? 0, element?.clientHeight ?? 0, view.value, narrow.value);
+    gridColumns.value = layout.columns;
+    const next = configuredPageSize.value ?? layout.pageSize;
+    if (!next) return;
+    if (!resolvedPageSize.value) {
+      targetPageSize = next;
+      resolvedPageSize.value = next;
+      resolveLayout?.();
+      resolveLayout = undefined;
+      return;
+    }
+    if (next === targetPageSize) return;
+    targetPageSize = next;
+    pendingPageSize = next;
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      if (!visible.value || fileActionBusy.value) return;
+      if (applyPendingCapacity()) requestList();
+    }, 150);
+  };
+
+  function fetchList(afterFileAction = false): Promise<void> {
+    if (!visible.value || !hasAllowedTypes.value || (fileActionBusy.value && !afterFileAction)) return Promise.resolve();
+    if (firstListLoad) return firstListLoad;
+    applyPendingCapacity();
+    if (resolvedPageSize.value) return requestList();
+    const generation = viewGeneration;
+    loading.value = true;
+    const layoutReady = new Promise<void>((resolve) => {
+      resolveLayout = resolve;
+    });
+    const load = (async () => {
+      await layoutReady;
+      if (generation !== viewGeneration || !visible.value) return;
+      firstListLoad = undefined;
+      initialRefresh = undefined;
+      await requestList();
+    })();
+    firstListLoad = load;
+    nextTick(measureLayout);
+    return load;
+  }
+
+  watch(
+    results,
+    (element) => {
+      layoutObserver?.disconnect();
+      if (!element) return;
+      measureLayout();
+      layoutObserver = new ResizeObserver(measureLayout);
+      layoutObserver.observe(element);
+    },
+    { flush: 'post' }
+  );
+  watch([view, narrow], () => nextTick(measureLayout));
+  watch(fileActionBusy, (busy, previous) => {
+    if (!busy && previous && (pendingPageSize || pendingPageReset)) fetchList();
+  });
 
   const fetchGroups = async () => {
     const service = requireService();
@@ -470,12 +579,24 @@
 
   const refresh = async () => {
     if (!hasAllowedTypes.value || !visible.value || fileActionBusy.value) return;
-    await Promise.all([fetchList(), fetchGroups()]);
+    if (initialRefresh) {
+      await initialRefresh;
+      return;
+    }
+    const first = !resolvedPageSize.value;
+    const refreshJob = Promise.all([fetchList(), fetchGroups()]).then(() => undefined);
+    if (first) {
+      initialRefresh = refreshJob;
+      await refreshJob;
+      if (initialRefresh === refreshJob) initialRefresh = undefined;
+    } else await refreshJob;
   };
 
   const openDelete = (event: MouseEvent) => {
     if (!visible.value || !props.canDeleteFiles || fileActionsDisabled.value) return;
     deleteTrigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined;
+    if (narrow.value) deleteTrigger = moreTrigger.value?.querySelector('button') ?? undefined;
+    moreVisible.value = false;
     deleteIds.value = draftItems.value.map((item) => item.id);
     deleteVisible.value = true;
   };
@@ -530,17 +651,29 @@
       if (isCurrent()) fileActionFeedback.value = { action, succeeded: 0, failed: ids.length };
     }
     if (!isCurrent()) return;
-    await Promise.all([fetchList(), fetchGroups()]);
+    await Promise.all([fetchList(true), fetchGroups()]);
     if (!isCurrent()) return;
     const lastPage = Math.max(1, Math.ceil(total.value / resolvedPageSize.value));
     if (!listError.value && current.value > lastPage) {
       current.value = lastPage;
-      await fetchList();
+      await fetchList(true);
     }
     if (isCurrent()) {
       fileActionBusy.value = false;
       deleteVisible.value = false;
+      if (applyPendingCapacity()) await fetchList();
     }
+  };
+  const closeMore = () => {
+    moveVisible.value = false;
+    moreVisible.value = false;
+    nextTick(() => {
+      if (!visible.value || interactionDisabled.value) return;
+      (
+        moreTrigger.value?.querySelector('button') ??
+        workspace.value?.querySelector<HTMLInputElement>('.a9-file-picker__search input')
+      )?.focus();
+    });
   };
   const moveFiles = (value: unknown) => {
     if (typeof value !== 'string' || !props.canMoveFiles || !groupsLoaded.value || groupLoading.value) return;
@@ -550,8 +683,34 @@
     if (groupId === undefined || (groupId !== null && !groups.value.some((group) => group.id === groupId))) return;
     // Off-page selections may carry stale field metadata; the service owns idempotency.
     const ids = draftItems.value.map((item) => item.id);
-    if (ids.length) runFileAction('move', ids, groupId);
+    if (ids.length) {
+      if (narrow.value) closeMore();
+      runFileAction('move', ids, groupId);
+    }
   };
+  const onMoreKeydown = (event: KeyboardEvent) => {
+    if (
+      event.key === 'Enter' &&
+      moveVisible.value &&
+      event.target instanceof Element &&
+      event.target.closest('.a9-file-picker__move')
+    ) {
+      // Cascader handles Enter itself; do not activate the button receiving restored focus.
+      event.preventDefault();
+      return;
+    }
+    if (event.key !== 'Escape' || !moreVisible.value) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (moveVisible.value) moveVisible.value = false;
+    else closeMore();
+  };
+  watch(narrow, () => {
+    const restore = moreVisible.value || moveVisible.value;
+    moreVisible.value = false;
+    moveVisible.value = false;
+    if (restore) nextTick(() => workspace.value?.querySelector<HTMLInputElement>('.a9-file-picker__search input')?.focus());
+  });
 
   const openCreateGroup = (event: MouseEvent) => {
     if (!visible.value || !props.canCreateGroup || createGroupDisabled.value) return;
@@ -757,8 +916,8 @@
       (element) => element.dataset.fileId === id
     );
     const control = card?.querySelector<HTMLElement>('input:not(:disabled)');
-    const results = workspace.value.querySelector<HTMLElement>('.a9-file-picker__items');
-    (control ?? results ?? workspace.value.querySelector<HTMLElement>('.a9-file-picker__search input'))?.focus();
+    const items = workspace.value.querySelector<HTMLElement>('.a9-file-picker__items');
+    (control ?? items ?? workspace.value.querySelector<HTMLElement>('.a9-file-picker__search input'))?.focus();
   };
   const openPreview = (trigger: HTMLElement | undefined, item: FileItem) => {
     const url = safeFileUrl(item.url);
@@ -845,17 +1004,17 @@
     () => [props.canDeleteFiles, props.canMoveFiles],
     () => {
       requireService();
+      if (moreVisible.value || moveVisible.value) closeMore();
       invalidateFileActions();
     }
   );
-  watch(
-    () => props.pageSize,
-    (pageSize) => {
-      resolvedPageSize.value = pageSize;
-      current.value = 1;
-      if (visible.value && hasAllowedTypes.value) fetchList();
-    }
-  );
+  watch(configuredPageSize, async () => {
+    pendingPageReset = true;
+    if (!visible.value || !hasAllowedTypes.value) return;
+    await nextTick();
+    measureLayout();
+    fetchList();
+  });
 
   watch(interactionDisabled, (value) => {
     if (value) close();
@@ -864,7 +1023,9 @@
   onBeforeUnmount(() => {
     invalidateRequests();
     clearLimitNotice();
+    layoutObserver?.disconnect();
     viewportQuery?.removeEventListener('change', updateViewport);
+    heightQuery?.removeEventListener('change', updateViewport);
   });
   defineExpose<AFilePickerExposed>({ open, close, clear, refresh });
 </script>
@@ -966,19 +1127,25 @@
       width="calc(100vw - 32px)"
       :modal-style="{
         display: 'inline-flex',
+        height: 'min(800px, calc(100dvh - 32px))',
         maxWidth: '1040px',
         maxHeight: 'calc(100dvh - 32px)',
         flexDirection: 'column',
       }"
-      :body-style="{ minHeight: 0, padding: '16px', overflow: 'auto' }"
+      :body-style="{ flex: 1, minHeight: 0, padding: '16px', overflow: shortViewport ? 'auto' : 'visible' }"
       modal-class="a9-file-picker-modal"
       unmount-on-close
-      :esc-to-close="!activePreview && !createGroupVisible && !deleteVisible"
+      :esc-to-close="!activePreview && !createGroupVisible && !deleteVisible && !moreVisible"
       @cancel="close"
       @close="restoreTriggerFocus"
     >
       <FormItem no-style :validate-trigger="[]">
-        <div ref="workspace" class="a9-file-picker__workspace" :class="{ 'without-groups': !hasGroupNavigation }">
+        <div
+          ref="workspace"
+          class="a9-file-picker__workspace"
+          :class="{ 'without-groups': !hasGroupNavigation, 'is-short': shortViewport }"
+          @keydown="onMoreKeydown"
+        >
           <aside
             v-if="hasGroupNavigation && !narrow"
             class="a9-file-picker__sidebar"
@@ -999,84 +1166,79 @@
                 </a-button>
               </a-tooltip>
             </div>
-            <button
-              type="button"
-              class="a9-file-picker__group-button"
-              :class="{ 'is-active': activeGroupId === undefined }"
-              :aria-pressed="activeGroupId === undefined"
-              :disabled="uploading || fileActionBusy"
-              @click="onGroupChange(undefined)"
-            >
-              <FileFolderIcon
-                :open="activeGroupId === undefined"
-                class="a9-file-picker__group-icon a9-file-picker__group-icon--folder"
-              /><span>{{ t('admin9Ui.filePicker.groupAll') }}</span>
-            </button>
-            <button
-              type="button"
-              class="a9-file-picker__group-button"
-              :class="{ 'is-active': activeGroupId === null }"
-              :aria-pressed="activeGroupId === null"
-              :disabled="uploading || fileActionBusy"
-              @click="onGroupChange(null)"
-            >
-              <FileFolderIcon
-                :open="activeGroupId === null"
-                class="a9-file-picker__group-icon a9-file-picker__group-icon--folder"
-              /><span>{{ t('admin9Ui.filePicker.groupUngrouped') }}</span>
-            </button>
-            <a-alert v-if="groupError" type="error" class="a9-file-picker__group-error">
-              {{ t('admin9Ui.filePicker.groupLoadFailed') }}
-              <a-button type="text" size="mini" data-testid="file-picker-retry-groups" @click="fetchGroups">{{
-                t('admin9Ui.filePicker.retry')
-              }}</a-button>
-            </a-alert>
-            <a-spin :loading="groupLoading" class="a9-file-picker__group-spin">
-              <div
-                v-for="row in visibleGroupRows"
-                :key="row.group.id"
-                class="a9-file-picker__group-row"
-                :class="{ 'is-child': row.child, 'has-children': row.hasChildren }"
+            <div class="a9-file-picker__group-list">
+              <button
+                type="button"
+                class="a9-file-picker__group-button"
+                :class="{ 'is-active': activeGroupId === undefined }"
+                :aria-pressed="activeGroupId === undefined"
+                :disabled="uploading || fileActionBusy"
+                @click="onGroupChange(undefined)"
               >
-                <button
-                  v-if="row.hasChildren"
-                  type="button"
-                  class="a9-file-picker__group-toggle"
-                  :aria-expanded="!collapsedGroups.has(row.group.id)"
-                  :aria-label="
-                    t(
-                      collapsedGroups.has(row.group.id)
-                        ? 'admin9Ui.filePicker.expandGroup'
-                        : 'admin9Ui.filePicker.collapseGroup',
-                      { name: row.group.name }
-                    )
-                  "
-                  @click="toggleGroup(row.group.id)"
+                <FileFolderIcon
+                  :open="activeGroupId === undefined"
+                  class="a9-file-picker__group-icon a9-file-picker__group-icon--folder"
+                /><span>{{ t('admin9Ui.filePicker.groupAll') }}</span>
+              </button>
+              <button
+                type="button"
+                class="a9-file-picker__group-button"
+                :class="{ 'is-active': activeGroupId === null }"
+                :aria-pressed="activeGroupId === null"
+                :disabled="uploading || fileActionBusy"
+                @click="onGroupChange(null)"
+              >
+                <FileFolderIcon
+                  :open="activeGroupId === null"
+                  class="a9-file-picker__group-icon a9-file-picker__group-icon--folder"
+                /><span>{{ t('admin9Ui.filePicker.groupUngrouped') }}</span>
+              </button>
+              <a-spin :loading="groupLoading" class="a9-file-picker__group-spin">
+                <div
+                  v-for="row in visibleGroupRows"
+                  :key="row.group.id"
+                  class="a9-file-picker__group-row"
+                  :class="{ 'is-child': row.child, 'has-children': row.hasChildren }"
                 >
-                  <FileFolderIcon
-                    :open="!collapsedGroups.has(row.group.id)"
-                    class="a9-file-picker__group-icon a9-file-picker__group-icon--folder"
-                  />
-                </button>
-                <button
-                  type="button"
-                  class="a9-file-picker__group-button"
-                  :data-group-id="row.group.id"
-                  :class="{ 'is-active': activeGroupId === row.group.id }"
-                  :aria-label="row.label"
-                  :aria-pressed="activeGroupId === row.group.id"
-                  :disabled="uploading || fileActionBusy"
-                  @click="onGroupChange(row.group.id)"
-                >
-                  <FileFolderIcon
-                    v-if="!row.hasChildren"
-                    :open="activeGroupId === row.group.id"
-                    class="a9-file-picker__group-icon a9-file-picker__group-icon--folder"
-                  /><span :title="row.label">{{ row.group.name }}</span>
-                </button>
-              </div>
-            </a-spin>
-            <p v-if="uploading" class="a9-file-picker__hint" role="status">{{ t('admin9Ui.filePicker.groupLocked') }}</p>
+                  <button
+                    v-if="row.hasChildren"
+                    type="button"
+                    class="a9-file-picker__group-toggle"
+                    :aria-expanded="!collapsedGroups.has(row.group.id)"
+                    :aria-label="
+                      t(
+                        collapsedGroups.has(row.group.id)
+                          ? 'admin9Ui.filePicker.expandGroup'
+                          : 'admin9Ui.filePicker.collapseGroup',
+                        { name: row.group.name }
+                      )
+                    "
+                    @click="toggleGroup(row.group.id)"
+                  >
+                    <FileFolderIcon
+                      :open="!collapsedGroups.has(row.group.id)"
+                      class="a9-file-picker__group-icon a9-file-picker__group-icon--folder"
+                    />
+                  </button>
+                  <button
+                    type="button"
+                    class="a9-file-picker__group-button"
+                    :data-group-id="row.group.id"
+                    :class="{ 'is-active': activeGroupId === row.group.id }"
+                    :aria-label="row.label"
+                    :aria-pressed="activeGroupId === row.group.id"
+                    :disabled="uploading || fileActionBusy"
+                    @click="onGroupChange(row.group.id)"
+                  >
+                    <FileFolderIcon
+                      v-if="!row.hasChildren"
+                      :open="activeGroupId === row.group.id"
+                      class="a9-file-picker__group-icon a9-file-picker__group-icon--folder"
+                    /><span :title="row.label">{{ row.group.name }}</span>
+                  </button>
+                </div>
+              </a-spin>
+            </div>
           </aside>
 
           <main class="a9-file-picker__main">
@@ -1110,13 +1272,6 @@
                     </a-button>
                   </a-tooltip>
                 </div>
-                <a-alert v-if="groupError" type="error"
-                  >{{ t('admin9Ui.filePicker.groupLoadFailed')
-                  }}<a-button type="text" size="mini" @click="fetchGroups">{{
-                    t('admin9Ui.filePicker.retry')
-                  }}</a-button></a-alert
-                >
-                <p v-if="uploading" class="a9-file-picker__hint" role="status">{{ t('admin9Ui.filePicker.groupLocked') }}</p>
               </div>
               <div class="a9-file-picker__toolbar">
                 <div class="a9-file-picker__filters">
@@ -1145,7 +1300,7 @@
                     @clear="onSearch"
                   />
                 </div>
-                <div v-if="canDeleteFiles || canMoveFiles" class="a9-file-picker__file-actions">
+                <div v-if="!narrow && (canDeleteFiles || canMoveFiles)" class="a9-file-picker__file-actions">
                   <a-button
                     v-if="canDeleteFiles"
                     status="danger"
@@ -1188,6 +1343,45 @@
                       <a-radio value="list" :aria-label="t('admin9Ui.filePicker.listView')"><icon-list /></a-radio>
                     </a-tooltip>
                   </a-radio-group>
+                  <Popover
+                    v-if="narrow && (canDeleteFiles || canMoveFiles)"
+                    v-model:popup-visible="moreVisible"
+                    trigger="click"
+                    position="br"
+                  >
+                    <span ref="moreTrigger" @keydown="onMoreKeydown">
+                      <a-button :aria-expanded="moreVisible" data-testid="file-picker-more">{{
+                        t('admin9Ui.filePicker.more')
+                      }}</a-button>
+                    </span>
+                    <template #content>
+                      <div class="a9-file-picker__file-actions" @keydown.capture="onMoreKeydown">
+                        <a-button
+                          v-if="canDeleteFiles"
+                          status="danger"
+                          :disabled="fileActionsDisabled"
+                          data-testid="file-picker-delete-selected"
+                          @click="openDelete"
+                        >
+                          {{ t('admin9Ui.filePicker.deleteSelected') }}
+                        </a-button>
+                        <Cascader
+                          v-if="canMoveFiles"
+                          :popup-visible="moveVisible"
+                          class="a9-file-picker__move"
+                          :model-value="''"
+                          :options="moveOptions"
+                          :disabled="fileActionsDisabled || !groupsLoaded || groupLoading"
+                          :placeholder="t('admin9Ui.filePicker.moveToGroup')"
+                          :aria-label="t('admin9Ui.filePicker.moveToGroup')"
+                          check-strictly
+                          allow-search
+                          @popup-visible-change="moveVisible = $event"
+                          @change="moveFiles"
+                        />
+                      </div>
+                    </template>
+                  </Popover>
                   <div v-if="canUpload" class="a9-file-picker__upload">
                     <AFileUploader
                       ref="uploader"
@@ -1205,7 +1399,13 @@
                       <template #result="{ succeededCount, dismiss }">
                         <Teleport v-if="uploadFeedback" :to="uploadFeedback">
                           <div v-if="succeededCount" class="a9-file-picker__upload-result" role="status">
-                            <span>{{ t('admin9Ui.filePicker.uploaded', { count: succeededCount }) }}</span>
+                            <a-tooltip
+                              :content="t('admin9Ui.filePicker.uploaded', { count: succeededCount })"
+                              :trigger="['hover', 'focus']"
+                              ><span tabindex="0">{{
+                                t('admin9Ui.filePicker.uploaded', { count: succeededCount })
+                              }}</span></a-tooltip
+                            >
                             <a-button v-if="hasFilters" type="text" size="mini" @click="clearFilters">{{
                               t('admin9Ui.filePicker.clearFilters')
                             }}</a-button>
@@ -1224,118 +1424,140 @@
                 </div>
               </div>
 
-              <a-alert
-                v-if="fileActionFeedback"
-                class="a9-file-picker__file-result"
-                :type="fileActionFeedback.failed ? 'warning' : 'success'"
-                closable
-                role="status"
-                @close="fileActionFeedback = undefined"
-              >
-                {{ fileActionMessage }}
-              </a-alert>
-              <div ref="uploadFeedback" class="a9-file-picker__feedback" />
-              <a-alert v-if="listError" type="error" class="a9-file-picker__list-error">
-                {{ t('admin9Ui.filePicker.loadFailed') }}
-                <a-button type="text" size="small" data-testid="file-picker-retry-list" @click="fetchList">
-                  {{ t('admin9Ui.filePicker.retry') }}
-                </a-button>
-              </a-alert>
-
-              <a-spin :loading="loading" class="a9-file-picker__spin">
-                <div
-                  v-if="!listError && !empty"
-                  class="a9-file-picker__items"
-                  :data-view="view"
-                  :aria-label="t('admin9Ui.filePicker.results')"
-                  role="group"
-                  tabindex="-1"
-                >
-                  <article
-                    v-for="(item, index) in list"
-                    :key="`${item.id || `${item.type}-${item.name}`}:${index}`"
-                    class="a9-file-picker__item"
-                    :class="{
-                      'is-selected': draftMap.has(item.id),
-                      'is-disabled': !isSelectable(item),
-                      'is-custom': !!$slots.item,
-                    }"
-                    :data-file-id="item.id"
-                    @click="onCardClick($event, item)"
+              <div ref="results" class="a9-file-picker__results" :style="{ '--a9-file-picker-columns': gridColumns }">
+                <a-alert v-if="listError" type="error" class="a9-file-picker__list-error">
+                  {{ t('admin9Ui.filePicker.loadFailed') }}
+                  <a-button type="text" size="small" data-testid="file-picker-retry-list" @click="fetchList()">{{
+                    t('admin9Ui.filePicker.retry')
+                  }}</a-button>
+                </a-alert>
+                <a-spin v-else :loading="loading" class="a9-file-picker__spin">
+                  <div
+                    v-if="!listError && !empty"
+                    class="a9-file-picker__items"
+                    :data-view="view"
+                    :aria-label="t('admin9Ui.filePicker.results')"
+                    role="group"
+                    tabindex="-1"
                   >
-                    <span
-                      v-if="view === 'grid' && draftMap.has(item.id)"
-                      class="a9-file-picker__selection-order"
-                      aria-hidden="true"
-                      >{{ draftItems.findIndex((selected) => selected.id === item.id) + 1 }}</span
+                    <article
+                      v-for="(item, index) in list"
+                      :key="`${item.id || `${item.type}-${item.name}`}:${index}`"
+                      class="a9-file-picker__item"
+                      :class="{
+                        'is-selected': draftMap.has(item.id),
+                        'is-disabled': !isSelectable(item),
+                        'is-custom': !!$slots.item,
+                      }"
+                      :data-file-id="item.id"
+                      @click="onCardClick($event, item)"
                     >
-                    <FileSelection
-                      v-if="$slots.item"
-                      :card="view === 'grid'"
-                      :selected="draftMap.has(item.id)"
-                      :disabled="fileActionBusy || !isSelectable(item)"
-                      :name="item.name"
-                      @toggle="toggleItem(item)"
-                    />
-                    <slot
-                      name="item"
-                      :item="item"
-                      :available="isSelectable(item)"
-                      :selected="draftMap.has(item.id)"
-                      :view="view"
-                    >
-                      <FileItemView
+                      <span
+                        v-if="view === 'grid' && draftMap.has(item.id)"
+                        class="a9-file-picker__selection-order"
+                        aria-hidden="true"
+                        >{{ draftItems.findIndex((selected) => selected.id === item.id) + 1 }}</span
+                      >
+                      <FileSelection
+                        v-if="$slots.item"
+                        :card="view === 'grid'"
+                        :selected="draftMap.has(item.id)"
+                        :disabled="fileActionBusy || !isSelectable(item)"
+                        :name="item.name"
+                        @toggle="toggleItem(item)"
+                      />
+                      <slot
+                        name="item"
                         :item="item"
                         :available="isSelectable(item)"
-                        :status-label="statusLabel(item)"
+                        :selected="draftMap.has(item.id)"
                         :view="view"
-                        :preview-enabled="visible && !interactionDisabled && !fileActionBusy"
-                        @preview-open="openPreview($event, item)"
                       >
-                        <template #selection>
-                          <FileSelection
-                            :card="view === 'grid'"
-                            :selected="draftMap.has(item.id)"
-                            :disabled="fileActionBusy || !isSelectable(item)"
-                            :name="item.name"
-                            @toggle="toggleItem(item)"
-                          />
-                        </template>
-                      </FileItemView>
-                    </slot>
-                  </article>
-                </div>
-                <div v-else-if="empty" class="a9-file-picker__empty">
-                  <slot name="empty" :constrained="false"><a-empty :description="emptyDescription" /></slot>
-                  <a-button v-if="hasFilters" type="text" @click="clearFilters">{{
-                    t('admin9Ui.filePicker.clearFilters')
-                  }}</a-button>
-                </div>
-              </a-spin>
+                        <FileItemView
+                          :item="item"
+                          :available="isSelectable(item)"
+                          :status-label="statusLabel(item)"
+                          :view="view"
+                          :preview-enabled="visible && !interactionDisabled && !fileActionBusy"
+                          @preview-open="openPreview($event, item)"
+                        >
+                          <template #selection>
+                            <FileSelection
+                              :card="view === 'grid'"
+                              :selected="draftMap.has(item.id)"
+                              :disabled="fileActionBusy || !isSelectable(item)"
+                              :name="item.name"
+                              @toggle="toggleItem(item)"
+                            />
+                          </template>
+                        </FileItemView>
+                      </slot>
+                    </article>
+                  </div>
+                  <div v-else-if="empty" class="a9-file-picker__empty">
+                    <slot name="empty" :constrained="false"><a-empty :description="emptyDescription" /></slot>
+                    <a-button v-if="hasFilters" type="text" @click="clearFilters">{{
+                      t('admin9Ui.filePicker.clearFilters')
+                    }}</a-button>
+                  </div>
+                </a-spin>
+              </div>
             </template>
           </main>
         </div>
       </FormItem>
       <template #footer>
-        <div class="a9-file-picker__footer-content">
+        <div class="a9-file-picker__footer-content" @keydown="onMoreKeydown">
           <div v-if="limitNotice" class="a9-file-picker__limit-notice" role="status">{{
             t('admin9Ui.filePicker.limitReached', { count: limit })
           }}</div>
-          <div v-if="!draftCount && needsEmptyCommit" class="a9-file-picker__notice" role="status">{{
-            t('admin9Ui.filePicker.confirmEmpty')
-          }}</div>
+          <div class="a9-file-picker__feedback-strip">
+            <div v-if="!draftCount && needsEmptyCommit" class="a9-file-picker__notice" role="status">
+              <a-tooltip :content="t('admin9Ui.filePicker.confirmEmpty')" :trigger="['hover', 'focus']"
+                ><span tabindex="0">{{ t('admin9Ui.filePicker.confirmEmpty') }}</span></a-tooltip
+              >
+            </div>
+            <div v-if="uploading && hasGroupNavigation" class="a9-file-picker__hint" role="status">
+              <a-tooltip :content="t('admin9Ui.filePicker.groupLocked')" :trigger="['hover', 'focus']"
+                ><span tabindex="0">{{ t('admin9Ui.filePicker.groupLocked') }}</span></a-tooltip
+              >
+            </div>
+            <div v-if="groupError" class="a9-file-picker__group-error" role="alert">
+              <a-tooltip :content="t('admin9Ui.filePicker.groupLoadFailed')" :trigger="['hover', 'focus']"
+                ><span tabindex="0">{{ t('admin9Ui.filePicker.groupLoadFailed') }}</span></a-tooltip
+              >
+              <a-button type="text" size="mini" data-testid="file-picker-retry-groups" @click="fetchGroups">{{
+                t('admin9Ui.filePicker.retry')
+              }}</a-button>
+            </div>
+            <div v-if="fileActionFeedback" class="a9-file-picker__file-result" role="status">
+              <a-tooltip :content="fileActionMessage" :trigger="['hover', 'focus']"
+                ><span tabindex="0">{{ fileActionMessage }}</span></a-tooltip
+              >
+              <a-button
+                type="text"
+                size="mini"
+                :aria-label="t('admin9Ui.fileUploader.dismissResult')"
+                @click="fileActionFeedback = undefined"
+                ><template #icon><icon-close /></template
+              ></a-button>
+            </div>
+            <div ref="uploadFeedback" class="a9-file-picker__feedback" />
+          </div>
           <div class="a9-file-picker__footer">
             <span v-if="multiple" class="a9-file-picker__selected-count" role="status">{{ selectionLabel }}</span>
-            <a-pagination
-              v-if="hasAllowedTypes && total > resolvedPageSize && !listError"
-              :current="current"
-              :page-size="resolvedPageSize"
-              :total="total"
-              :disabled="fileActionBusy"
-              simple
-              data-testid="file-picker-pagination"
-              @change="onPageChange"
-            />
+            <div class="a9-file-picker__pagination">
+              <Pagination
+                v-show="hasAllowedTypes && total > resolvedPageSize && !listError"
+                :current="current"
+                :page-size="resolvedPageSize || 1"
+                :total="total"
+                :disabled="fileActionBusy"
+                simple
+                data-testid="file-picker-pagination"
+                @change="onPageChange"
+              />
+            </div>
             <div class="a9-file-picker__footer-actions">
               <a-button :size="narrow ? 'small' : undefined" @click="close">{{ t('admin9Ui.filePicker.cancel') }}</a-button>
               <a-button type="primary" :size="narrow ? 'small' : undefined" :disabled="!canConfirm" @click="confirm">
@@ -1474,7 +1696,7 @@
     }
 
     &__hint {
-      margin: 4px 0;
+      margin: 0;
       color: var(--color-text-3);
       font-size: 12px;
       line-height: 1.5;
@@ -1489,9 +1711,9 @@
 
     &__upload-result {
       display: flex;
-      flex-wrap: wrap;
       gap: 4px;
       align-items: center;
+      min-width: 0;
       color: var(--color-text-2);
       font-size: 12px;
     }
@@ -1504,8 +1726,35 @@
       display: none;
     }
 
-    &__feedback:not(:empty) {
-      margin-bottom: 12px;
+    &__feedback-strip {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      min-width: 0;
+      height: 24px;
+      margin-bottom: 8px;
+      text-align: left;
+    }
+
+    &__feedback-strip > div,
+    &__feedback-strip :deep(.a9-file-picker__upload-result) {
+      display: flex;
+      flex: 1 1 0;
+      gap: 4px;
+      align-items: center;
+      min-width: 0;
+      margin: 0;
+    }
+
+    &__feedback-strip :deep(span[tabindex='0']) {
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    &__feedback-strip :deep(button) {
+      flex: none;
     }
 
     &__file-actions {
@@ -1523,10 +1772,11 @@
     }
 
     &__file-result {
-      margin-bottom: 12px;
+      color: var(--color-text-2);
     }
 
     &__compact-groups {
+      flex: none;
       margin-bottom: 12px;
     }
 
@@ -1577,7 +1827,8 @@
       display: grid;
       grid-template-columns: 170px minmax(0, 1fr);
       min-width: 0;
-      min-height: 510px;
+      height: 100%;
+      min-height: 0;
 
       &.without-groups {
         grid-template-columns: minmax(0, 1fr);
@@ -1589,8 +1840,23 @@
       flex-direction: column;
       gap: 4px;
       min-width: 0;
+      min-height: 0;
       padding-right: 14px;
       border-right: 1px solid var(--color-neutral-3);
+    }
+
+    &__group-list {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      gap: 4px;
+      min-height: 0;
+      overflow: auto;
+      overscroll-behavior: contain;
+    }
+
+    &__group-list > * {
+      flex: none;
     }
 
     &__group-row {
@@ -1694,7 +1960,10 @@
     }
 
     &__main {
+      display: flex;
+      flex-direction: column;
       min-width: 0;
+      min-height: 0;
       padding-left: 16px;
     }
 
@@ -1760,6 +2029,7 @@
     }
 
     &__toolbar {
+      flex: none;
       flex-wrap: wrap;
       justify-content: space-between;
       min-width: 0;
@@ -1787,12 +2057,32 @@
 
     &__spin {
       display: block;
-      min-height: 390px;
+      width: 100%;
+      min-height: 100%;
+    }
+
+    &__results {
+      flex: 1;
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+    }
+
+    &__workspace.is-short {
+      min-height: 320px;
+    }
+
+    &__workspace.is-short &__results {
+      flex: none;
+      height: 128px;
+      min-height: 128px;
     }
 
     &__items {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      grid-template-columns: repeat(var(--a9-file-picker-columns, 1), minmax(0, 1fr));
       gap: 12px;
       align-content: start;
       min-width: 0;
@@ -1907,6 +2197,7 @@
       :deep(.a9-file-item__visual) {
         grid-column: 2;
         height: 48px;
+        aspect-ratio: auto;
       }
 
       :deep(.a9-file-item__details) {
@@ -1946,7 +2237,7 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      min-height: 320px;
+      min-height: 100%;
     }
 
     &__footer {
@@ -1955,8 +2246,10 @@
       min-width: 0;
     }
 
-    &__footer :deep(.arco-pagination) {
+    &__pagination {
       grid-column: 2;
+      min-width: 110px;
+      min-height: 32px;
     }
 
     &__footer-actions {
@@ -1975,7 +2268,7 @@
       &__workspace {
         display: flex;
         flex-direction: column;
-        min-height: 520px;
+        min-height: 0;
       }
 
       &__sidebar {
@@ -1989,7 +2282,8 @@
       }
 
       &__main {
-        padding-top: 12px;
+        flex: 1;
+        padding-top: 0;
         padding-left: 0;
       }
 
@@ -2004,10 +2298,7 @@
       &__toolbar-actions {
         flex-wrap: wrap;
         justify-content: flex-end;
-      }
-
-      &__items {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        max-width: 100%;
       }
 
       &__selected-count {
@@ -2020,7 +2311,7 @@
         grid-template-columns: minmax(0, 1fr) auto;
       }
 
-      &__footer :deep(.arco-pagination) {
+      &__pagination {
         grid-row: 2;
         grid-column: 1 / -1;
         justify-self: center;
@@ -2031,12 +2322,6 @@
         grid-column: 2;
         margin-left: auto;
       }
-    }
-  }
-
-  @media (width <= 430px) {
-    .a9-file-picker__items {
-      grid-template-columns: minmax(0, 1fr);
     }
   }
 </style>

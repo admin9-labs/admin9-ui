@@ -27,7 +27,22 @@
   const narrow = ref(false);
   const dark = ref(false);
   const state = ref<AcceptanceState>('normal');
-  const service = computed(() => createFakeFilePickerService(state.value));
+  const fixedPageSize = ref(false);
+  const serverPageSize = ref(0);
+  const showGroups = ref(true);
+  const completedRequests = ref(0);
+  const requestSummary = ref('尚未请求');
+  const service = computed(() => {
+    const adapter = createFakeFilePickerService(state.value, {
+      pageSize: serverPageSize.value || undefined,
+      onList: (params, result) => {
+        completedRequests.value += 1;
+        requestSummary.value = `第 ${params.page} 页 · 请求 ${params.pageSize} · 实际 ${result.pagination.pageSize} · 返回 ${result.list.length} / ${result.pagination.total} · ${completedRequests.value} 次响应`;
+      },
+    });
+    if (!showGroups.value) delete adapter.listGroups;
+    return adapter;
+  });
   const picker = ref<AImagePickerExposed>();
   const changes = ref(0);
   const confirmations = ref(0);
@@ -71,6 +86,16 @@
       <label><input v-model="custom" type="checkbox" /> 自定义入口</label>
       <label><input v-model="narrow" type="checkbox" /> 320px 容器</label>
       <label><input v-model="dark" type="checkbox" /> Dark</label>
+      <label><input v-model="fixedPageSize" type="checkbox" /> 固定每页 24 张</label>
+      <label><input v-model="showGroups" type="checkbox" /> 显示分组</label>
+      <label
+        >服务实际每页
+        <select v-model="serverPageSize" aria-label="Image server page size">
+          <option :value="0">按请求数量</option>
+          <option :value="10">10</option>
+          <option :value="24">24</option>
+        </select></label
+      >
       <label
         >语言
         <select v-model="locale"
@@ -100,14 +125,14 @@
             :limit="2"
             :service="service"
             :can-upload="canUpload"
-            :can-create-group="canCreateGroup"
+            :can-create-group="canCreateGroup && showGroups"
             :can-delete-files="canDeleteFiles"
-            :can-move-files="canMoveFiles"
+            :can-move-files="canMoveFiles && showGroups"
             :readonly="readonly"
             :show-file-list="showFileList"
             :display-mode="displayMode"
             :fit="fit"
-            :page-size="1"
+            :page-size="fixedPageSize ? 24 : undefined"
             @change="changes += 1"
             @confirm="confirmations += 1"
             @upload-success="uploads += 1"
@@ -122,6 +147,7 @@
       </a-form>
     </div>
     <p aria-live="polite">change: {{ changes }} · confirm: {{ confirmations }} · upload: {{ uploads }}</p>
+    <p data-testid="image-picker-request-summary">{{ requestSummary }}</p>
     <pre class="image-acceptance-value">{{ JSON.stringify(value ?? null, null, 2) }}</pre>
   </section>
 </template>

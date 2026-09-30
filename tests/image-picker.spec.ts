@@ -217,6 +217,22 @@ afterEach(() => {
 });
 
 describe('AImagePicker with real Arco', () => {
+  it.each([
+    { pageSize: undefined, expected: 15 },
+    { pageSize: 3, expected: 3 },
+  ])('uses picker pagination capacity $expected when pageSize is $pageSize', async ({ pageSize, expected }) => {
+    const host = mount({ props: { pageSize } });
+    await openHost(host);
+    expect(host.service.value.list).toHaveBeenCalledOnce();
+    expect(host.service.value.list).toHaveBeenCalledWith({
+      page: 1,
+      pageSize: expected,
+      keyword: undefined,
+      fileType: 'image',
+      groupId: undefined,
+    });
+  });
+
   it('renders controlled images without listing, uploading or writing on mount and external display updates', async () => {
     const host = mount({ value: a, injected: true });
     await flush();

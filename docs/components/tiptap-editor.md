@@ -2,6 +2,8 @@
 
 `ATiptapEditor` 是基于 Tiptap 的表单级富文本编辑器，支持 HTML 和结构化 JSON 模型。它提供中后台常用的内容格式和表格编辑，并在存在 `FilePickerAdapter` 时复用 `AFilePicker` 插入或替换图片、视频和音频。
 
+素材选择与更换弹窗沿用 [AFilePicker 的稳定高度与响应式分页](./file-picker.md#布局与分页)，按可用空间自动确定每页数量；文件库中的 4:3 图片框完整显示展示源，不影响插入正文后的图片尺寸或媒体布局。
+
 ## 使用
 
 ```vue
