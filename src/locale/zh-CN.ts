@@ -185,7 +185,7 @@ export default {
     groupCreateFailed: '创建分组失败，请重试',
     create: '创建',
     deleteSelected: '删除选中',
-    batch: '管理素材',
+    batch: '批量操作',
     exitBatch: '返回选择',
     selectPage: '全选本页',
     moveToGroup: '移至分组',

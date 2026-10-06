@@ -192,7 +192,7 @@ export default {
     groupCreateFailed: 'Failed to create group. Please retry.',
     create: 'Create',
     deleteSelected: 'Delete selected',
-    batch: 'Manage assets',
+    batch: 'Batch actions',
     exitBatch: 'Back to selection',
     selectPage: 'Select this page',
     moveToGroup: 'Move to group',

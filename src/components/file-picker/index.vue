@@ -1680,7 +1680,6 @@
                 <div class="a9-file-picker__file-actions">
                   <Cascader
                     v-if="canMoveFiles"
-                    size="mini"
                     :popup-visible="moveVisible"
                     class="a9-file-picker__move"
                     :model-value="''"
@@ -1695,14 +1694,13 @@
                   />
                   <a-button
                     v-if="canDeleteFiles"
-                    size="mini"
                     status="danger"
                     :disabled="fileActionsDisabled"
                     data-testid="file-picker-delete-selected"
                     @click="openDelete"
                     >{{ t('admin9Ui.filePicker.delete') }}</a-button
                   >
-                  <a-button size="mini" :disabled="fileActionBusy" data-testid="file-picker-exit-batch" @click="exitManagement">
+                  <a-button :disabled="fileActionBusy" data-testid="file-picker-exit-batch" @click="exitManagement">
                     {{ t('admin9Ui.filePicker.exitBatch') }}
                   </a-button>
                 </div>
