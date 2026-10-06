@@ -8,6 +8,19 @@ import { messages } from '../src/locale';
 import type { CoverPickerSize, CoverPickerValue } from '../src/components/cover-picker/types';
 import type { FileItem, FileListResult, FilePickerAdapter } from '../src/services/types';
 
+// Keep the existing interaction fixture at the internal modal boundary; real Arco forwarding is covered separately.
+vi.mock('../src/internal/modal.vue', async () => {
+  const vue = await import('vue');
+  return {
+    default: vue.defineComponent({
+      inheritAttrs: false,
+      setup(_, { attrs, slots }) {
+        return () => vue.h(vue.resolveComponent('a-modal'), attrs, slots);
+      },
+    }),
+  };
+});
+
 const mountedApps: App[] = [];
 
 const images: FileItem[] = [
@@ -251,9 +264,7 @@ function selectFile(id: string) {
 
 async function confirmFilePicker() {
   await nextTick();
-  const button = Array.from(document.querySelectorAll('button')).find(
-    (item) => item.textContent?.trim() === 'Confirm selection'
-  );
+  const button = document.querySelector<HTMLButtonElement>('.a9-file-picker__footer-actions button[type="primary"]');
   if (!button) throw new Error('Missing file picker confirm button');
   button.click();
 }
@@ -265,6 +276,26 @@ describe('ACoverPicker', () => {
 
   afterEach(() => {
     mountedApps.splice(0).forEach((app) => app.unmount());
+  });
+
+  it('labels every empty cover position visibly and shows a fact instead of an unavailable action when disabled', async () => {
+    const disabled = ref(false);
+    mountCoverPicker({ value: { mode: 'triple', images: [null, null, null] }, disabled });
+    await flush();
+    const slots = Array.from(document.querySelectorAll<HTMLButtonElement>('.a9-cover-picker__slot'));
+    expect(slots.map((slot) => slot.textContent?.trim())).toEqual([
+      'Add cover image 1',
+      'Add cover image 2',
+      'Add cover image 3',
+    ]);
+    disabled.value = true;
+    await flush();
+    expect(slots.every((slot) => slot.disabled)).toBe(true);
+    expect(slots.map((slot) => slot.textContent?.trim())).toEqual([
+      'Cover image 1 is empty',
+      'Cover image 2 is empty',
+      'Cover image 3 is empty',
+    ]);
   });
 
   it('preserves fixed triple positions while selecting and removing images', async () => {

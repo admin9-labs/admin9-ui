@@ -12,6 +12,7 @@
   } from 'vue';
   import { FormItem, useFormItem } from '@arco-design/web-vue';
   import { useI18n } from 'vue-i18n';
+  import Modal from '../../internal/modal.vue';
   import type {
     ACoordinatePickerProps,
     ACoordinatePickerExposed,
@@ -72,10 +73,13 @@
   const visible = ref(false);
   const mapContainerRef = ref<HTMLElement>();
   const mapLoading = ref(false);
-  const mapError = ref('');
+  const mapAvailable = ref(false);
+  const mapError = ref<'' | 'missingApiKey' | 'mapLoadFailed'>('');
   const searchKeyword = ref('');
   const searchLoading = ref(false);
-  const searchError = ref('');
+  const searchError = ref<'' | 'searchUnavailable' | 'searchUnavailableMap' | 'searchFailed'>('');
+  const searchAvailable = ref(false);
+  const hasSearched = ref(false);
   const suggestions = ref<TencentMapSuggestion[]>([]);
   const draft = ref<CoordinateSelection>();
   const latitudeInput = ref<number>();
@@ -116,6 +120,22 @@
   const coordinatesEqual = (left?: CoordinateValue, right?: CoordinateValue) =>
     left?.latitude === right?.latitude && left?.longitude === right?.longitude;
 
+  const manualCoordinate = computed(() => {
+    if (latitudeInput.value === undefined || longitudeInput.value === undefined) return undefined;
+    return normalizeCoordinate({ latitude: latitudeInput.value, longitude: longitudeInput.value });
+  });
+  const coordinateHint = computed(() => {
+    if (latitudeInput.value === undefined && longitudeInput.value === undefined)
+      return t('admin9Ui.coordinatePicker.chooseHint');
+    if (latitudeInput.value === undefined || longitudeInput.value === undefined)
+      return t('admin9Ui.coordinatePicker.incompleteCoordinates');
+    if (!manualCoordinate.value) return t('admin9Ui.coordinatePicker.invalidCoordinates');
+    return t('admin9Ui.coordinatePicker.selectedCoordinates', {
+      latitude: manualCoordinate.value.latitude.toFixed(normalizedPrecision.value),
+      longitude: manualCoordinate.value.longitude.toFixed(normalizedPrecision.value),
+    });
+  });
+
   const displayValue = computed(() => {
     const value = normalizeCoordinate(props.modelValue);
     if (!value) return '';
@@ -155,6 +175,8 @@
     mapGeneration += 1;
     searchGeneration += 1;
     mapLoading.value = false;
+    mapAvailable.value = false;
+    searchAvailable.value = false;
     searchLoading.value = false;
     if (map?.off) map.off('click', handleMapClick);
     marker?.setMap?.(null);
@@ -166,11 +188,15 @@
   };
 
   const initializeMap = async () => {
+    if (!visible.value || interactionDisabled.value) return;
     destroyMap();
     mapError.value = '';
+    searchError.value = '';
+    suggestions.value = [];
+    hasSearched.value = false;
     mapLoading.value = false;
     if (!props.apiKey.trim()) {
-      mapError.value = t('admin9Ui.coordinatePicker.missingApiKey');
+      mapError.value = 'missingApiKey';
       return;
     }
 
@@ -207,12 +233,14 @@
       });
       setMarker(draft.value);
       map.on('click', handleMapClick);
+      mapAvailable.value = true;
       if (sdk.service?.Suggestion) {
         suggestionService = new sdk.service.Suggestion({ pageSize: 8, regionFix: true });
+        searchAvailable.value = true;
       }
     } catch (error) {
       if (generation !== mapGeneration) return;
-      mapError.value = t('admin9Ui.coordinatePicker.mapLoadFailed');
+      mapError.value = 'mapLoadFailed';
       emit('mapError', error);
     } finally {
       if (generation === mapGeneration) mapLoading.value = false;
@@ -228,6 +256,7 @@
     searchKeyword.value = '';
     suggestions.value = [];
     searchError.value = '';
+    hasSearched.value = false;
     visible.value = true;
     nextTick(() => {
       if (visible.value && mapContainerRef.value && !map && !mapLoading.value) initializeMap();
@@ -248,12 +277,8 @@
 
   const handleManualCoordinate = () => {
     if (interactionDisabled.value) return;
-    const value = normalizeCoordinate({ latitude: Number(latitudeInput.value), longitude: Number(longitudeInput.value) });
-    if (!value) {
-      draft.value = undefined;
-      setMarker();
-      return;
-    }
+    const { value } = manualCoordinate;
+    if (!value || coordinatesEqual(draft.value, value)) return;
     setDraft(value, 'manual');
   };
 
@@ -266,9 +291,10 @@
     searchKeyword.value = normalizedKeyword;
     searchError.value = '';
     suggestions.value = [];
+    hasSearched.value = Boolean(normalizedKeyword);
     if (!normalizedKeyword) return;
     if (!suggestionService) {
-      searchError.value = mapError.value || t('admin9Ui.coordinatePicker.searchUnavailable');
+      searchError.value = mapAvailable.value ? 'searchUnavailableMap' : 'searchUnavailable';
       return;
     }
 
@@ -294,8 +320,8 @@
         ];
       });
     } catch (error) {
-      if (generation !== searchGeneration) return;
-      searchError.value = t('admin9Ui.coordinatePicker.searchFailed');
+      if (generation !== searchGeneration || interactionDisabled.value) return;
+      searchError.value = 'searchFailed';
       emit('searchError', error);
     } finally {
       if (generation === searchGeneration) searchLoading.value = false;
@@ -311,7 +337,9 @@
   };
 
   const handleConfirm = () => {
-    if (interactionDisabled.value || !draft.value) return;
+    if (interactionDisabled.value || !manualCoordinate.value) return;
+    if (!draft.value || !coordinatesEqual(draft.value, manualCoordinate.value)) handleManualCoordinate();
+    if (!draft.value) return;
     const value = { latitude: draft.value.latitude, longitude: draft.value.longitude };
     if (!coordinatesEqual(normalizeCoordinate(props.modelValue), value)) {
       emit('update:modelValue', value);
@@ -397,14 +425,14 @@
       </a-input>
     </slot>
 
-    <a-modal
+    <Modal
       v-model:visible="visible"
       :title="t('admin9Ui.coordinatePicker.title')"
       width="min(920px, calc(100vw - 24px))"
       :mask-closable="false"
       :ok-text="t('admin9Ui.coordinatePicker.confirm')"
       :cancel-text="t('admin9Ui.coordinatePicker.cancel')"
-      :ok-button-props="{ disabled: !draft || interactionDisabled }"
+      :ok-button-props="{ disabled: !manualCoordinate || interactionDisabled }"
       :body-style="{ maxHeight: 'calc(100dvh - 146px)', overflowY: 'auto' }"
       unmount-on-close
       modal-class="a9-coordinate-picker__modal"
@@ -425,7 +453,14 @@
                 @search="handleSearch"
                 @press-enter="handleSearch()"
               />
-              <a-alert v-if="searchError" type="warning">{{ searchError }}</a-alert>
+              <a-alert v-if="searchError" type="warning">
+                {{ t(`admin9Ui.coordinatePicker.${searchError}`) }}
+                <template v-if="searchAvailable" #action>
+                  <a-button size="small" :disabled="searchLoading || interactionDisabled" @click="handleSearch()">
+                    {{ t('admin9Ui.coordinatePicker.retrySearch') }}
+                  </a-button>
+                </template>
+              </a-alert>
               <div class="a9-coordinate-picker__results" :aria-label="t('admin9Ui.coordinatePicker.searchResults')">
                 <button
                   v-for="(suggestion, index) in suggestions"
@@ -446,9 +481,12 @@
                   <small v-if="suggestion.category">{{ suggestion.category }}</small>
                 </button>
                 <a-empty
-                  v-if="searchKeyword && !searchLoading && !searchError && suggestions.length === 0"
+                  v-if="hasSearched && !searchLoading && !searchError && suggestions.length === 0"
                   :description="t('admin9Ui.coordinatePicker.noResults')"
                 />
+                <p v-else-if="!hasSearched && !searchLoading" class="a9-coordinate-picker__search-hint">
+                  {{ t(mapError ? 'admin9Ui.coordinatePicker.searchUnavailable' : 'admin9Ui.coordinatePicker.searchHint') }}
+                </p>
               </div>
             </div>
 
@@ -457,31 +495,31 @@
                 <label>{{ t('admin9Ui.coordinatePicker.latitude') }}</label>
                 <a-input-number
                   v-model="latitudeInput"
-                  :aria-label="t('admin9Ui.coordinatePicker.latitude')"
-                  :min="-90"
-                  :max="90"
+                  :input-attrs="{ 'aria-label': t('admin9Ui.coordinatePicker.latitude') }"
+                  model-event="input"
                   :precision="normalizedPrecision"
                   :step="coordinateStep"
                   :disabled="interactionDisabled"
                   hide-button
-                  @change="handleManualCoordinate"
+                  @blur="handleManualCoordinate"
                 />
+                <small>{{ t('admin9Ui.coordinatePicker.latitudeRange') }}</small>
               </div>
               <div class="a9-coordinate-picker__coordinate-field">
                 <label>{{ t('admin9Ui.coordinatePicker.longitude') }}</label>
                 <a-input-number
                   v-model="longitudeInput"
-                  :aria-label="t('admin9Ui.coordinatePicker.longitude')"
-                  :min="-180"
-                  :max="180"
+                  :input-attrs="{ 'aria-label': t('admin9Ui.coordinatePicker.longitude') }"
+                  model-event="input"
                   :precision="normalizedPrecision"
                   :step="coordinateStep"
                   :disabled="interactionDisabled"
                   hide-button
-                  @change="handleManualCoordinate"
+                  @blur="handleManualCoordinate"
                 />
+                <small>{{ t('admin9Ui.coordinatePicker.longitudeRange') }}</small>
               </div>
-              <p>{{ t('admin9Ui.coordinatePicker.mapHint') }}</p>
+              <p role="status">{{ coordinateHint }}</p>
             </div>
           </aside>
 
@@ -491,16 +529,18 @@
               <a-spin :tip="t('admin9Ui.coordinatePicker.mapLoading')" />
             </div>
             <div v-else-if="mapError" class="a9-coordinate-picker__map-state">
-              <a-result status="warning" :title="mapError">
+              <a-result status="warning" :title="t(`admin9Ui.coordinatePicker.${mapError}`)">
                 <template v-if="apiKey" #extra>
-                  <a-button size="small" @click="initializeMap">{{ t('admin9Ui.coordinatePicker.retry') }}</a-button>
+                  <a-button size="small" :disabled="interactionDisabled" @click="initializeMap">
+                    {{ t('admin9Ui.coordinatePicker.retry') }}
+                  </a-button>
                 </template>
               </a-result>
             </div>
           </div>
         </div>
       </FormItem>
-    </a-modal>
+    </Modal>
   </div>
 </template>
 
@@ -579,6 +619,13 @@
     border-radius: 4px;
   }
 
+  .a9-coordinate-picker__search-hint {
+    padding: 12px;
+    color: var(--color-text-3);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
   .a9-coordinate-picker__result {
     display: grid;
     gap: 3px;
@@ -651,6 +698,12 @@
     label {
       color: var(--color-text-2);
       font-size: 13px;
+    }
+
+    small {
+      grid-column: 2;
+      color: var(--color-text-3);
+      font-size: 12px;
     }
   }
 

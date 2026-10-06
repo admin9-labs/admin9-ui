@@ -8,6 +8,19 @@ import ATiptapEditor from '../src/components/tiptap-editor/index.vue';
 import { messages } from '../src/locale';
 import type { FileItem, FileListParams, FilePickerAdapter } from '../src/services/types';
 
+// Keep the existing interaction fixture at the internal modal boundary; real Arco forwarding is covered separately.
+vi.mock('../src/internal/modal.vue', async () => {
+  const vue = await import('vue');
+  return {
+    default: vue.defineComponent({
+      inheritAttrs: false,
+      setup(_, { attrs, slots }) {
+        return () => vue.h(vue.resolveComponent('a-modal'), attrs, slots);
+      },
+    }),
+  };
+});
+
 const mountedApps: App[] = [];
 
 const files: Record<'image' | 'video' | 'audio', FileItem> = {
@@ -267,8 +280,8 @@ function click(selector: string) {
 
 async function confirmPicker() {
   await nextTick();
-  const button = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid="file-picker-modal"] button')).find(
-    (candidate) => candidate.textContent?.trim() === 'Confirm selection'
+  const button = document.querySelector<HTMLButtonElement>(
+    '.a9-file-picker__footer-actions button[data-button-type="primary"]'
   );
   if (!button) throw new Error('Missing picker confirm button');
   button.click();

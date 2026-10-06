@@ -125,6 +125,11 @@
     if (!searchRef.value?.focus) panelRef.value?.querySelector<HTMLInputElement>('input')?.focus();
   };
 
+  const resetSearch = () => {
+    handleCategoryChange('all');
+    focusSearch();
+  };
+
   function closePopover(restoreFocus = false) {
     visible.value = false;
     if (restoreFocus) nextTick(focusTrigger);
@@ -288,7 +293,7 @@
                 <span>{{ resultTitle }}</span>
                 <span>{{ filtered.length }}</span>
               </div>
-              <div ref="gridRef" class="a9-icon-picker__grid" role="listbox" :aria-label="resultTitle">
+              <div v-if="filtered.length" ref="gridRef" class="a9-icon-picker__grid" role="listbox" :aria-label="resultTitle">
                 <a-tooltip v-for="(item, index) in filtered" :key="item.kebab" :content="item.kebab" position="top">
                   <button
                     type="button"
@@ -308,9 +313,12 @@
                     </slot>
                   </button>
                 </a-tooltip>
-                <div v-if="!filtered.length" class="a9-icon-picker__empty">
-                  {{ t('admin9Ui.iconPicker.empty') }}
-                </div>
+              </div>
+              <div v-else class="a9-icon-picker__empty">
+                <p role="status">{{ t('admin9Ui.iconPicker.empty') }}</p>
+                <button type="button" class="a9-icon-picker__category" @click="resetSearch">
+                  {{ t('admin9Ui.iconPicker.resetSearch') }}
+                </button>
               </div>
             </div>
           </div>

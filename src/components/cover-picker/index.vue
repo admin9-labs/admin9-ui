@@ -133,7 +133,7 @@
   const slotLabel = (item: FileItem | null, index: number) =>
     item
       ? t('admin9Ui.coverPicker.replacePosition', { index: index + 1, name: item.name })
-      : t('admin9Ui.coverPicker.selectPosition', { index: index + 1 });
+      : t(`admin9Ui.coverPicker.${interactionDisabled.value ? 'emptyPosition' : 'selectPosition'}`, { index: index + 1 });
   const setSlotButton = (element: unknown, index: number) => {
     if (typeof HTMLButtonElement !== 'undefined' && element instanceof HTMLButtonElement) slotButtons[index] = element;
     else slotButtons[index] = undefined;
@@ -305,7 +305,10 @@
               </span>
               <span class="a9-cover-picker__replace-icon" aria-hidden="true"><icon-edit /></span>
             </template>
-            <icon-plus v-else class="a9-cover-picker__add-icon" aria-hidden="true" />
+            <span v-else class="a9-cover-picker__empty">
+              <icon-plus v-if="!interactionDisabled" class="a9-cover-picker__add-icon" aria-hidden="true" />
+              <span>{{ slotLabel(item, index) }}</span>
+            </span>
           </button>
           <a-tooltip v-if="item" :content="t('admin9Ui.coverPicker.removePosition', { index: index + 1 })">
             <a-button
@@ -450,9 +453,21 @@
       }
     }
 
+    &__empty {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-width: 0;
+      padding: 8px;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
     &__add-icon,
     &__preview-fallback {
-      margin: auto;
       font-size: var(--a9-cover-picker-icon-size);
     }
 
@@ -464,6 +479,7 @@
 
     &__preview-fallback {
       display: inline-flex;
+      margin: auto;
     }
 
     &__replace-icon {

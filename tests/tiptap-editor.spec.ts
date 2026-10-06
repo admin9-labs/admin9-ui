@@ -11,6 +11,19 @@ import ATiptapEditor from '../src/components/tiptap-editor/index.vue';
 import type { TiptapDocument, TiptapImageUploadState } from '../src/components/tiptap-editor/types';
 import { messages } from '../src/locale';
 
+// Keep the existing interaction fixture at the internal modal boundary; real Arco forwarding is covered separately.
+vi.mock('../src/internal/modal.vue', async () => {
+  const vue = await import('vue');
+  return {
+    default: vue.defineComponent({
+      inheritAttrs: false,
+      setup(_, { attrs, slots }) {
+        return () => vue.h(vue.resolveComponent('a-modal'), attrs, slots);
+      },
+    }),
+  };
+});
+
 vi.mock('../src/components/file-picker/index.vue', async () => {
   const vue = await import('vue');
   const selectedMedia = {
@@ -536,6 +549,35 @@ describe('ATiptapEditor public contract', () => {
     expect(html).not.toContain('color: red');
     editor.commands.undo();
     expect(instance.getHTML()).toContain('<strong');
+  });
+
+  it('keeps concise painter status, reachable detailed input help, and explicit cancellation without changing content', async () => {
+    const update = vi.fn();
+    const { editor, instance } = await mountReactiveEditor({
+      'modelValue': '<p><strong>Source</strong></p><p>Target</p>',
+      'onUpdate:modelValue': update,
+    });
+    editor.commands.setTextSelection({ from: 1, to: 7 });
+    document.querySelector<HTMLButtonElement>('button[aria-label="Format painter"]')?.click();
+    await flush();
+    expect(document.querySelector('.a9-tiptap-editor__painter [role="status"]')?.textContent).toBe(
+      'Format copied. Select the text to apply it to.'
+    );
+    const help = document.querySelector<HTMLDetailsElement>('.a9-tiptap-editor__painter-help');
+    const summary = help?.querySelector('summary');
+    summary?.focus();
+    expect(document.activeElement).toBe(summary);
+    help?.setAttribute('open', '');
+    expect(help?.textContent).toContain('Mouse selection applies automatically');
+    expect(help?.textContent).toContain('Enter after keyboard selection');
+    expect(help?.textContent).toContain('Apply format after touch selection');
+    expect(help?.textContent).toContain('Esc to cancel');
+    summary?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await flush();
+    expect(document.querySelector('.a9-tiptap-editor__painter')).toBeNull();
+    expect(document.activeElement).toBe(editor.view.dom);
+    expect(instance.getHTML()).toBe('<p><strong>Source</strong></p><p>Target</p>');
+    expect(update).not.toHaveBeenCalled();
   });
 
   it.each(['html', 'json'])('paints through the toolbar with one %s model update and a round trip', async (format) => {

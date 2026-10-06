@@ -1,6 +1,8 @@
 <script setup lang="ts">
   import { computed, ref, watch } from 'vue';
   import { useI18n } from 'vue-i18n';
+  import arcoZhCN from '@arco-design/web-vue/es/locale/lang/zh-cn';
+  import arcoEnUS from '@arco-design/web-vue/es/locale/lang/en-us';
   import type { Size } from '@arco-design/web-vue';
   import {
     AIconPicker,
@@ -23,6 +25,7 @@
   import type { AcceptanceState } from './fake-acceptance-utils';
 
   const { locale } = useI18n();
+  const arcoLocale = computed(() => (locale.value === 'en-US' ? arcoEnUS : arcoZhCN));
   const size = ref<Size>('medium');
   const disabled = ref(false);
   const readonly = ref(false);
@@ -100,7 +103,7 @@
       >
     </div>
     <output id="audit-result">{{ result }}</output>
-    <a-config-provider :size="size">
+    <a-config-provider :size="size" :locale="arcoLocale">
       <a-form
         :model="{ icon, coordinate, files, images, cover, html, draft }"
         :size="size"
@@ -128,7 +131,10 @@
               fit="cover"
               multiple
               :limit="3"
-              can-upload /></a-form-item
+              can-upload
+              can-create-group
+              can-delete-files
+              can-move-files /></a-form-item
         ></section>
         <section id="audit-file"
           ><h2>AFilePicker</h2
