@@ -104,7 +104,7 @@ describe('AFileUploader', () => {
   it('keeps size/count constraints but never renders the native accept value as copy', () => {
     mountUploader({}, { accept: 'image/*', limit: 2, maxFileSize: 1024 });
     const text = document.querySelector('.a9-file-uploader__constraints')?.textContent;
-    expect(text).toContain('Up to 2 files per batch');
+    expect(text).toContain('Up to 2 records in the current queue');
     expect(text).toContain('Up to 1 KB per file');
     expect(text).not.toContain('image/*');
   });
@@ -306,7 +306,9 @@ describe('AFileUploader', () => {
     expect(result.succeeded).toHaveLength(1);
     expect(result.failed.map((failure) => failure.reason).sort()).toEqual(['file-count', 'file-size']);
     expect(document.body.textContent).toContain('The file exceeds 4 B. Compress it or choose another file.');
-    expect(document.body.textContent).toContain('Upload up to 2 files per batch');
+    expect(document.body.textContent).toContain(
+      'The current queue allows 2 records. Remove finished records, then choose the files again.'
+    );
   });
 
   it('coalesces synchronous validation failures from one native multi-file selection', async () => {
@@ -322,6 +324,39 @@ describe('AFileUploader', () => {
     expect(service.upload).not.toHaveBeenCalled();
     expect(complete).toHaveBeenCalledOnce();
     expect(complete.mock.calls[0][0].failed).toHaveLength(2);
+  });
+
+  it('counts retained success, failure and cancellation records until they are removed', async () => {
+    const pending = deferred<FileItem>();
+    const upload = vi
+      .fn()
+      .mockResolvedValueOnce(validItem('ready', 'ready.png'))
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValueOnce(validItem('next', 'next.png'));
+    const uploader = mountUploader({ upload }, { limit: 3 });
+    const batch = uploader.upload([
+      new File(['a'], 'ready.png'),
+      new File(['b'], 'failed.png'),
+      new File(['c'], 'cancelled.png'),
+    ]);
+    await flush();
+    uploader.cancel(uploader.tasks[2].id);
+    await batch;
+    expect(uploader.tasks.map((task) => task.status)).toEqual(['succeeded', 'failed', 'cancelled']);
+
+    const blocked = await uploader.upload([new File(['d'], 'next.png')]);
+    await flush();
+    expect(upload).toHaveBeenCalledTimes(3);
+    expect(blocked.failed.at(-1)?.reason).toBe('file-count');
+    expect(document.querySelector('[aria-label="Retry upload for next.png"]')).toBeNull();
+    expect(document.body.textContent).toContain('Remove finished records, then choose the files again.');
+    uploader.tasks.forEach((task) => uploader.remove(task.id));
+
+    const recovered = await uploader.upload([new File(['d'], 'next.png')]);
+    expect(upload).toHaveBeenCalledTimes(4);
+    expect(recovered.succeeded.map((item) => item.id)).toEqual(['next']);
+    pending.resolve(validItem('late', 'cancelled.png'));
   });
 
   it('requires allowed types and suppresses callbacks after unmount', async () => {

@@ -90,7 +90,7 @@ describe('real Arco 2.57 component contracts', () => {
   });
 
   it.each(['success', 'partial', 'failed', 'cancelled'] as const)(
-    'summarizes the %s upload queue without a duplicate inline result',
+    'keeps the %s upload result available without committing the field',
     async (scenario) => {
       let retry = false;
       const pending = deferred<import('../src').FileItem>();
@@ -119,24 +119,28 @@ describe('real Arco 2.57 component contracts', () => {
         await flush();
         pending.resolve({ id: 'late', name: 'late.png', type: 'image', url: '/late.png' });
         await flush();
-        expect(document.querySelector('.arco-message')).toBeNull();
+        expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain('2 cancelled');
       } else {
-        const type = { success: 'success', partial: 'warning', failed: 'error' }[scenario];
-        expect(document.querySelectorAll(`.arco-message-${type}`)).toHaveLength(1);
-        const content = document.querySelector('.arco-message')!.textContent!;
-        expect(content).toContain('Current queue:');
+        const content = document.querySelector('[data-testid="file-picker-upload-result"]')!.textContent!;
         expect(content).not.toContain('private backend detail');
         if (scenario === 'partial') {
-          expect(content).toContain('1 uploaded, 1 failed');
+          expect(content).toContain('1 file uploaded to the library');
+          expect(content).toContain('1 failed');
           retry = true;
           document.querySelector<HTMLButtonElement>('[aria-label="Retry upload for two.png"]')!.click();
           await flush();
-          expect(document.querySelector('.arco-message-success')?.textContent).toBe(
-            'Current queue: 2 uploaded. Select them, then confirm.'
+          expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain(
+            '2 files uploaded to the library'
           );
-          expect(document.querySelectorAll('.arco-message:not(.fade-message-leave-active)')).toHaveLength(1);
+          expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).not.toContain('1 failed');
+        } else if (scenario === 'success') {
+          expect(content).toContain('2 files uploaded to the library');
+        } else {
+          expect(content).toContain('2 failed');
         }
       }
+      expect(document.querySelector('.arco-message')).toBeNull();
+      expect(document.querySelectorAll('[data-testid="file-picker-upload-result"]')).toHaveLength(1);
       expect(document.querySelector('.a9-file-uploader__result')).toBeNull();
       expect(document.querySelector('.a9-file-picker__feedback-strip')).toBeNull();
       expect(change).not.toHaveBeenCalled();
@@ -705,7 +709,7 @@ describe('real Arco 2.57 component contracts', () => {
     await flush();
     expect(host.querySelectorAll('[role="button"][tabindex="0"]')).toHaveLength(7);
     close.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
-    expect(document.activeElement?.getAttribute('aria-label')).toBe('Fit to screen');
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Fill preview');
     const rotate = host.querySelector<HTMLElement>('[aria-label="Rotate right"]')!;
     rotate.focus();
     document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));

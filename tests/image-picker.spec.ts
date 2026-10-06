@@ -1,6 +1,6 @@
 /* eslint-disable no-script-url, no-await-in-loop, @typescript-eslint/no-non-null-assertion -- Exercise real Arco controls and asynchronous Vue updates. */
 import { createApp, defineComponent, h, nextTick, reactive, ref, shallowRef, toRef, type App, type Component } from 'vue';
-import ArcoVue, { Form, FormItem, Message, type FormInstance } from '@arco-design/web-vue';
+import ArcoVue, { Form, FormItem, Message, getLocale, type FormInstance } from '@arco-design/web-vue';
 import * as Icons from '@arco-design/web-vue/es/icon';
 import { createI18n } from 'vue-i18n';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -82,6 +82,7 @@ function action(name: string, index = 0) {
 function mount(
   options: {
     value?: ImagePickerValue;
+    locale?: 'zh-CN' | 'en-US';
     props?: Partial<AImagePickerProps>;
     service?: FilePickerAdapter;
     echo?: boolean;
@@ -171,7 +172,7 @@ function mount(
   );
   app.use(ArcoVue);
   Object.entries(Icons).forEach(([name, icon]) => app.component(name, icon as Component));
-  app.use(createI18n({ legacy: false, locale: 'en-US', messages }));
+  app.use(createI18n({ legacy: false, locale: options.locale ?? 'en-US', messages }));
   if (options.injected) app.use(Admin9UI, { fileService: service.value });
   const host = document.createElement('div');
   document.body.append(host);
@@ -511,6 +512,100 @@ describe('AImagePicker with real Arco', () => {
     host.disabled.value = true;
     await flush();
     expect(host.visible).toHaveBeenLastCalledWith(false);
+  });
+
+  it('uses localized preview tooltip and keyboard controls without changing selection, and restores the triggering card', async () => {
+    const host = mount({ value: [a, b], props: { multiple: true, readonly: true } });
+    const trigger = action('Preview image');
+    trigger.focus();
+    trigger.click();
+    await flush();
+    const close = element('.a9-file-image-preview .arco-image-preview-close-btn');
+    expect(close.getAttribute('aria-label')).toBe('Close preview');
+    expect(close.title).toBe('Close preview');
+    expect(document.activeElement).toBe(close);
+    const image = element<HTMLImageElement>('.a9-file-image-preview .arco-image-preview-img');
+    image.dispatchEvent(new Event('load'));
+    await flush();
+    const fill = element('.a9-file-image-preview [aria-label="Fill preview"]');
+    fill.dispatchEvent(new MouseEvent('mouseenter'));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 150);
+    });
+    await flush();
+    expect(document.querySelector('.arco-tooltip-content')?.textContent).toBe('Fill preview');
+    fill.dispatchEvent(new MouseEvent('mouseleave'));
+    const right = element('.a9-file-image-preview [aria-label="Rotate right"]');
+    right.focus();
+    right.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flush();
+    expect(image.style.transform).toContain('rotate(90deg)');
+    const next = element('.a9-file-image-preview [aria-label="Next image"]');
+    expect(next.getAttribute('aria-disabled')).toBe('false');
+    next.focus();
+    next.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await flush();
+    expect(element<HTMLImageElement>('.a9-file-image-preview img').src).toContain('/b.png');
+    expect(element('.a9-file-image-preview img').getAttribute('alt')).toBe('B.png');
+    expect(document.activeElement).toBe(close);
+    close.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    await flush();
+    expect(element<HTMLImageElement>('.a9-file-image-preview img').src).toContain('/a.png');
+    close.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }));
+    await flush();
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Next image');
+    document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await flush();
+    expect(document.querySelector('.a9-file-image-preview')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    expect(host.update).not.toHaveBeenCalled();
+    expect(host.change).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      locale: 'zh-CN' as const,
+      preview: '预览图片',
+      fill: '铺满预览区',
+      original: '原始尺寸',
+      width: 200,
+      height: 50,
+      scale: 6,
+    },
+    {
+      locale: 'en-US' as const,
+      preview: 'Preview image',
+      fill: 'Fill preview',
+      original: 'Original size',
+      width: 50,
+      height: 200,
+      scale: 12,
+    },
+  ])('localizes $locale preview and fills a $width×$height image while preserving global Arco locale', async (scenario) => {
+    const originalLocale = getLocale();
+    mount({ value: a, locale: scenario.locale });
+    action(scenario.preview).click();
+    await flush();
+    const image = element<HTMLImageElement>('.a9-file-image-preview img');
+    vi.spyOn(image, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, scenario.width, scenario.height));
+    vi.spyOn(element('.arco-image-preview-wrapper'), 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 600, 300));
+    image.dispatchEvent(new Event('load'));
+    await flush();
+    const fill = element(`.a9-file-image-preview [aria-label="${scenario.fill}"]`);
+    fill.dispatchEvent(new MouseEvent('mouseenter'));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 150);
+    });
+    await flush();
+    expect(document.querySelector('.arco-tooltip-content')?.textContent).toBe(scenario.fill);
+    fill.dispatchEvent(new MouseEvent('mouseleave'));
+    fill.click();
+    await flush();
+    expect(element('.arco-image-preview-img-container').style.transform).toBe(`scale(${scenario.scale}, ${scenario.scale})`);
+    element(`.a9-file-image-preview [aria-label="${scenario.original}"]`).click();
+    await flush();
+    expect(element('.arco-image-preview-img-container').style.transform).toBe('scale(1, 1)');
+    expect(getLocale()).toBe(originalLocale);
   });
 
   it('closes an active image preview on disable without reopening it when enabled again', async () => {

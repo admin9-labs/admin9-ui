@@ -144,3 +144,11 @@ URL-only 字段由应用转换为 FileItem，再把确认结果转回原字段�
 已有 FileItem 字段直接传入，不必经过 URL 往返转换。文章单图／三图／无封面及固定空位置使用 [ACoverPicker](./cover-picker.md)；业务图集的说明、排序和封面关联仍由应用实现。视频、音频及通用附件继续使用 [AFilePicker](./file-picker.md)。
 
 根入口导出 AImagePicker、AImagePickerProps、AImagePickerEmits、AImagePickerSlots、AImagePickerExposed、ImagePickerValue、ImagePickerDisplayMode 和 ImagePickerFit。
+
+## 大图预览与语言
+
+已选图片卡片和素材弹窗使用同一组本库预览文案；tooltip 与无障碍名称一致。“铺满预览区”按图片与预览区的宽高比取较大缩放倍数，可能裁掉超出预览区的部分；“原始尺寸”恢复 1:1 缩放。
+
+多图预览保留上一张／下一张及 `ArrowLeft`／`ArrowRight` 切换。预览打开后聚焦关闭按钮，`Tab`／`Shift+Tab` 在可用控制间循环，`Enter`／`Space` 执行动作，`Esc` 关闭并返回触发图片卡片。到达首尾后不可用的切换控件不参与 Tab 顺序，焦点回到可用控制。预览不改变字段选择。
+
+预览仅局部覆盖 Arco 的文案，不改变宿主其他控件语言。其他 Arco 控件仍需消费应用与 vue-i18n 同步语言，见[体验接入要求](./experience-integration.md)。

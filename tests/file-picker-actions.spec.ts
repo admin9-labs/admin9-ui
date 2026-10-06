@@ -29,6 +29,7 @@ function mount(
     deleteResult?: () => Promise<readonly string[]>;
     moveResult?: () => Promise<readonly string[]>;
     noCapabilities?: boolean;
+    uploadResult?: () => Promise<FileItem>;
     slots?: Record<string, () => ReturnType<typeof h>>;
   } = {}
 ) {
@@ -56,6 +57,13 @@ function mount(
       return result;
     }),
   };
+  if (options.uploadResult) {
+    adapter.upload = vi.fn(async () => {
+      const item = await options.uploadResult!();
+      files.push(item);
+      return item;
+    });
+  }
   if (options.noCapabilities) {
     delete adapter.deleteFiles;
     delete adapter.moveFiles;
@@ -155,6 +163,238 @@ afterEach(async () => {
 });
 
 describe('file library actions in the picker', () => {
+  it.each(['during upload', 'before retry'] as const)(
+    'keeps batch successes when removing an upload record %s',
+    async (timing) => {
+      const uploaded: FileItem = { ...first, id: 'upload-a', name: 'A.png' };
+      const retried: FileItem = { ...second, id: 'upload-b', name: 'B.png' };
+      const pending = deferred<FileItem>();
+      const uploadResult = vi
+        .fn()
+        .mockResolvedValueOnce(uploaded)
+        .mockImplementationOnce(() => (timing === 'during upload' ? pending.promise : Promise.reject(new Error('temporary'))))
+        .mockResolvedValueOnce(retried);
+      const host = mount({ props: { canUpload: true, fileTypes: ['image'] }, uploadResult });
+      host.picker.value!.open();
+      await flush();
+      const input = document.querySelector<HTMLInputElement>('.a9-file-uploader input[type="file"]')!;
+      Object.defineProperty(input, 'files', {
+        value: [new File(['a'], 'A.png', { type: 'image/png' }), new File(['b'], 'B.png', { type: 'image/png' })],
+      });
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      await flush();
+      document.querySelector<HTMLButtonElement>('button[aria-label="Remove upload record for A.png"]')!.click();
+      await flush();
+      if (timing === 'during upload') pending.resolve(retried);
+      else document.querySelector<HTMLButtonElement>('button[aria-label="Retry upload for B.png"]')!.click();
+      await flush();
+      expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain(
+        '2 images uploaded to the library'
+      );
+      expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain(
+        '2 uploaded images have not been selected'
+      );
+      document.querySelector<HTMLButtonElement>('[data-testid="file-picker-select-uploaded"]')!.click();
+      await flush();
+      expect(host.selection).toHaveBeenLastCalledWith([first, second, uploaded, retried]);
+      expect(host.update).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    { label: 'pending', metadata: { status: 'pending' } },
+    { label: 'failed', metadata: { status: 'failed' } },
+    // eslint-disable-next-line no-script-url -- The regression must reject a script URL from the adapter.
+    { label: 'unsafe URL', metadata: { url: 'javascript:alert(1)' } },
+  ] as const)('keeps observed upload ineligibility after leaving the page: $label', async (invalid) => {
+    const uploaded: FileItem = { ...first, id: 'uploaded', name: 'Uploaded.png' };
+    const host = mount({ props: { canUpload: true, fileTypes: ['image'] }, uploadResult: async () => uploaded });
+    host.picker.value!.open();
+    await flush();
+    const input = document.querySelector<HTMLInputElement>('.a9-file-uploader input[type="file"]')!;
+    Object.defineProperty(input, 'files', { value: [new File(['image'], 'Uploaded.png', { type: 'image/png' })] });
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await flush();
+    vi.mocked(host.adapter.list).mockResolvedValueOnce({
+      list: [{ ...uploaded, ...invalid.metadata }],
+      pagination: { page: 1, pageSize: 24, total: 1, hasMore: false },
+    });
+    await host.picker.value!.refresh();
+    await flush();
+    expect(document.querySelector('[data-testid="file-picker-select-uploaded"]')).toBeNull();
+    document.querySelector<HTMLButtonElement>('[data-group-id="root"]')!.click();
+    await flush();
+    expect(document.querySelector('[data-file-id="uploaded"]')).toBeNull();
+    expect(document.querySelector('[data-testid="file-picker-select-uploaded"]')).toBeNull();
+    expect(host.selection).not.toHaveBeenCalled();
+  });
+
+  it.each(['delete', 'move'] as const)(
+    'does not undo upload management when retrying another failed upload: %s',
+    async (action) => {
+      const uploaded: FileItem = { ...first, id: 'upload-a', name: 'A.png' };
+      const retried: FileItem = { ...second, id: 'upload-b', name: 'B.png' };
+      const uploadResult = vi
+        .fn()
+        .mockResolvedValueOnce(uploaded)
+        .mockRejectedValueOnce(new Error('temporary'))
+        .mockResolvedValueOnce(retried);
+      const host = mount({ props: { canUpload: true, fileTypes: ['image'] }, uploadResult });
+      host.picker.value!.open();
+      await flush();
+      const input = document.querySelector<HTMLInputElement>('.a9-file-uploader input[type="file"]')!;
+      Object.defineProperty(input, 'files', {
+        value: [new File(['a'], 'A.png', { type: 'image/png' }), new File(['b'], 'B.png', { type: 'image/png' })],
+      });
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      await flush();
+      await beginManagement(false);
+      document.querySelector<HTMLInputElement>('[data-file-id="upload-a"] input')!.click();
+      await flush();
+      if (action === 'delete') {
+        document.querySelector<HTMLButtonElement>('[data-testid="file-picker-delete-selected"]')!.click();
+        await flush();
+        confirmDelete();
+        await flush();
+      } else await moveTo('Destination');
+      document.querySelector<HTMLButtonElement>('[data-testid="file-picker-exit-batch"]')!.click();
+      await flush();
+      [...document.querySelectorAll<HTMLButtonElement>('.a9-file-picker__group-button')]
+        .find((item) => item.textContent?.trim() === 'Ungrouped')!
+        .click();
+      await flush();
+      document.querySelector<HTMLButtonElement>('button[aria-label="Retry upload for B.png"]')!.click();
+      await flush();
+      document.querySelector<HTMLButtonElement>('[data-testid="file-picker-select-uploaded"]')!.click();
+      await flush();
+      const expected =
+        action === 'delete' ? [first, second, retried] : [first, second, { ...uploaded, groupId: 'root' }, retried];
+      expect(host.selection).toHaveBeenLastCalledWith(expected);
+      expect(host.update).not.toHaveBeenCalled();
+      expect(uploadResult).toHaveBeenCalledTimes(3);
+    }
+  );
+
+  it.each([1, 2])('renders singular/plural image management and deletion for %i targets', async (count) => {
+    const host = mount({ props: { fileTypes: ['image'] } });
+    host.picker.value!.open();
+    await flush();
+    await beginManagement(count === 2);
+    if (count === 1) document.querySelector<HTMLInputElement>('[data-file-id="first"] input')!.click();
+    await flush();
+    const unit = count === 1 ? 'item' : 'items';
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe(
+      `${count} ${unit} selected for management`
+    );
+    document.querySelector<HTMLButtonElement>('[data-testid="file-picker-delete-selected"]')!.click();
+    await flush();
+    const imageUnit = count === 1 ? 'image' : 'images';
+    expect(document.querySelector('.a9-file-picker-delete')?.textContent).toContain(
+      `${count} selected ${imageUnit} from the library`
+    );
+    confirmDelete();
+    await flush();
+    expect(document.querySelector('.arco-message')?.textContent).toContain(`Deleted ${count} ${imageUnit} from the library`);
+  });
+
+  it.each([1, 2])('renders singular/plural movement success for %i images', async (count) => {
+    const host = mount({ props: { fileTypes: ['image'] } });
+    host.picker.value!.open();
+    await flush();
+    await beginManagement(count === 2);
+    if (count === 1) document.querySelector<HTMLInputElement>('[data-file-id="first"] input')!.click();
+    await flush();
+    await moveTo('Destination');
+    expect(document.querySelector('.arco-message')?.textContent).toContain(
+      `Moved ${count} ${count === 1 ? 'image' : 'images'}`
+    );
+  });
+
+  it('keeps upload facts but cannot select an asset after deleting it from the library', async () => {
+    const uploaded = { ...first, id: 'uploaded', name: 'Uploaded.png' };
+    const host = mount({ props: { canUpload: true, fileTypes: ['image'] }, uploadResult: async () => uploaded });
+    host.picker.value!.open();
+    await flush();
+    const input = document.querySelector<HTMLInputElement>('.a9-file-uploader input[type="file"]')!;
+    Object.defineProperty(input, 'files', { value: [new File(['image'], 'Uploaded.png', { type: 'image/png' })] });
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await flush();
+    expect(document.querySelector('[data-testid="file-picker-select-uploaded"]')).not.toBeNull();
+    await beginManagement(false);
+    document.querySelector<HTMLInputElement>('[data-file-id="uploaded"] input')!.click();
+    await flush();
+    document.querySelector<HTMLButtonElement>('[data-testid="file-picker-delete-selected"]')!.click();
+    await flush();
+    confirmDelete();
+    await flush();
+    document.querySelector<HTMLButtonElement>('[data-testid="file-picker-exit-batch"]')!.click();
+    await flush();
+    expect(host.adapter.deleteFiles).toHaveBeenCalledWith(['uploaded']);
+    expect(document.querySelector('[data-file-id="uploaded"]')).toBeNull();
+    expect(document.querySelector('[data-testid="file-picker-select-uploaded"]')).toBeNull();
+    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain(
+      '1 image uploaded to the library'
+    );
+    expect(host.update).not.toHaveBeenCalled();
+    expect(host.selection).not.toHaveBeenCalled();
+  });
+
+  it('selects a moved upload with updated group metadata even outside the currently browsed group', async () => {
+    const uploaded = { ...first, id: 'uploaded', name: 'Uploaded.png' };
+    const host = mount({ props: { canUpload: true, fileTypes: ['image'] }, uploadResult: async () => uploaded });
+    host.picker.value!.open();
+    await flush();
+    const input = document.querySelector<HTMLInputElement>('.a9-file-uploader input[type="file"]')!;
+    Object.defineProperty(input, 'files', { value: [new File(['image'], 'Uploaded.png', { type: 'image/png' })] });
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await flush();
+    await beginManagement(false);
+    document.querySelector<HTMLInputElement>('[data-file-id="uploaded"] input')!.click();
+    await flush();
+    await moveTo('Destination');
+    document.querySelector<HTMLButtonElement>('[data-testid="file-picker-exit-batch"]')!.click();
+    await flush();
+    [...document.querySelectorAll<HTMLButtonElement>('.a9-file-picker__group-button')]
+      .find((item) => item.textContent?.trim() === 'Ungrouped')!
+      .click();
+    await flush();
+    expect(document.querySelector('[data-file-id="uploaded"]')).toBeNull();
+    document.querySelector<HTMLButtonElement>('[data-testid="file-picker-select-uploaded"]')!.click();
+    await flush();
+    expect(host.adapter.moveFiles).toHaveBeenCalledWith({ ids: ['uploaded'], groupId: 'root' });
+    expect(host.selection).toHaveBeenLastCalledWith([first, second, { ...uploaded, groupId: 'root' }]);
+    expect(host.update).not.toHaveBeenCalled();
+  });
+
+  it('separates image selection and management actions and names every deletion target', async () => {
+    const host = mount({ props: { fileTypes: ['image'] } });
+    host.picker.value!.open();
+    await flush();
+    expect(document.querySelector('.arco-modal-title')?.textContent).toBe('Select images');
+    expect(document.querySelector('.a9-file-picker__footer-actions')?.textContent).toContain('Use selected images');
+    expect(document.querySelector('.a9-file-picker__search input')?.getAttribute('placeholder')).toBe('Search image names');
+    await beginManagement();
+    expect(document.querySelector('.arco-modal-title')?.textContent).toBe('Manage images');
+    expect(document.querySelector('.a9-file-picker__footer-actions')?.textContent).not.toContain('Use selected');
+    expect(document.querySelector('.a9-file-picker__footer-actions')?.textContent).toContain('Close management');
+    document.querySelector<HTMLButtonElement>('[data-testid="file-picker-delete-selected"]')!.click();
+    await flush();
+    const dialog = document.querySelector('.a9-file-picker-delete')!;
+    expect(dialog.textContent).toContain('Delete images from the library?');
+    expect(dialog.querySelectorAll('.a9-file-picker__delete-targets li')).toHaveLength(2);
+    expect(dialog.textContent).toContain(first.name);
+    expect(dialog.textContent).toContain(second.name);
+    expect(dialog.querySelectorAll('.a9-file-picker__delete-targets img')).toHaveLength(2);
+    dialog.querySelector<HTMLButtonElement>('.arco-btn')!.click();
+    await flush();
+    expect(host.adapter.deleteFiles).not.toHaveBeenCalled();
+    document.querySelector<HTMLButtonElement>('[data-testid="file-picker-exit-batch"]')!.click();
+    await flush();
+    expect(document.querySelector('.arco-modal-title')?.textContent).toBe('Select images');
+    expect(document.querySelectorAll('.a9-file-picker__item.is-selected')).toHaveLength(2);
+    expect(host.update).not.toHaveBeenCalled();
+  });
+
   it('keeps image-only browsing on the grid while generic file browsing retains list controls', async () => {
     const host = mount({ props: { fileTypes: ['image'], defaultView: 'list' } });
     host.picker.value!.open();
@@ -197,7 +437,9 @@ describe('file library actions in the picker', () => {
     await flush();
     expect(document.querySelector<HTMLInputElement>('[data-file-id="second"] input')?.disabled).toBe(true);
     await beginManagement();
-    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('2 selected');
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe(
+      '2 items selected for management'
+    );
     expect(document.querySelector<HTMLInputElement>('[data-file-id=""] input')?.disabled).toBe(true);
     document.querySelector<HTMLButtonElement>('[data-testid="file-picker-exit-batch"]')!.click();
     await flush();
@@ -297,7 +539,9 @@ describe('file library actions in the picker', () => {
     await flush();
     expect(host.adapter.deleteFiles).toHaveBeenCalledWith(['first', 'second']);
     expect(document.querySelectorAll('.a9-file-picker__item')).toHaveLength(0);
-    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('0 selected');
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe(
+      '0 items selected for management'
+    );
     expect(document.querySelector('.arco-message')?.textContent).toContain('Deleted 2 files');
     expect(host.model.files).toEqual([first, second]);
     expect(host.update).not.toHaveBeenCalled();
@@ -312,7 +556,7 @@ describe('file library actions in the picker', () => {
     await flush();
     expect(document.querySelector('[data-file-id="first"]')).toBeNull();
     expect(document.querySelector('[data-file-id="second"]')?.classList.contains('is-selected')).toBe(true);
-    expect(document.querySelector('.arco-message')?.textContent).toContain('Deleted 1 files; 1 failed');
+    expect(document.querySelector('.arco-message')?.textContent).toContain('Deleted 1 file from the library; 1 not deleted');
     expect(host.update).not.toHaveBeenCalled();
   });
 
@@ -340,6 +584,8 @@ describe('file library actions in the picker', () => {
       { ...first, groupId: 'root' },
       { ...second, groupId: 'root' },
     ]);
+    document.querySelector<HTMLInputElement>('[data-testid="file-picker-select-page"] input')!.click();
+    await flush();
     await moveTo('Ungrouped');
     expect(host.adapter.moveFiles).toHaveBeenLastCalledWith({ ids: ['first', 'second'], groupId: null });
     expect(first.groupId).toBeNull();
@@ -349,14 +595,14 @@ describe('file library actions in the picker', () => {
     expect(host.validator).not.toHaveBeenCalled();
   });
 
-  it('retries the full selection without treating local group metadata as authoritative', async () => {
+  it('retries only files not confirmed moved by the service', async () => {
     const host = mount({ moveResult: async () => ['first'] });
     host.picker.value!.open();
     await flush();
     await moveTo('Destination');
-    expect(document.querySelector('.arco-message')?.textContent).toContain('Moved 1 files; 1 failed');
+    expect(document.querySelector('.arco-message')?.textContent).toContain('Moved 1 file; 1 not moved');
     await moveTo('Destination');
-    expect(host.adapter.moveFiles).toHaveBeenLastCalledWith({ ids: ['first', 'second'], groupId: 'root' });
+    expect(host.adapter.moveFiles).toHaveBeenLastCalledWith({ ids: ['second'], groupId: 'root' });
   });
 
   it('accumulates cross-page management independently and starts empty after reopen', async () => {
@@ -374,14 +620,16 @@ describe('file library actions in the picker', () => {
     host.picker.value!.open();
     await flush();
     await beginManagement(false);
-    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('0 selected');
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe(
+      '0 items selected for management'
+    );
     expect(host.model.files).toEqual([first, second]);
     expect(host.update).not.toHaveBeenCalled();
     expect(host.change).not.toHaveBeenCalled();
     expect(host.validator).not.toHaveBeenCalled();
   });
 
-  it('moves to a second-level group and keeps moved files selected outside the current group', async () => {
+  it('moves to a second-level group and clears successful management selections', async () => {
     const host = mount();
     host.picker.value!.open();
     await flush();
@@ -399,7 +647,9 @@ describe('file library actions in the picker', () => {
     await flush();
     expect(host.adapter.moveFiles).toHaveBeenCalledWith({ ids: ['first', 'second'], groupId: 'child' });
     expect(document.querySelectorAll('.a9-file-picker__item')).toHaveLength(0);
-    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('2 selected');
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe(
+      '0 items selected for management'
+    );
     expect(host.update).not.toHaveBeenCalled();
   });
 
@@ -434,7 +684,9 @@ describe('file library actions in the picker', () => {
     await moveTo('Destination');
     document.querySelector<HTMLElement>('[data-file-id="second"]')!.click();
     await flush();
-    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('1 selected');
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe(
+      '1 item selected for management'
+    );
     expect(document.querySelector<HTMLInputElement>('.a9-file-picker__search input')!.disabled).toBe(true);
     expect(document.querySelector<HTMLButtonElement>('.a9-file-picker__footer-actions button:last-child')!.disabled).toBe(true);
     host.picker.value!.close();
@@ -452,14 +704,18 @@ describe('file library actions in the picker', () => {
     expect(document.querySelector('.a9-file-picker__move')).toBeNull();
     expect(document.querySelector('[data-testid="file-picker-delete-selected"]')).toBeNull();
     await beginManagement(false);
-    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('0 selected');
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe(
+      '0 items selected for management'
+    );
     document.querySelector<HTMLInputElement>('[data-testid="file-picker-select-page"] input')!.click();
     await flush();
-    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('2 selected');
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe(
+      '2 items selected for management'
+    );
     expect(document.querySelector('.a9-file-picker__selection-order')).toBeNull();
     expect(host.selection).not.toHaveBeenCalled();
-    expect(document.querySelector<HTMLButtonElement>('.a9-file-picker__footer-actions button:last-child')!.disabled).toBe(true);
-    document.querySelector<HTMLButtonElement>('.a9-file-picker__footer-actions button:last-child')!.click();
+    expect(document.querySelector('.a9-file-picker__footer-actions')?.textContent).not.toContain('Use selected');
+    expect(document.querySelector('.a9-file-picker__footer-actions')?.textContent).toContain('Back to selection');
     expect(host.confirmed).not.toHaveBeenCalled();
     document.querySelector<HTMLButtonElement>('[data-testid="file-picker-delete-selected"]')!.click();
     await flush();
@@ -488,14 +744,20 @@ describe('file library actions in the picker', () => {
     expect(pageCheckbox.checked).toBe(false);
     pageCheckbox.click();
     await flush();
-    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('2 selected');
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe(
+      '2 items selected for management'
+    );
     pageCheckbox.click();
     await flush();
-    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('1 selected');
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe(
+      '1 item selected for management'
+    );
     document.querySelector<HTMLButtonElement>('[data-testid="file-picker-exit-batch"]')!.click();
     await flush();
     await beginManagement(false);
-    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('0 selected');
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe(
+      '0 items selected for management'
+    );
     expect(host.update).not.toHaveBeenCalled();
   });
 

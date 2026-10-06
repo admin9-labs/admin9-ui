@@ -18,7 +18,15 @@ const item: FileItem = {
 };
 
 function mount(file: FileItem, view: 'grid' | 'list' = 'grid') {
-  const state = reactive({ item: file, available: true, statusLabel: '', previewEnabled: true, view, showMetadata: true });
+  const state = reactive({
+    item: file,
+    available: true,
+    statusLabel: '',
+    previewEnabled: true,
+    view,
+    showMetadata: true,
+    showName: true,
+  });
   const preview = vi.fn();
   const select = vi.fn();
   const host = document.createElement('div');
@@ -40,6 +48,25 @@ afterEach(() => {
 });
 
 describe('file card image rendering', () => {
+  it('keeps image-only cards free of filenames while retaining preview names and unavailable status', async () => {
+    const { host, state, preview } = mount({ ...item });
+    state.showName = false;
+    state.showMetadata = false;
+    await nextTick();
+    expect(host.querySelector('.a9-file-item__name')).toBeNull();
+    expect(host.querySelector('.a9-file-item__meta')).toBeNull();
+    expect(host.querySelector('img')?.getAttribute('alt')).toBe(item.name);
+    const button = host.querySelector<HTMLButtonElement>('.a9-file-item__open');
+    expect(button?.getAttribute('aria-label')).toBe(`Preview ${item.name}`);
+    button?.click();
+    expect(preview).toHaveBeenCalledOnce();
+    state.item = { ...item, status: 'pending' };
+    state.available = false;
+    state.statusLabel = 'Image is processing';
+    await nextTick();
+    expect(host.querySelector('.a9-file-item__status')?.textContent).toBe('Image is processing');
+    expect(host.querySelector('.a9-file-item__name')).toBeNull();
+  });
   it.each(['grid', 'list'] as const)('preserves image and video thumbnails without cropping in %s view', async (view) => {
     const { host, state } = mount({ ...item }, view);
     await nextTick();

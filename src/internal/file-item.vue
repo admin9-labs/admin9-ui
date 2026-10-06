@@ -13,8 +13,9 @@
       previewEnabled: boolean;
       view?: 'grid' | 'list';
       showMetadata?: boolean;
+      showName?: boolean;
     }>(),
-    { showMetadata: true }
+    { showMetadata: true, showName: true }
   );
 
   const emit = defineEmits<{
@@ -60,12 +61,14 @@
         'is-unavailable': !available,
         'is-list': view === 'list',
         'is-compact': showMetadata === false && view !== 'list',
+        'is-thumbnail-only': !showName && showMetadata === false && view !== 'list',
       },
     ]"
     :data-file-type="item.type"
     :data-available="String(available)"
   >
     <div v-if="view === 'list' && $slots.selection" class="a9-file-item__selection"><slot name="selection" /></div>
+    <slot v-if="view !== 'list' && !showName" name="selection" />
     <div class="a9-file-item__visual">
       <a-image
         v-if="item.type === 'image' && (thumbnail || url)"
@@ -100,7 +103,7 @@
       </span>
     </div>
     <div class="a9-file-item__details">
-      <div class="a9-file-item__heading">
+      <div v-if="showName" class="a9-file-item__heading">
         <slot v-if="view !== 'list'" name="selection" />
         <span class="a9-file-item__name" :title="item.name">{{ item.name }}</span>
       </div>
@@ -150,6 +153,10 @@
 
     &.is-compact {
       grid-template-rows: auto 28px;
+    }
+
+    &.is-thumbnail-only {
+      grid-template-rows: auto;
     }
 
     &__visual {
@@ -295,6 +302,31 @@
 
     &.is-compact &__open {
       min-height: 20px;
+    }
+
+    &.is-thumbnail-only &__actions {
+      position: absolute;
+      right: 6px;
+      bottom: 6px;
+      grid-row: auto;
+      grid-column: auto;
+      margin-top: 0;
+      padding: 2px 6px;
+      background: var(--color-bg-popup);
+      border-radius: 4px;
+    }
+
+    &.is-thumbnail-only &__status {
+      position: absolute;
+      right: 6px;
+      bottom: 6px;
+      left: 6px;
+      grid-row: auto;
+      grid-column: auto;
+      max-width: none;
+      padding: 2px 6px;
+      background: var(--color-bg-popup);
+      border-radius: 4px;
     }
   }
 </style>

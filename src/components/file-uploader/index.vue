@@ -501,7 +501,7 @@
               size="small"
               :show-text="false"
             />
-            <a-spin v-else-if="task.status === 'uploading'" size="mini" />
+            <a-spin v-else-if="task.status === 'uploading'" :size="16" />
             <div v-else-if="task.status === 'failed'" class="a9-file-uploader__error" role="alert">
               {{ failureText(task) }}
             </div>

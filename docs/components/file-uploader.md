@@ -38,18 +38,18 @@
 
 ## Props
 
-| Prop          | 类型                            | 默认值             | 说明                                                               |
-| ------------- | ------------------------------- | ------------------ | ------------------------------------------------------------------ |
-| `service`     | `Partial<FileUploadCapability>` | 插件 `fileService` | 实际上传时必须提供 `upload`                                        |
-| `fileTypes` | `readonly FileType[]` | 六种真实类型 | 允许类型集合；显式空数组禁用上传；实际类型由 adapter/后端识别 |
-| `groupId`     | `string \| null`                | `null`             | 跨类型的目标分组；`null` 表示未分组                        |
-| `accept`      | `string`                        | `undefined`        | 可选的原生文件选择提示；默认不限制格式，不用于业务分类或安全校验   |
-| `multiple`    | `boolean`                       | `true`             | 是否允许本地文件选择器一次选择多个文件                             |
-| `limit`       | `number`                        | `0`                | 当前队列最多记录数；`0` 表示不限制，清除已完成记录后可释放额度     |
-| `maxFileSize` | `number`                        | `0`                | 单文件最大字节数；`0` 表示组件端不限制                             |
-| `buttonText`  | `string`                        | locale 文案        | 上传按钮文字                                                       |
-| `disabled`    | `boolean`                       | `false`            | 显式禁用文件选择入口；上传中仍可继续选择并追加文件                 |
-| `size`        | `Size`                          | 继承               | 默认上传按钮尺寸                                                   |
+| Prop          | 类型                            | 默认值             | 说明                                                             |
+| ------------- | ------------------------------- | ------------------ | ---------------------------------------------------------------- |
+| `service`     | `Partial<FileUploadCapability>` | 插件 `fileService` | 实际上传时必须提供 `upload`                                      |
+| `fileTypes`   | `readonly FileType[]`           | 六种真实类型       | 允许类型集合；显式空数组禁用上传；实际类型由 adapter/后端识别    |
+| `groupId`     | `string \| null`                | `null`             | 跨类型的目标分组；`null` 表示未分组                              |
+| `accept`      | `string`                        | `undefined`        | 可选的原生文件选择提示；默认不限制格式，不用于业务分类或安全校验 |
+| `multiple`    | `boolean`                       | `true`             | 是否允许本地文件选择器一次选择多个文件                           |
+| `limit`       | `number`                        | `0`                | 当前队列最多记录数；`0` 表示不限制，清除已完成记录后可释放额度   |
+| `maxFileSize` | `number`                        | `0`                | 单文件最大字节数；`0` 表示组件端不限制                           |
+| `buttonText`  | `string`                        | locale 文案        | 上传按钮文字                                                     |
+| `disabled`    | `boolean`                       | `false`            | 显式禁用文件选择入口；上传中仍可继续选择并追加文件               |
+| `size`        | `Size`                          | 继承               | 默认上传按钮尺寸                                                 |
 
 `limit`、`maxFileSize` 和 `accept` 只提供前端交互约束。adapter/后端仍必须校验文件内容、真实 MIME、扩展名、大小、恶意文件、身份、资源归属、具体类型和分组授权。
 
@@ -67,11 +67,11 @@
 
 ## Slots 与实例方法
 
-| 插槽      | 参数                      | 说明                                          |
-| --------- | ------------------------- | --------------------------------------------- |
-| `trigger` | `{ disabled, uploading }` | 替换上传触发器；文件 input 与队列仍由组件维护 |
-| `result` | `{ succeededCount, dismiss }` | 替换成功提示，供 Picker 补充“勾选后确认”说明 |
-| `task`    | `{ task }`                | 替换单条任务内容与操作区                      |
+| 插槽      | 参数                          | 说明                                          |
+| --------- | ----------------------------- | --------------------------------------------- |
+| `trigger` | `{ disabled, uploading }`     | 替换上传触发器；文件 input 与队列仍由组件维护 |
+| `result`  | `{ succeededCount, dismiss }` | 替换成功提示，供 Picker 补充“勾选后确认”说明  |
+| `task`    | `{ task }`                    | 替换单条任务内容与操作区                      |
 
 `defineExpose` 提供：
 
@@ -102,13 +102,15 @@
 
 `size?: Size` 控制默认上传按钮，未配置时沿用 Form／Arco 配置；队列布局不随 size 改变。disabled 继承外层 Form，禁止新上传和重试，包括实例 upload/retry 与自定义触发器路径；仍可取消正在进行的任务以释放资源。
 
-limit 是当前队列数量上限，maxFileSize 以字节计；retry 会重新验证两个限制。accept 沿用原生选择提示，不对 File 内容作安全保证。通过验证的返回文件必须有合法 HTTP(S)、相对或 blob URL。
+limit 是当前队列记录数上限，不是每次打开文件选择器或每次调用 upload 的数量上限：混合结果队列保留的成功、失败、取消记录均占用额度。移除已结束记录或关闭已结束队列后，再选择文件可释放额度；全部成功时队列自动清空。maxFileSize 以字节计；实例 retry 会重新验证两个限制。accept 沿用原生选择提示，不对 File 内容作安全保证。通过验证的返回文件必须有合法 HTTP(S)、相对或 blob URL。
 
 class/style 及未声明的原生属性交给根节点，不透传为 Arco Upload 的网络请求配置。导出 Props、Exposed 和任务／批次类型；公开任务快照不暴露 AbortController 或内部回调。
 
 ## 操作提示
 
 组件展示配置的数量与大小限制，未配置时不显示。accept 仅传给原生文件输入，不将 MIME／扩展名参数作为说明文字展示。队列汇总省略零计数，包含上传中、成功、失败和已取消的非零数量。大小使用 B/KB/MB/GB，按 1024 换算。大小、数量失败在队列中优先提供移除，网络失败和已取消任务提供重试；实例 retry 方法仍会重新校验约束。
+
+超出数量时提示先移除已结束记录再重新选择文件；超出大小时提示压缩或更换文件。类型与格式拒绝提示换文件，通用失败提供实际可用的重试入口，不直出服务异常详情。成功提示只说明文件已经上传，不表示消费应用的表单、文章或其他业务记录已保存；应用应根据自己的保存流程提供完成反馈。
 
 `FileUploadOptions.fileTypes` 与任务快照的 `fileTypes` 均为允许集合，不再包含强制分类 `fileType`。详见 [迁移说明](./file-service-migration.md)。
 

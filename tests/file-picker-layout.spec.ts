@@ -190,7 +190,7 @@ describe('file picker measured pagination', () => {
   });
 
   it('fits two compact image rows where generic metadata cards fit only one', async () => {
-    height = 340;
+    height = 290;
     const host = mount({ props: { modelValue: [files[0]] } });
     host.picker.value!.open();
     await flush();
@@ -205,52 +205,52 @@ describe('file picker measured pagination', () => {
 
   it('fits the image dialog to complete rows without shrinking on the final page or requerying after fitting', async () => {
     measuredModalHeight = 720;
-    height = 530;
+    height = 540;
     const host = mount();
     host.picker.value!.open();
     await flush();
     const modal = document.querySelector<HTMLElement>('.arco-modal')!;
-    // Three 149.1px cards and two 12px gaps fit in a 472px results region.
-    expect(modal.style.height).toBe('662px');
+    // Three 121.1px thumbnail cards and two 12px gaps fit in a 388px results region.
+    expect(modal.style.height).toBe('568px');
     expect(host.adapter.list).toHaveBeenCalledOnce();
     expect(host.adapter.list).toHaveBeenLastCalledWith(expect.objectContaining({ pageSize: 15 }));
-    measuredModalHeight = 662;
+    measuredModalHeight = 568;
     vi.useFakeTimers();
-    await settleResize(822, 472);
+    await settleResize(822, 388);
     expect(host.adapter.list).toHaveBeenCalledOnce();
-    expect(modal.style.height).toBe('662px');
+    expect(modal.style.height).toBe('568px');
     click('.a9-file-picker-modal .arco-pagination-item-next');
     await flush();
     click('.a9-file-picker-modal .arco-pagination-item-next');
     await flush();
     expect(renderedIds()).toHaveLength(7);
-    expect(modal.style.height).toBe('662px');
+    expect(modal.style.height).toBe('568px');
     expect(host.update).not.toHaveBeenCalled();
   });
 
   it('restores a third image row when the viewport grows without changing the fitted dialog size', async () => {
     measuredModalHeight = 720;
-    height = 530;
+    height = 540;
     const host = mount();
     host.picker.value!.open();
     await flush();
     const modal = document.querySelector<HTMLElement>('.arco-modal')!;
-    measuredModalHeight = 662;
-    height = 472;
+    measuredModalHeight = 568;
+    height = 388;
     vi.useFakeTimers();
-    vi.stubGlobal('innerHeight', 600);
+    vi.stubGlobal('innerHeight', 540);
     window.dispatchEvent(new Event('resize'));
     await vi.advanceTimersByTimeAsync(150);
     await flush();
-    expect(modal.style.height).toBe('501px');
+    expect(modal.style.height).toBe('435px');
     expect(host.adapter.list).toHaveBeenLastCalledWith(expect.objectContaining({ pageSize: 10 }));
-    measuredModalHeight = 501;
-    height = 311;
+    measuredModalHeight = 435;
+    height = 255;
     vi.stubGlobal('innerHeight', 900);
     window.dispatchEvent(new Event('resize'));
     await vi.advanceTimersByTimeAsync(150);
     await flush();
-    expect(modal.style.height).toBe('662px');
+    expect(modal.style.height).toBe('568px');
     expect(host.adapter.list).toHaveBeenLastCalledWith(expect.objectContaining({ pageSize: 15 }));
     expect(host.update).not.toHaveBeenCalled();
   });
@@ -478,7 +478,7 @@ describe('file picker measured pagination', () => {
     click('[data-file-id="file-1"]');
     await flush();
     const notice = document.querySelector('[id$="-confirm-empty"]')!;
-    expect(notice.textContent).toContain('clear');
+    expect(notice.textContent).toContain('removes');
     expect(notice.closest('.arco-modal-footer')).not.toBeNull();
     expect(notice.closest('.a9-file-picker__results')).toBeNull();
     click('[data-file-id="file-1"]');
@@ -675,7 +675,9 @@ describe('file picker measured pagination', () => {
     expect(host.adapter.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, pageSize: 9 }));
     expect(host.update).not.toHaveBeenCalled();
     expect(document.querySelectorAll('.a9-file-picker__item.is-selected')).toHaveLength(0);
-    expect(document.querySelector('.arco-message')?.textContent).toContain('Select them, then confirm');
+    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain(
+      'uploaded image has not been selected'
+    );
   });
 
   it('closes the move popup, management mode and picker one layer per Escape', async () => {
@@ -776,7 +778,9 @@ describe('file picker measured pagination', () => {
     viewport.dispatchEvent(new Event('change'));
     await flush();
     expect(document.querySelector('.a9-file-picker__management')).not.toBeNull();
-    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('1 selected');
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe(
+      '1 item selected for management'
+    );
     expect(document.querySelector('[data-testid="file-picker-more"]')).toBeNull();
   });
 

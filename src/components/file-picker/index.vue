@@ -1,6 +1,6 @@
 <script setup lang="ts">
   import { computed, getCurrentInstance, inject, nextTick, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue';
-  import { Cascader, Form, FormItem, Input, Message, Modal, Pagination, useFormItem } from '@arco-design/web-vue';
+  import { Cascader, Form, FormItem, Input, Message, Pagination, useFormItem } from '@arco-design/web-vue';
   import { useI18n } from 'vue-i18n';
   import type {
     AFilePickerProps,
@@ -8,6 +8,7 @@
     FilePickerValue as ModelValue,
     FilePickerView as FileView,
   } from './types';
+  import Modal from '../../internal/modal.vue';
   import safeFileUrl from '../../internal/file-url';
   import { FILE_TYPES, normalizeFileTypes } from '../../internal/file-types';
   import AFileUploader from '../file-uploader/index.vue';
@@ -111,6 +112,7 @@
 
   const visible = ref(false);
   const imagesOnly = computed(() => allowedFileTypes.value.length === 1 && allowedFileTypes.value[0] === 'image');
+  const contextLabel = (fileKey: string, imageKey: string) => t(`admin9Ui.filePicker.${imagesOnly.value ? imageKey : fileKey}`);
   const preferredView = ref<FileView>(props.defaultView);
   const view = computed({
     get: () => (imagesOnly.value ? 'grid' : preferredView.value),
@@ -183,11 +185,31 @@
   const moveVisible = ref(false);
   const deleteVisible = ref(false);
   const deleteIds = ref<string[]>([]);
+  const deleteItems = computed(() =>
+    deleteIds.value.map((id) => managementMap.value.get(id)).filter((item): item is FileItem => Boolean(item))
+  );
+  const managementCompleted = ref(false);
   let fileActionGeneration = 0;
   let deleteTrigger: HTMLElement | undefined;
   const draftMap = ref(new Map<string, FileItem>());
   const committedItems = ref<FileItem[]>([]);
   const uploading = ref(false);
+  const uploadResult = ref<{ succeeded: number; failed: number; cancelled: number }>();
+  const uploadedItems = ref(new Map<string, FileItem>());
+  let uploadTaskIds = new Set<string>();
+  const deletedUploadIds = new Set<string>();
+  const completedUploadTaskIds = new Set<string>();
+  const ambiguousUploadIds = ref(new Set<string>());
+  let uploadCycleSettled = false;
+  const clearUploadResult = () => {
+    uploadResult.value = undefined;
+    uploadedItems.value.clear();
+    uploadTaskIds.clear();
+    deletedUploadIds.clear();
+    completedUploadTaskIds.clear();
+    ambiguousUploadIds.value.clear();
+    uploadCycleSettled = false;
+  };
   const triggerRoot = ref<HTMLElement>();
   let triggerAction: HTMLElement | undefined;
   let returnFocusTarget: HTMLElement | undefined;
@@ -205,7 +227,7 @@
   let previewTrigger: HTMLElement | undefined;
   const instance = getCurrentInstance();
   const messagePrefix = `a9-file-picker-${instance?.uid}`;
-  type FeedbackKind = 'limit' | 'action' | 'upload';
+  type FeedbackKind = 'limit' | 'action';
   const messageHandles = new Map<FeedbackKind, ReturnType<typeof Message.info>>();
   const closeMessage = (kind: FeedbackKind) => {
     messageHandles.get(kind)?.close();
@@ -234,7 +256,12 @@
     closeMessage('limit');
   };
   const showLimitNotice = () => {
-    showMessage('limit', 'warning', t('admin9Ui.filePicker.limitReached', { count: props.limit }), 3000);
+    showMessage(
+      'limit',
+      'warning',
+      t(`admin9Ui.filePicker.${imagesOnly.value ? 'imageLimitReached' : 'limitReached'}`, { count: props.limit }),
+      3000
+    );
   };
   const updateViewport = () => {
     narrow.value = viewportQuery?.matches ?? false;
@@ -279,10 +306,11 @@
       suffix = succeeded > 0 ? 'Partial' : 'Failed';
       type = succeeded > 0 ? 'warning' : 'error';
     }
+    const actionKey = imagesOnly.value ? `image${action === 'delete' ? 'Delete' : 'Move'}` : action;
     showMessage(
       'action',
       type,
-      t(`admin9Ui.filePicker.fileActions.${action}${suffix}`, { count: succeeded, failed }),
+      t(`admin9Ui.filePicker.fileActions.${actionKey}${suffix}`, { count: succeeded, failed }),
       failed > 0 ? 5000 : 3000
     );
   };
@@ -297,7 +325,7 @@
   ]);
   const draftCount = computed(() => draftMap.value.size);
   const empty = computed(() => list.value.length === 0 && !loading.value && !listError.value);
-  const triggerLabel = computed(() => props.buttonText || t('admin9Ui.filePicker.trigger'));
+  const triggerLabel = computed(() => props.buttonText || contextLabel('trigger', 'imageTrigger'));
   const uploadGroupId = computed(() => activeGroupId.value ?? null);
   const defaultActiveType = () => (allowedFileTypes.value.length === 1 ? allowedFileTypes.value[0] : undefined);
   const hasFilters = computed(() => Boolean(keyword.value.trim()) || activeFileType.value !== defaultActiveType());
@@ -310,10 +338,21 @@
       !managing.value &&
       (draftCount.value > 0 || needsEmptyCommit.value)
   );
+  const modalTitle = computed(() =>
+    managing.value ? contextLabel('manageTitle', 'manageImagesTitle') : contextLabel('title', 'imageTitle')
+  );
+  const confirmLabel = computed(() =>
+    !draftCount.value && needsEmptyCommit.value
+      ? t('admin9Ui.filePicker.clearCurrent')
+      : contextLabel('confirm', 'confirmImages')
+  );
   const selectionLabel = computed(() =>
     props.multiple && props.limit > 0
-      ? t('admin9Ui.filePicker.selectedLimit', { count: draftCount.value, limit: props.limit })
-      : t('admin9Ui.filePicker.selectedCount', { count: draftCount.value })
+      ? t(`admin9Ui.filePicker.${imagesOnly.value ? 'selectedImagesLimit' : 'selectedLimit'}`, {
+          count: draftCount.value,
+          limit: props.limit,
+        })
+      : t(`admin9Ui.filePicker.${imagesOnly.value ? 'selectedImagesCount' : 'selectedCount'}`, { count: draftCount.value })
   );
   const emptyDescription = computed(() => {
     const browsingImages = activeFileType.value === 'image';
@@ -398,7 +437,7 @@
     });
   };
   const statusLabel = (item: FileItem) => {
-    if (!hasStableId(item) || duplicateIds.value.has(item.id)) return t('admin9Ui.filePicker.invalid');
+    if (!hasStableId(item) || duplicateIds.value.has(item.id)) return contextLabel('invalid', 'imageInvalid');
     if (
       !hasKnownType(item) ||
       !allowedTypeSet.value.has(item.type) ||
@@ -408,7 +447,7 @@
     }
     if (item.status === 'pending') return t('admin9Ui.filePicker.processing');
     if (item.status === 'failed') return t('admin9Ui.filePicker.failed');
-    return t('admin9Ui.filePicker.unavailable');
+    return contextLabel('unavailable', 'imageUnavailable');
   };
 
   const itemFields: (keyof FileItem)[] = [
@@ -489,6 +528,7 @@
   };
   const invalidateRequests = () => {
     clearMessages();
+    clearUploadResult();
     viewGeneration += 1;
     latestListRequest += 1;
     latestGroupRequest += 1;
@@ -509,6 +549,7 @@
     imageModalHeight.value = 720;
     managing.value = false;
     managementMap.value.clear();
+    managementCompleted.value = false;
     moveVisible.value = false;
     invalidateFileActions();
   };
@@ -540,6 +581,12 @@
   };
 
   const reconcilePage = (items: FileItem[]) => {
+    items.forEach((item) => {
+      if (!uploadedItems.value.has(item.id) || deletedUploadIds.has(item.id)) return;
+      uploadedItems.value.set(item.id, item);
+      if (duplicateIds.value.has(item.id)) ambiguousUploadIds.value.add(item.id);
+      else ambiguousUploadIds.value.delete(item.id);
+    });
     const next = new Map(draftMap.value);
     items.forEach((item) => {
       if (!next.has(item.id)) return;
@@ -770,15 +817,25 @@
       if (!isCurrent()) return;
       if (!Array.isArray(result)) throw new Error('[admin9-ui] File operations must return successful IDs.');
       const succeeded = new Set(result.filter((id): id is string => typeof id === 'string' && requested.has(id)));
+      if (succeeded.size) managementCompleted.value = true;
       if (action === 'delete') {
         list.value = list.value.filter((item) => !succeeded.has(item.id));
         replaceDraft(draftItems.value.filter((item) => !succeeded.has(item.id)));
-        succeeded.forEach((id) => managementMap.value.delete(id));
+        succeeded.forEach((id) => {
+          managementMap.value.delete(id);
+          uploadedItems.value.delete(id);
+          deletedUploadIds.add(id);
+        });
       } else {
         // Do not mutate shared FileItem objects or the committed parent field.
         const moved = (item: FileItem) => (succeeded.has(item.id) ? { ...item, groupId } : item);
         replaceDraft(draftItems.value.map(moved));
-        managementMap.value = new Map(Array.from(managementMap.value.values(), (item) => [item.id, moved(item)]));
+        uploadedItems.value = new Map(Array.from(uploadedItems.value.values(), (item) => [item.id, moved(item)]));
+        managementMap.value = new Map(
+          Array.from(managementMap.value.values())
+            .filter((item) => !succeeded.has(item.id))
+            .map((item) => [item.id, item])
+        );
         list.value = list.value
           .map(moved)
           .filter((item) => activeGroupId.value === undefined || item.groupId === activeGroupId.value);
@@ -1084,38 +1141,87 @@
     await nextTick();
     triggerRoot.value?.querySelector<HTMLElement>('[data-testid="file-picker-trigger"], button')?.focus();
   };
-  const onUploadTasksChange = (tasks: readonly FileUploadTask[]) => {
-    uploading.value = tasks.some((task) => task.status === 'pending' || task.status === 'uploading');
-    if (uploading.value) closeMessage('upload');
+  const uploadCandidates = computed(() =>
+    Array.from(uploadedItems.value.values()).flatMap((item) => {
+      const pageItems = list.value.filter((entry) => entry.id === item.id);
+      const candidate = pageItems[0] ?? item;
+      return pageItems.length <= 1 &&
+        !ambiguousUploadIds.value.has(candidate.id) &&
+        !deletedUploadIds.has(candidate.id) &&
+        isValueEligible(candidate) &&
+        !draftMap.value.has(candidate.id)
+        ? [candidate]
+        : [];
+    })
+  );
+  const uploadCapacity = computed(() => {
+    if (!props.multiple) return Math.max(0, 1 - draftCount.value);
+    return props.limit > 0 ? Math.max(0, props.limit - draftCount.value) : Infinity;
+  });
+  const uploadSelectionBlocked = computed(() => uploadCandidates.value.length > 0 && uploadCapacity.value === 0);
+  const uploadSummary = computed(() => {
+    const result = uploadResult.value;
+    if (!result) return '';
+    return [
+      result.succeeded &&
+        t(`admin9Ui.filePicker.uploadSummary.${imagesOnly.value ? 'imageSucceeded' : 'succeeded'}`, {
+          count: result.succeeded,
+        }),
+      result.failed &&
+        t(`admin9Ui.filePicker.uploadSummary.${imagesOnly.value ? 'imageFailed' : 'failed'}`, { count: result.failed }),
+      result.cancelled &&
+        t(`admin9Ui.filePicker.uploadSummary.${imagesOnly.value ? 'imageCancelled' : 'cancelled'}`, {
+          count: result.cancelled,
+        }),
+    ]
+      .filter(Boolean)
+      .join(t('admin9Ui.filePicker.uploadSummary.separator'));
+  });
+  const selectUploaded = () => {
+    if (!visible.value || managing.value || interactionDisabled.value || fileActionBusy.value || uploading.value) return;
+    if (uploadSelectionBlocked.value) return;
+    const additions = uploadCandidates.value.slice(0, uploadCapacity.value);
+    replaceDraft([...draftItems.value, ...additions]);
   };
-
+  const onUploadTasksChange = (tasks: readonly FileUploadTask[]) => {
+    const active = tasks.filter((task) => task.status === 'pending' || task.status === 'uploading');
+    if (active.length && !uploading.value) {
+      if (uploadCycleSettled && active.some((task) => !uploadTaskIds.has(task.id))) {
+        uploadedItems.value.clear();
+        deletedUploadIds.clear();
+        completedUploadTaskIds.clear();
+        ambiguousUploadIds.value.clear();
+        uploadTaskIds = new Set();
+      }
+      uploadResult.value = undefined;
+      uploadCycleSettled = false;
+    }
+    active.forEach((task) => uploadTaskIds.add(task.id));
+    tasks.forEach((task) => {
+      if (!uploadTaskIds.has(task.id) || task.status !== 'succeeded' || !task.item || completedUploadTaskIds.has(task.id))
+        return;
+      completedUploadTaskIds.add(task.id);
+      if (!deletedUploadIds.has(task.item.id)) uploadedItems.value.set(task.item.id, task.item);
+    });
+    uploading.value = active.length > 0;
+    // AFileUploader clears a fully successful queue after complete; keep its result available for selection.
+    if (!tasks.length && (!uploadCycleSettled || uploadResult.value?.failed || uploadResult.value?.cancelled))
+      clearUploadResult();
+  };
   const onUploadResponse = (item: FileItem) => emit('uploadSuccess', item);
   const onUploadError = (failure: FileUploadFailure) => emit('uploadError', failure.error);
   const onUploadComplete = async (result: FileUploadBatchResult) => {
-    if (!visible.value) return;
-    const succeeded = result.succeeded.length;
-    const failed = result.failed.length;
-    const cancelled = result.cancelled.length;
-    if (succeeded || failed) {
-      const summary = [
-        succeeded && t('admin9Ui.filePicker.uploadSummary.succeeded', { count: succeeded }),
-        failed && t('admin9Ui.filePicker.uploadSummary.failed', { count: failed }),
-        cancelled && t('admin9Ui.filePicker.uploadSummary.cancelled', { count: cancelled }),
-      ]
-        .filter(Boolean)
-        .join(t('admin9Ui.filePicker.uploadSummary.separator'));
-      let type: 'success' | 'info' | 'warning' | 'error' = cancelled ? 'info' : 'success';
-      if (failed) type = succeeded ? 'warning' : 'error';
-      showMessage(
-        'upload',
-        type,
-        t('admin9Ui.filePicker.uploadSummary.queue', { summary }) +
-          (succeeded ? t('admin9Ui.filePicker.uploadSummary.select') : ''),
-        5000
-      );
-    }
-    const hasResolvedResponse = result.succeeded.length > 0 || result.failed.some((failure) => Boolean(failure.task.item));
-    if (hasResolvedResponse) await refresh();
+    if (!visible.value || !uploadTaskIds.size) return;
+    uploadCycleSettled = true;
+    const succeeded = completedUploadTaskIds.size;
+    const failed = result.failed.filter((failure) => uploadTaskIds.has(failure.task.id));
+    const cancelled = result.cancelled.filter((task) => uploadTaskIds.has(task.id));
+    uploadResult.value = { succeeded, failed: failed.length, cancelled: cancelled.length };
+    if (succeeded) managementCompleted.value = true;
+    if (succeeded || failed.some((failure) => Boolean(failure.task.item))) await refresh();
+  };
+  const chooseUpload = () => {
+    workspace.value?.querySelector<HTMLInputElement>('.a9-file-uploader input[type="file"]')?.click();
   };
 
   watch(
@@ -1210,7 +1316,11 @@
             {{ triggerLabel }}
             <span v-if="selectedCount">({{ selectedCount }})</span>
           </a-button>
-          <ul v-if="selectedCount" class="a9-file-picker__committed" :aria-label="t('admin9Ui.filePicker.selectedFiles')">
+          <ul
+            v-if="selectedCount"
+            class="a9-file-picker__committed"
+            :aria-label="contextLabel('selectedFiles', 'selectedImages')"
+          >
             <li v-for="item in selectedItems" :key="item.id">
               <icon-file />
               <a
@@ -1268,15 +1378,9 @@
       </a-tooltip>
     </div>
 
-    <a-modal
+    <Modal
       :visible="visible"
-      :title="
-        t(
-          allowedFileTypes.length === 1 && allowedFileTypes[0] === 'image'
-            ? 'admin9Ui.imagePicker.choose'
-            : 'admin9Ui.filePicker.title'
-        )
-      "
+      :title="modalTitle"
       width="calc(100vw - 32px)"
       :modal-style="{
         display: 'inline-flex',
@@ -1302,10 +1406,10 @@
           <aside
             v-if="hasGroupNavigation && !narrow"
             class="a9-file-picker__sidebar"
-            :aria-label="t('admin9Ui.filePicker.groups')"
+            :aria-label="contextLabel('groups', 'imageGroups')"
           >
             <div class="a9-file-picker__sidebar-title">
-              <span>{{ t('admin9Ui.filePicker.groups') }}</span>
+              <span>{{ contextLabel('groups', 'imageGroups') }}</span>
               <a-tooltip v-if="uploading" :content="t('admin9Ui.filePicker.groupLocked')" :trigger="['hover', 'focus']">
                 <a-button type="text" size="mini" :aria-label="t('admin9Ui.filePicker.groupLocked')"
                   ><template #icon><icon-info-circle /></template
@@ -1325,7 +1429,7 @@
               </a-tooltip>
             </div>
             <div v-if="groupError" class="a9-file-picker__group-error" role="alert">
-              <span>{{ t('admin9Ui.filePicker.groupLoadFailed') }}</span>
+              <span>{{ contextLabel('groupLoadFailed', 'imageGroupLoadFailed') }}</span>
               <a-button type="text" size="mini" data-testid="file-picker-retry-groups" @click="fetchGroups">{{
                 t('admin9Ui.filePicker.retry')
               }}</a-button>
@@ -1342,7 +1446,7 @@
                 <FileFolderIcon
                   :open="activeGroupId === undefined"
                   class="a9-file-picker__group-icon a9-file-picker__group-icon--folder"
-                /><span>{{ t('admin9Ui.filePicker.groupAll') }}</span>
+                /><span>{{ contextLabel('groupAll', 'groupAllImages') }}</span>
               </button>
               <button
                 type="button"
@@ -1413,7 +1517,7 @@
             <template v-else>
               <div v-if="hasGroupNavigation && narrow" class="a9-file-picker__compact-groups">
                 <div v-if="groupError" class="a9-file-picker__group-error" role="alert">
-                  <span>{{ t('admin9Ui.filePicker.groupLoadFailed') }}</span>
+                  <span>{{ contextLabel('groupLoadFailed', 'imageGroupLoadFailed') }}</span>
                   <a-button type="text" size="mini" data-testid="file-picker-retry-groups" @click="fetchGroups">{{
                     t('admin9Ui.filePicker.retry')
                   }}</a-button>
@@ -1423,9 +1527,9 @@
                     v-model="groupFilter"
                     :loading="groupLoading"
                     :disabled="uploading || fileActionBusy"
-                    :aria-label="t('admin9Ui.filePicker.groups')"
+                    :aria-label="contextLabel('groups', 'imageGroups')"
                   >
-                    <a-option value="all">{{ t('admin9Ui.filePicker.groupAll') }}</a-option>
+                    <a-option value="all">{{ contextLabel('groupAll', 'groupAllImages') }}</a-option>
                     <a-option value="ungrouped">{{ t('admin9Ui.filePicker.groupUngrouped') }}</a-option>
                     <a-option v-for="row in groupRows" :key="row.group.id" :value="`group:${row.group.id}`">{{
                       row.label
@@ -1466,7 +1570,7 @@
                     v-model="keyword"
                     :disabled="fileActionBusy"
                     class="a9-file-picker__search"
-                    :placeholder="t('admin9Ui.filePicker.searchPlaceholder')"
+                    :placeholder="contextLabel('searchPlaceholder', 'searchImagesPlaceholder')"
                     allow-clear
                     :button-text="t('admin9Ui.filePicker.search')"
                     search-button
@@ -1524,9 +1628,9 @@
                     </AFileUploader>
                   </div>
                   <slot name="toolbar-right" />
-                  <a-tooltip :content="t('admin9Ui.filePicker.refresh')">
+                  <a-tooltip :content="contextLabel('refresh', 'refreshImages')">
                     <a-button
-                      :aria-label="t('admin9Ui.filePicker.refresh')"
+                      :aria-label="contextLabel('refresh', 'refreshImages')"
                       :loading="loading"
                       :disabled="fileActionBusy"
                       data-testid="file-picker-refresh"
@@ -1538,6 +1642,31 @@
                 </div>
               </div>
 
+              <div v-if="uploadResult" class="a9-file-picker__upload-result" data-testid="file-picker-upload-result">
+                <div role="status">
+                  <p>{{ uploadSummary }}</p>
+                  <p v-if="uploadCandidates.length">{{
+                    t(`admin9Ui.filePicker.${imagesOnly ? 'uploadImagesNotSelected' : 'uploadNotSelected'}`, {
+                      count: uploadCandidates.length,
+                    })
+                  }}</p>
+                  <p v-else-if="uploadResult.succeeded">{{ t('admin9Ui.filePicker.uploadCheckSelection') }}</p>
+                  <p v-if="uploadResult.failed">{{ t('admin9Ui.filePicker.uploadRecover') }}</p>
+                  <p v-if="uploadResult.cancelled">{{ t('admin9Ui.filePicker.uploadCancelled') }}</p>
+                  <p v-if="uploadSelectionBlocked">{{
+                    t(multiple ? 'admin9Ui.filePicker.uploadLimitReached' : 'admin9Ui.filePicker.uploadSingleOccupied')
+                  }}</p>
+                </div>
+                <a-button
+                  v-if="uploadCandidates.length && !managing"
+                  size="small"
+                  :disabled="uploadSelectionBlocked || interactionDisabled || fileActionBusy || uploading"
+                  data-testid="file-picker-select-uploaded"
+                  @click="selectUploaded"
+                  >{{ contextLabel('selectUploaded', 'selectUploadedImages') }}</a-button
+                >
+              </div>
+
               <div v-if="managing" class="a9-file-picker__management" @keydown.capture="onManagementKeydown">
                 <a-checkbox
                   :model-value="pageSelected"
@@ -1547,7 +1676,7 @@
                   @change="togglePage"
                   >{{ t('admin9Ui.filePicker.selectPage') }}</a-checkbox
                 >
-                <span role="status">{{ t('admin9Ui.filePicker.selectedCount', { count: managementMap.size }) }}</span>
+                <span role="status">{{ t('admin9Ui.filePicker.managementCount', { count: managementMap.size }) }}</span>
                 <div class="a9-file-picker__file-actions">
                   <Cascader
                     v-if="canMoveFiles"
@@ -1581,7 +1710,7 @@
 
               <div ref="results" class="a9-file-picker__results" :style="{ '--a9-file-picker-columns': gridColumns }">
                 <a-alert v-if="listError" type="error" class="a9-file-picker__list-error">
-                  {{ t('admin9Ui.filePicker.loadFailed') }}
+                  {{ contextLabel('loadFailed', 'imageLoadFailed') }}
                   <a-button type="text" size="small" data-testid="file-picker-retry-list" @click="fetchList()">{{
                     t('admin9Ui.filePicker.retry')
                   }}</a-button>
@@ -1591,7 +1720,7 @@
                     v-if="!listError && !empty"
                     class="a9-file-picker__items"
                     :data-view="view"
-                    :aria-label="t('admin9Ui.filePicker.results')"
+                    :aria-label="contextLabel('results', 'imageResults')"
                     role="group"
                   >
                     <article
@@ -1632,6 +1761,7 @@
                         <FileItemView
                           :item="item"
                           :show-metadata="!imagesOnly"
+                          :show-name="!imagesOnly"
                           :available="isSelectable(item)"
                           :status-label="statusLabel(item)"
                           :view="view"
@@ -1653,7 +1783,19 @@
                     </article>
                   </div>
                   <div v-else-if="empty" class="a9-file-picker__empty">
-                    <slot name="empty" :constrained="false"><a-empty :description="emptyDescription" /></slot>
+                    <slot name="empty" :constrained="false">
+                      <a-empty :description="emptyDescription" />
+                      <a-button v-if="hasFilters" :disabled="fileActionBusy || uploading" size="small" @click="clearFilters">{{
+                        t('admin9Ui.filePicker.clearFilters')
+                      }}</a-button>
+                      <a-button
+                        v-else-if="canUpload && !managing"
+                        :disabled="fileActionBusy || uploading"
+                        size="small"
+                        @click="chooseUpload"
+                        >{{ contextLabel('uploadFiles', 'uploadImages') }}</a-button
+                      >
+                    </slot>
                   </div>
                 </a-spin>
               </div>
@@ -1678,30 +1820,43 @@
               />
             </div>
             <div class="a9-file-picker__footer-actions">
-              <span v-if="!draftCount && needsEmptyCommit" :id="`${messagePrefix}-confirm-empty`" hidden>{{
-                t('admin9Ui.filePicker.confirmEmpty')
-              }}</span>
-              <a-button :size="narrow ? 'small' : undefined" @click="close">{{ t('admin9Ui.filePicker.cancel') }}</a-button>
-              <a-tooltip
-                :disabled="draftCount > 0 || !needsEmptyCommit"
-                :content="t('admin9Ui.filePicker.confirmEmpty')"
-                :trigger="['hover', 'focus']"
-              >
-                <a-button
-                  type="primary"
-                  :size="narrow ? 'small' : undefined"
-                  :disabled="!canConfirm"
-                  :aria-describedby="!draftCount && needsEmptyCommit ? `${messagePrefix}-confirm-empty` : undefined"
-                  @click="confirm"
+              <template v-if="!managing">
+                <span v-if="!draftCount && needsEmptyCommit" :id="`${messagePrefix}-confirm-empty`" hidden>{{
+                  contextLabel('confirmEmpty', 'confirmImagesEmpty')
+                }}</span>
+                <a-button :size="narrow ? 'small' : undefined" @click="close">{{
+                  t('admin9Ui.filePicker.cancelSelection')
+                }}</a-button>
+                <a-tooltip
+                  :disabled="draftCount > 0 || !needsEmptyCommit"
+                  :content="contextLabel('confirmEmpty', 'confirmImagesEmpty')"
+                  :trigger="['hover', 'focus']"
                 >
-                  {{ t('admin9Ui.filePicker.confirm') }}
-                </a-button>
-              </a-tooltip>
+                  <a-button
+                    type="primary"
+                    :size="narrow ? 'small' : undefined"
+                    :disabled="!canConfirm"
+                    :aria-describedby="!draftCount && needsEmptyCommit ? `${messagePrefix}-confirm-empty` : undefined"
+                    @click="confirm"
+                  >
+                    {{ confirmLabel }}
+                  </a-button>
+                </a-tooltip>
+              </template>
+              <template v-else>
+                <a-button :disabled="fileActionBusy" @click="close">{{ t('admin9Ui.filePicker.closeManagement') }}</a-button>
+                <a-button type="primary" :disabled="fileActionBusy" @click="exitManagement">{{
+                  t('admin9Ui.filePicker.exitBatch')
+                }}</a-button>
+              </template>
             </div>
           </div>
+          <p v-if="managementCompleted" class="a9-file-picker__management-note">{{
+            t('admin9Ui.filePicker.managementPersisted')
+          }}</p>
         </div>
       </template>
-    </a-modal>
+    </Modal>
     <Modal
       :visible="createGroupVisible"
       :title="t('admin9Ui.filePicker.createGroup')"
@@ -1749,7 +1904,7 @@
     </Modal>
     <Modal
       :visible="deleteVisible"
-      :title="t('admin9Ui.filePicker.delete')"
+      :title="contextLabel('deleteTitle', 'deleteImagesTitle')"
       simple
       width="calc(100vw - 32px)"
       :modal-style="{ maxWidth: '420px' }"
@@ -1762,7 +1917,17 @@
       @cancel="deleteVisible = false"
       @close="restoreDeleteFocus"
     >
-      <p>{{ t('admin9Ui.filePicker.deleteConfirm', { count: deleteIds.length }) }}</p>
+      <p>{{ t(`admin9Ui.filePicker.${imagesOnly ? 'deleteImagesConfirm' : 'deleteConfirm'}`, { count: deleteIds.length }) }}</p>
+      <ul class="a9-file-picker__delete-targets">
+        <li v-for="item in deleteItems" :key="item.id">
+          <img
+            v-if="item.type === 'image' && safeFileUrl(item.thumbnail || item.url)"
+            :src="safeFileUrl(item.thumbnail || item.url)"
+            alt=""
+          />
+          <span>{{ item.name }}</span>
+        </li>
+      </ul>
       <div class="a9-file-picker__create-actions">
         <a-button :disabled="fileActionBusy" @click="deleteVisible = false">{{ t('admin9Ui.filePicker.cancel') }}</a-button>
         <a-button
@@ -1772,7 +1937,7 @@
           :disabled="fileActionBusy || !canDeleteFiles"
           @click="runFileAction('delete', deleteIds)"
         >
-          {{ t('admin9Ui.filePicker.delete') }}
+          {{ t('admin9Ui.filePicker.confirmDelete') }}
         </a-button>
       </div>
     </Modal>
@@ -2244,10 +2409,57 @@
       border-color: var(--color-neutral-5);
     }
 
+    &__upload-result {
+      display: flex;
+      flex: none;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      color: var(--color-text-2);
+      font-size: 12px;
+      background: var(--color-fill-1);
+      border-radius: 4px;
+
+      p {
+        margin: 0;
+      }
+    }
+
+    &__management-note {
+      margin: 8px 0 0;
+      color: var(--color-text-2);
+      font-size: 12px;
+    }
+
+    &__delete-targets {
+      max-height: 240px;
+      margin: 16px 0;
+      padding: 0;
+      overflow: auto;
+      list-style: none;
+
+      li {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin: 8px 0;
+        overflow-wrap: anywhere;
+      }
+
+      img {
+        flex: none;
+        width: 48px;
+        height: 48px;
+        object-fit: contain;
+      }
+    }
+
     &__selection-order {
       position: absolute;
       top: 14px;
-      right: 14px;
+      left: 14px;
       z-index: 1;
       display: flex;
       align-items: center;

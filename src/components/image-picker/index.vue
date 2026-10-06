@@ -7,6 +7,7 @@
   import type { FileItem, FilePickerAdapter } from '../../services/types';
   import admin9UIOptionsKey from '../../internal/options';
   import safeFileUrl from '../../internal/file-url';
+  import FileImagePreview from '../../internal/file-image-preview.vue';
   import type { AImagePickerEmits, AImagePickerExposed, AImagePickerProps, AImagePickerSlots, ImagePickerValue } from './types';
   import {
     imageLimit,
@@ -62,6 +63,26 @@
   const pickerMultiple = computed(() => props.multiple && operation.value?.targetId === undefined);
   const visible = ref(false);
   const previewStates = ref(new Map<string, number>());
+  const previewIndex = ref<number>();
+  let previewTrigger: HTMLElement | undefined;
+  const previewItems = computed(() => images.value.map((item) => ({ src: safeFileUrl(item.url) || '', name: item.name })));
+  const closePreview = async () => {
+    previewIndex.value = undefined;
+    const trigger = previewTrigger;
+    previewTrigger = undefined;
+    await nextTick();
+    if (!mergedDisabled.value && trigger?.isConnected) trigger.focus();
+  };
+  const rememberPreviewTrigger = (event: MouseEvent) => {
+    previewTrigger = event.currentTarget as HTMLElement;
+  };
+  const openPreview = (item: UploadFileItem) => {
+    if (mergedDisabled.value) return;
+    const index = images.value.findIndex((image) => image.id === item.uid);
+    if (index < 0) return;
+    previewTrigger ??= document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+    previewIndex.value = index;
+  };
   const uploadItems = computed<UploadFileItem[]>(() =>
     images.value.map((item) => ({
       uid: item.id,
@@ -169,6 +190,7 @@
   watch([operationKey, service, blocked], () => {
     if (operation.value) close();
   });
+  watch(previewKey, closePreview);
   watch(modelKey, () => {
     previewStates.value = new Map();
   });
@@ -226,10 +248,11 @@
               :show-cancel-button="false"
               :show-remove-button="!blocked"
               :show-preview-button="!mergedDisabled"
-              :image-preview="!mergedDisabled"
+              :image-preview="false"
               :disabled="blocked"
               :on-before-upload="() => false"
               :on-before-remove="remove"
+              @preview="openPreview"
             >
               <template #image="{ fileItem }">
                 <img
@@ -254,6 +277,7 @@
                   :disabled="mergedDisabled"
                   :aria-label="t('admin9Ui.imagePicker.preview')"
                   :title="t('admin9Ui.imagePicker.preview')"
+                  @click="rememberPreviewTrigger"
                   ><icon-eye
                 /></button>
               </template>
@@ -307,6 +331,14 @@
         </template>
       </AFilePicker>
     </FormItem>
+    <FileImagePreview
+      v-if="previewIndex !== undefined"
+      :src="previewItems[previewIndex].src"
+      :name="previewItems[previewIndex].name"
+      :items="previewItems"
+      :current="previewIndex"
+      @close="closePreview"
+    />
   </div>
 </template>
 

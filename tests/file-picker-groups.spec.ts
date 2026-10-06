@@ -122,7 +122,7 @@ describe('file group creation', () => {
     );
     host.picker.value?.open();
     await flush();
-    expect(document.querySelector('.a9-file-picker-modal .arco-modal-title')?.textContent).toBe('Choose images');
+    expect(document.querySelector('.a9-file-picker-modal .arco-modal-title')?.textContent).toBe('Select images');
     expect(document.querySelector('.a9-file-picker__type-select')).toBeNull();
     expect(document.querySelector('.a9-file-picker__selected-count')).toBeNull();
     expect(document.querySelector('.a9-file-picker__empty')?.textContent).toContain('No images');
@@ -169,7 +169,7 @@ describe('file group creation', () => {
     document.querySelector<HTMLElement>('.a9-file-picker-create-group .arco-select')?.click();
     await flush();
     const options = [...document.querySelectorAll<HTMLElement>('.arco-select-option')];
-    expect(options.map((option) => option.textContent?.trim())).toEqual(['None (root group)', 'Root']);
+    expect(options.map((option) => option.textContent?.trim())).toEqual(['No parent (top-level group)', 'Root']);
     options.find((option) => option.textContent?.trim() === 'Root')?.click();
     await submit('Second child');
     expect(host.adapter.createGroup).toHaveBeenCalledWith({ name: 'Second child', parentId: 'root' });
