@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-10-07
+
 ### Added
 
 - AFilePicker 与 AImagePicker 新增 `toolbar-left`、`toolbar-right` 插槽，支持在弹窗左右工具栏追加外部业务控件；AFilePicker 的 `item` 插槽增加 `managing`，区分管理勾选与业务选图。
