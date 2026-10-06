@@ -210,6 +210,8 @@
         @upload-success="emit('uploadSuccess', $event)"
         @upload-error="emit('uploadError', $event)"
       >
+        <template #toolbar-left><slot name="toolbar-left" /></template>
+        <template #toolbar-right><slot name="toolbar-right" /></template>
         <template #trigger>
           <div class="a9-image-picker__content">
             <Upload

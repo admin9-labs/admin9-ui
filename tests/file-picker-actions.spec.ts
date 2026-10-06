@@ -5,7 +5,7 @@ import { createI18n } from 'vue-i18n';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import AFilePicker from '../src/components/file-picker/index.vue';
 import { messages } from '../src/locale';
-import type { AFilePickerExposed, AFilePickerProps, FileItem, FilePickerAdapter } from '../src';
+import type { AFilePickerExposed, AFilePickerProps, FilePickerValue, FileItem, FilePickerAdapter } from '../src';
 
 const apps: App[] = [];
 const first: FileItem = Object.freeze({ id: 'first', name: 'First.png', type: 'image', groupId: null, url: '/first.png' });
@@ -29,6 +29,7 @@ function mount(
     deleteResult?: () => Promise<readonly string[]>;
     moveResult?: () => Promise<readonly string[]>;
     noCapabilities?: boolean;
+    slots?: Record<string, () => ReturnType<typeof h>>;
   } = {}
 ) {
   let files: FileItem[] = [{ ...first }, { ...second }];
@@ -65,8 +66,9 @@ function mount(
   const update = vi.fn();
   const change = vi.fn();
   const selection = vi.fn();
+  const confirmed = vi.fn();
   const validator = vi.fn((_value: unknown, callback: () => void) => callback());
-  const model = reactive({ files: [first, second] });
+  const model = reactive<{ files: FilePickerValue }>({ files: options.props?.multiple === false ? first : [first, second] });
   const errors: unknown[] = [];
   const target = document.createElement('div');
   document.body.append(target);
@@ -82,15 +84,20 @@ function mount(
               { field: 'files', validateTrigger: 'change', rules: [{ validator }] },
               {
                 default: () =>
-                  h(AFilePicker, {
-                    ...props,
-                    'ref': picker,
-                    'service': service.value,
-                    'modelValue': model.files,
-                    'onUpdate:modelValue': update,
-                    'onChange': change,
-                    'onSelectionChange': selection,
-                  }),
+                  h(
+                    AFilePicker,
+                    {
+                      ...props,
+                      'ref': picker,
+                      'service': service.value,
+                      'modelValue': model.files,
+                      'onUpdate:modelValue': update,
+                      'onChange': change,
+                      'onSelectionChange': selection,
+                      'onConfirm': confirmed,
+                    },
+                    options.slots
+                  ),
               }
             ),
         }
@@ -100,11 +107,25 @@ function mount(
   app.config.errorHandler = (error) => errors.push(error);
   app.mount(target);
   apps.push(app);
-  return { app, adapter, service, props, picker, model, update, change, selection, validator, errors };
+  return { app, adapter, service, props, picker, model, update, change, selection, confirmed, validator, errors };
+}
+async function beginManagement(selectPage = true) {
+  if (document.querySelector('.a9-file-picker__management')) return;
+  document.querySelector<HTMLButtonElement>('[data-testid="file-picker-batch"]')!.click();
+  await flush();
+  if (selectPage) {
+    document.querySelector<HTMLInputElement>('[data-testid="file-picker-select-page"] input')!.click();
+    await flush();
+  }
+}
+async function nextPage() {
+  document.querySelector<HTMLElement>('.a9-file-picker-modal .arco-pagination-item-next')!.click();
+  await flush();
 }
 async function deleteSelected(picker: { value: AFilePickerExposed | undefined }) {
   picker.value?.open();
   await flush();
+  await beginManagement();
   document.querySelector<HTMLButtonElement>('[data-testid="file-picker-delete-selected"]')!.click();
   await flush();
 }
@@ -112,6 +133,7 @@ function confirmDelete() {
   document.querySelector<HTMLButtonElement>('.a9-file-picker-delete .arco-btn-primary')!.click();
 }
 async function moveTo(label: string) {
+  await beginManagement();
   document.querySelector<HTMLElement>('.a9-file-picker__move')!.click();
   await flush();
   const option = [...document.querySelectorAll<HTMLElement>('.arco-cascader-option')].find(
@@ -133,6 +155,106 @@ afterEach(async () => {
 });
 
 describe('file library actions in the picker', () => {
+  it('keeps image-only browsing on the grid while generic file browsing retains list controls', async () => {
+    const host = mount({ props: { fileTypes: ['image'], defaultView: 'list' } });
+    host.picker.value!.open();
+    await flush();
+    expect(document.querySelector('.a9-file-picker__items')?.getAttribute('data-view')).toBe('grid');
+    expect(document.querySelector('.a9-file-picker__view-toggle')).toBeNull();
+    expect(document.querySelector('.a9-file-item__meta')).toBeNull();
+    host.props.fileTypes = ['image', 'document'];
+    await flush();
+    expect(document.querySelector('.a9-file-picker__items')?.getAttribute('data-view')).toBe('list');
+    expect(document.querySelector('.a9-file-picker__view-toggle')).not.toBeNull();
+    expect(document.querySelector('.a9-file-item__meta')?.textContent).toContain('PNG');
+  });
+
+  it('appends external controls on both toolbar sides and keeps refresh last', async () => {
+    const host = mount({
+      slots: {
+        'toolbar-left': () => h('button', { 'data-testid': 'external-left' }, 'Help'),
+        'toolbar-right': () => h('button', { 'data-testid': 'external-right' }, 'Import'),
+      },
+    });
+    host.picker.value!.open();
+    await flush();
+    expect(document.querySelector('.a9-file-picker__filters')?.lastElementChild?.getAttribute('data-testid')).toBe(
+      'external-left'
+    );
+    const actions = document.querySelector('.a9-file-picker__toolbar-actions')!;
+    expect(actions.querySelector('[data-testid="external-right"]')).not.toBeNull();
+    expect(actions.lastElementChild?.getAttribute('data-testid')).toBe('file-picker-refresh');
+    expect(document.querySelector('.a9-file-picker__move')).toBeNull();
+  });
+
+  it('allows management of unready material without permitting it as a field value', async () => {
+    const host = mount({ props: { multiple: false, limit: 1 } });
+    vi.mocked(host.adapter.list).mockResolvedValue({
+      list: [first, { ...second, status: 'failed', url: '' }, { ...first, id: '' }],
+      pagination: { page: 1, pageSize: 24, total: 3, hasMore: false },
+    });
+    host.picker.value!.open();
+    await flush();
+    expect(document.querySelector<HTMLInputElement>('[data-file-id="second"] input')?.disabled).toBe(true);
+    await beginManagement();
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('2 selected');
+    expect(document.querySelector<HTMLInputElement>('[data-file-id=""] input')?.disabled).toBe(true);
+    document.querySelector<HTMLButtonElement>('[data-testid="file-picker-exit-batch"]')!.click();
+    await flush();
+    expect(document.querySelector('[data-file-id="second"]')?.classList.contains('is-selected')).toBe(false);
+    expect(host.update).not.toHaveBeenCalled();
+  });
+
+  it('keeps keyboard focus in empty management mode and clears it on a record change', async () => {
+    const host = mount();
+    vi.mocked(host.adapter.list).mockResolvedValue({
+      list: [],
+      pagination: { page: 1, pageSize: 24, total: 0, hasMore: false },
+    });
+    host.picker.value!.open();
+    await flush();
+    await beginManagement(false);
+    expect(document.activeElement).toBe(document.querySelector('[data-testid="file-picker-exit-batch"]'));
+    host.model.files = [second];
+    await flush();
+    expect(document.querySelector('.a9-file-picker__management')).toBeNull();
+    expect(document.activeElement).toBe(document.querySelector('[data-testid="file-picker-batch"]'));
+    expect(host.update).not.toHaveBeenCalled();
+  });
+
+  it('exits management on Escape from the modal header without closing the picker', async () => {
+    const host = mount();
+    host.picker.value!.open();
+    await flush();
+    await beginManagement(false);
+    const close = document.querySelector<HTMLElement>('.arco-modal-close-btn')!;
+    close.focus();
+    close.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await flush();
+    expect(document.querySelector('.a9-file-picker__management')).toBeNull();
+    const batch = document.querySelector<HTMLButtonElement>('[data-testid="file-picker-batch"]')!;
+    expect(document.activeElement).toBe(batch);
+    expect(document.querySelector('.arco-modal')?.closest<HTMLElement>('.arco-modal-container')?.style.display).not.toBe(
+      'none'
+    );
+    expect(host.update).not.toHaveBeenCalled();
+  });
+
+  it('preserves search focus when management permissions change during normal selection', async () => {
+    const host = mount({ props: { canDeleteFiles: false, canMoveFiles: false } });
+    host.picker.value!.open();
+    await flush();
+    const search = document.querySelector<HTMLInputElement>('.a9-file-picker__search input')!;
+    search.focus();
+    host.props.canDeleteFiles = true;
+    await flush();
+    expect(document.activeElement).toBe(search);
+    host.props.canDeleteFiles = false;
+    await flush();
+    expect(document.activeElement).toBe(search);
+    expect(host.update).not.toHaveBeenCalled();
+  });
+
   it('keeps successful deletion feedback separate from a failed refresh and its retry', async () => {
     const host = mount();
     await deleteSelected(host.picker);
@@ -154,6 +276,7 @@ describe('file library actions in the picker', () => {
     host.picker.value!.open();
     await flush();
     expect(document.querySelector('.a9-file-picker__file-actions')).toBeNull();
+    expect(document.querySelector('[data-testid="file-picker-batch"]')).toBeNull();
     expect(host.errors).toEqual([]);
     host.props.canDeleteFiles = true;
     await flush();
@@ -174,7 +297,7 @@ describe('file library actions in the picker', () => {
     await flush();
     expect(host.adapter.deleteFiles).toHaveBeenCalledWith(['first', 'second']);
     expect(document.querySelectorAll('.a9-file-picker__item')).toHaveLength(0);
-    expect(document.querySelector('.a9-file-picker__selected-count')?.textContent).toBe('0 selected');
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('0 selected');
     expect(document.querySelector('.arco-message')?.textContent).toContain('Deleted 2 files');
     expect(host.model.files).toEqual([first, second]);
     expect(host.update).not.toHaveBeenCalled();
@@ -236,24 +359,23 @@ describe('file library actions in the picker', () => {
     expect(host.adapter.moveFiles).toHaveBeenLastCalledWith({ ids: ['first', 'second'], groupId: 'root' });
   });
 
-  it('moves an off-page selection back after cancel and reopen despite stale field group IDs', async () => {
+  it('accumulates cross-page management independently and starts empty after reopen', async () => {
     const host = mount({ props: { pageSize: 1 } });
     host.picker.value!.open();
     await flush();
+    await beginManagement();
+    await nextPage();
+    document.querySelector<HTMLInputElement>('[data-testid="file-picker-select-page"] input')!.click();
+    await flush();
     await moveTo('Destination');
+    expect(host.adapter.moveFiles).toHaveBeenLastCalledWith({ ids: ['first', 'second'], groupId: 'root' });
     host.picker.value!.close();
     await flush();
-    expect(host.model.files).toEqual([first, second]);
-
     host.picker.value!.open();
     await flush();
-    expect(document.querySelector('[data-file-id="second"]')).toBeNull();
-    expect(host.selection).toHaveBeenLastCalledWith([{ ...first, groupId: 'root' }, second]);
-    await moveTo('Ungrouped');
-
-    expect(host.adapter.moveFiles).toHaveBeenLastCalledWith({ ids: ['first', 'second'], groupId: null });
-    const page = await host.adapter.list({ page: 2, pageSize: 1 });
-    expect(page.list).toEqual([second]);
+    await beginManagement(false);
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('0 selected');
+    expect(host.model.files).toEqual([first, second]);
     expect(host.update).not.toHaveBeenCalled();
     expect(host.change).not.toHaveBeenCalled();
     expect(host.validator).not.toHaveBeenCalled();
@@ -268,6 +390,7 @@ describe('file library actions in the picker', () => {
     )!;
     ungrouped.click();
     await flush();
+    await beginManagement();
     document.querySelector<HTMLElement>('.a9-file-picker__move')!.click();
     await flush();
     document.querySelector<HTMLElement>('.arco-cascader-option[title="Destination"] .arco-cascader-option-label')!.click();
@@ -276,7 +399,7 @@ describe('file library actions in the picker', () => {
     await flush();
     expect(host.adapter.moveFiles).toHaveBeenCalledWith({ ids: ['first', 'second'], groupId: 'child' });
     expect(document.querySelectorAll('.a9-file-picker__item')).toHaveLength(0);
-    expect(document.querySelector('.a9-file-picker__selected-count')?.textContent).toBe('2 selected');
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('2 selected');
     expect(host.update).not.toHaveBeenCalled();
   });
 
@@ -284,7 +407,9 @@ describe('file library actions in the picker', () => {
     const host = mount({ props: { pageSize: 1 } });
     host.picker.value!.open();
     await flush();
-    document.querySelector<HTMLElement>('.a9-file-picker-modal .arco-pagination-item-next')!.click();
+    await beginManagement();
+    await nextPage();
+    document.querySelector<HTMLInputElement>('[data-testid="file-picker-select-page"] input')!.click();
     await flush();
     expect(host.adapter.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }));
     document.querySelector<HTMLButtonElement>('[data-testid="file-picker-delete-selected"]')!.click();
@@ -302,13 +427,14 @@ describe('file library actions in the picker', () => {
     host.model.files = [];
     host.picker.value!.open();
     await flush();
+    await beginManagement(false);
     expect(document.querySelector<HTMLButtonElement>('[data-testid="file-picker-delete-selected"]')!.disabled).toBe(true);
     document.querySelector<HTMLElement>('[data-file-id="first"]')!.click();
     await flush();
     await moveTo('Destination');
     document.querySelector<HTMLElement>('[data-file-id="second"]')!.click();
     await flush();
-    expect(document.querySelector('.a9-file-picker__selected-count')?.textContent).toBe('1 selected');
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('1 selected');
     expect(document.querySelector<HTMLInputElement>('.a9-file-picker__search input')!.disabled).toBe(true);
     expect(document.querySelector<HTMLButtonElement>('.a9-file-picker__footer-actions button:last-child')!.disabled).toBe(true);
     host.picker.value!.close();
@@ -317,6 +443,60 @@ describe('file library actions in the picker', () => {
     expect(host.adapter.moveFiles).toHaveBeenCalledOnce();
     expect(host.update).not.toHaveBeenCalled();
     expect(document.querySelector('.arco-message')).toBeNull();
+  });
+
+  it('manages multiple files with a single-value limit and restores the surviving selection draft', async () => {
+    const host = mount({ props: { multiple: false, limit: 1 }, deleteResult: async () => ['second'] });
+    host.picker.value!.open();
+    await flush();
+    expect(document.querySelector('.a9-file-picker__move')).toBeNull();
+    expect(document.querySelector('[data-testid="file-picker-delete-selected"]')).toBeNull();
+    await beginManagement(false);
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('0 selected');
+    document.querySelector<HTMLInputElement>('[data-testid="file-picker-select-page"] input')!.click();
+    await flush();
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('2 selected');
+    expect(document.querySelector('.a9-file-picker__selection-order')).toBeNull();
+    expect(host.selection).not.toHaveBeenCalled();
+    expect(document.querySelector<HTMLButtonElement>('.a9-file-picker__footer-actions button:last-child')!.disabled).toBe(true);
+    document.querySelector<HTMLButtonElement>('.a9-file-picker__footer-actions button:last-child')!.click();
+    expect(host.confirmed).not.toHaveBeenCalled();
+    document.querySelector<HTMLButtonElement>('[data-testid="file-picker-delete-selected"]')!.click();
+    await flush();
+    confirmDelete();
+    await flush();
+    expect(host.adapter.deleteFiles).toHaveBeenCalledWith(['first', 'second']);
+    document.querySelector<HTMLButtonElement>('[data-testid="file-picker-exit-batch"]')!.click();
+    await flush();
+    expect(document.querySelector('[data-file-id="first"]')?.classList.contains('is-selected')).toBe(true);
+    expect(host.update).not.toHaveBeenCalled();
+    expect(host.change).not.toHaveBeenCalled();
+    expect(host.model.files).toEqual(first);
+    document.querySelector<HTMLButtonElement>('.a9-file-picker__footer-actions button:last-child')!.click();
+    await flush();
+    expect(host.confirmed).toHaveBeenCalledWith([first]);
+    expect(host.update).not.toHaveBeenCalled();
+  });
+
+  it('selects only this page and deselects it without removing selections on other pages', async () => {
+    const host = mount({ props: { pageSize: 1, limit: 1 } });
+    host.picker.value!.open();
+    await flush();
+    await beginManagement();
+    await nextPage();
+    const pageCheckbox = document.querySelector<HTMLInputElement>('[data-testid="file-picker-select-page"] input')!;
+    expect(pageCheckbox.checked).toBe(false);
+    pageCheckbox.click();
+    await flush();
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('2 selected');
+    pageCheckbox.click();
+    await flush();
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('1 selected');
+    document.querySelector<HTMLButtonElement>('[data-testid="file-picker-exit-batch"]')!.click();
+    await flush();
+    await beginManagement(false);
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('0 selected');
+    expect(host.update).not.toHaveBeenCalled();
   });
 
   it.each(['close', 'service', 'model', 'disabled', 'readonly', 'permission', 'unmount'] as const)(

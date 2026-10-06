@@ -24,6 +24,7 @@ export interface AImagePickerProps {
   size?: Size;
   buttonText?: string;
   pageSize?: number;
+  /** @deprecated 图片弹窗固定为网格；仅为兼容已有调用保留。 */
   defaultView?: FilePickerView;
 }
 
@@ -38,7 +39,9 @@ export interface AImagePickerEmits {
 }
 
 export interface AImagePickerSlots {
-  trigger?: (props: {
+  'toolbar-left'?: () => unknown;
+  'toolbar-right'?: () => unknown;
+  'trigger'?: (props: {
     open: () => void;
     selectedItems: FileItem[];
     selectedCount: number;

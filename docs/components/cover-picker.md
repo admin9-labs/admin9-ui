@@ -2,7 +2,7 @@
 
 `ACoverPicker` 是后端无关的封面选择组件，提供单图、三图和无封面模式。三图使用三个固定位置，每个位置通过同一个 `AFilePicker` 单独选择图片。
 
-内部选图弹窗沿用 [AFilePicker 的稳定高度与响应式分页](./file-picker.md#布局与分页)，默认按可用空间展示完整的一页图片，分组列表独立滚动。弹窗图片框采用 4:3 与 `contain`，不改变下方说明的封面字段卡片展示方式。
+内部选图弹窗沿用 [AFilePicker 的稳定高度与响应式分页](./file-picker.md#布局与分页)，默认按可用空间展示完整的一页图片，分组列表独立滚动。弹窗图片卡片隐藏单独的后缀和大小行，保留文件名、预览与异常状态。弹窗图片框采用 4:3 与 `contain`，不改变下方说明的封面字段卡片展示方式。
 
 普通单图／多图字段使用 [AImagePicker](./image-picker.md)。ACoverPicker 保留封面模式、固定位置及允许重复图片的独立契约。
 
@@ -65,8 +65,8 @@ export type CoverPickerValue =
 | `service`    | `FilePickerAdapter` | 插件 `fileService`                   | 使用点优先的后端无关 adapter                                     |
 | `canUpload`  | `boolean`           | `false`                              | 在文件选择弹窗显示上传入口                                       |
 | `canCreateGroup` | `boolean` | `false` | 透传至文件选择器，开启一级／二级分组创建；要求 listGroups 和 createGroup |
-| `canDeleteFiles` | `boolean` | `false` | 透传删除素材开关；要求 deleteFiles，删除不自动清理封面位置 |
-| `canMoveFiles` | `boolean` | `false` | 透传移动素材开关；要求 listGroups 和 moveFiles |
+| `canDeleteFiles` | `boolean` | `false` | 透传批量管理的删除素材开关；要求 deleteFiles，删除不自动清理封面位置 |
+| `canMoveFiles` | `boolean` | `false` | 透传批量管理的移动素材开关；要求 listGroups 和 moveFiles |
 | `accept`     | `string`            | `'image/*'`                          | 原生文件选择提示，不代替后端校验                                 |
 | `disabled`   | `boolean`           | `false`                              | 禁用模式切换、选择、替换和移除；同时继承外层 Arco 表单的禁用状态 |
 | `readonly`   | `boolean`           | `false`                              | 禁止模式切换、选择和移除                                         |
@@ -122,5 +122,7 @@ TypeScript 声明使用 `visibleChange`、`uploadSuccess`、`uploadError`；Vue 
 `readonly?: boolean` 默认 false，与继承的 Form disabled 一起阻止模式切换、选择与移除。用户正式提交封面后触发字段 change 校验，无须额外调用 validateField。外部不合法输入仅归一化展示，不回写父模型或触发 change；下一次用户确认会提交规范后的完整封面值，即使所选图片与展示相同。上传成功只表示文件准备就绪，不自动改变封面。
 
 CoverPickerSize 使用官方 Size，增加 mini（封面最大宽 88px、添加图标 20px、替换图标 20px）；显式 size 优先，其次 Form，组合布局最终默认 medium。单独使用时封面格保持该布局默认值；Arco 模式控件仍可继承 ConfigProvider。该差异用于区分图片画布尺寸与输入控件高度。
+
+内部选图弹窗仅使用网格；批量管理的勾选独立于当前封面位置，即使每次封面选择仅一张，也可同时管理多个素材。管理操作立即作用于素材库，退出或取消不会撤销；退出管理后恢复有效选图草稿。
 
 组件无额外公开方法或插槽；class/style 和原生根属性附在封面根节点，内部文件选择器不作为公共实例 API。

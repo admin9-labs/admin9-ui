@@ -1,7 +1,7 @@
 <script setup lang="ts">
   import { useI18n } from 'vue-i18n';
 
-  defineProps<{ card: boolean; selected: boolean; disabled: boolean; name: string }>();
+  defineProps<{ card: boolean; selected: boolean; disabled: boolean; name: string; managing?: boolean }>();
   const emit = defineEmits<{ (e: 'toggle'): void }>();
   const { t } = useI18n();
 </script>
@@ -15,7 +15,9 @@
     @keydown.enter.prevent="emit('toggle')"
     @change="emit('toggle')"
   >
-    <span class="a9-file-picker__selection-label">{{ t('admin9Ui.filePicker.selectItem', { name }) }}</span>
+    <span class="a9-file-picker__selection-label">{{
+      t(managing ? 'admin9Ui.filePicker.manageItem' : 'admin9Ui.filePicker.selectItem', { name })
+    }}</span>
   </a-checkbox>
 </template>
 

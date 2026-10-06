@@ -11,6 +11,7 @@ import type { AFilePickerExposed, AFilePickerProps, FileItem, FileListParams, Fi
 const apps: App[] = [];
 let width = 822;
 let height = 580;
+let measuredModalHeight = 0;
 const originalWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')?.get;
 const originalHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')?.get;
 interface ResizeObserverFixture extends ResizeObserver {
@@ -91,6 +92,12 @@ function click(selector: string) {
 function renderedIds() {
   return [...document.querySelectorAll<HTMLElement>('.a9-file-picker__item')].map((item) => item.dataset.fileId);
 }
+async function manageFirst() {
+  click('[data-testid="file-picker-batch"]');
+  await flush();
+  click('[data-file-id="file-1"] input');
+  await flush();
+}
 function changeView(value: 'grid' | 'list') {
   click(`.a9-file-picker__view-toggle [aria-label="${value === 'grid' ? 'Grid' : 'List'} view"]`);
 }
@@ -140,11 +147,14 @@ function mount(options: { props?: Partial<AFilePickerProps>; adapter?: Partial<F
 beforeEach(() => {
   width = 822;
   height = 580;
+  measuredModalHeight = 0;
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function resultWidth(this: HTMLElement) {
     return this.matches('.a9-file-picker__results') ? width : originalWidth?.call(this) ?? 0;
   });
   vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function resultHeight(this: HTMLElement) {
-    return this.matches('.a9-file-picker__results') ? height : originalHeight?.call(this) ?? 0;
+    if (this.matches('.a9-file-picker__results')) return height;
+    if (this.matches('.arco-modal') && measuredModalHeight) return measuredModalHeight;
+    return originalHeight?.call(this) ?? 0;
   });
   vi.stubGlobal('ResizeObserver', MeasuredResizeObserver);
 });
@@ -176,6 +186,72 @@ describe('file picker measured pagination', () => {
     await flush();
     seen.push(...renderedIds());
     expect(seen).toEqual(files.map((item) => item.id));
+    expect(host.update).not.toHaveBeenCalled();
+  });
+
+  it('fits two compact image rows where generic metadata cards fit only one', async () => {
+    height = 340;
+    const host = mount({ props: { modelValue: [files[0]] } });
+    host.picker.value!.open();
+    await flush();
+    expect(host.adapter.list).toHaveBeenLastCalledWith(expect.objectContaining({ pageSize: 10 }));
+    expect(renderedIds()).toEqual(files.slice(0, 10).map((file) => file.id));
+    host.props.fileTypes = ['image', 'document'];
+    await flush();
+    expect(host.adapter.list).toHaveBeenLastCalledWith(expect.objectContaining({ pageSize: 5 }));
+    expect(document.querySelector('[data-file-id="file-1"]')?.classList.contains('is-selected')).toBe(true);
+    expect(host.update).not.toHaveBeenCalled();
+  });
+
+  it('fits the image dialog to complete rows without shrinking on the final page or requerying after fitting', async () => {
+    measuredModalHeight = 720;
+    height = 530;
+    const host = mount();
+    host.picker.value!.open();
+    await flush();
+    const modal = document.querySelector<HTMLElement>('.arco-modal')!;
+    // Three 149.1px cards and two 12px gaps fit in a 472px results region.
+    expect(modal.style.height).toBe('662px');
+    expect(host.adapter.list).toHaveBeenCalledOnce();
+    expect(host.adapter.list).toHaveBeenLastCalledWith(expect.objectContaining({ pageSize: 15 }));
+    measuredModalHeight = 662;
+    vi.useFakeTimers();
+    await settleResize(822, 472);
+    expect(host.adapter.list).toHaveBeenCalledOnce();
+    expect(modal.style.height).toBe('662px');
+    click('.a9-file-picker-modal .arco-pagination-item-next');
+    await flush();
+    click('.a9-file-picker-modal .arco-pagination-item-next');
+    await flush();
+    expect(renderedIds()).toHaveLength(7);
+    expect(modal.style.height).toBe('662px');
+    expect(host.update).not.toHaveBeenCalled();
+  });
+
+  it('restores a third image row when the viewport grows without changing the fitted dialog size', async () => {
+    measuredModalHeight = 720;
+    height = 530;
+    const host = mount();
+    host.picker.value!.open();
+    await flush();
+    const modal = document.querySelector<HTMLElement>('.arco-modal')!;
+    measuredModalHeight = 662;
+    height = 472;
+    vi.useFakeTimers();
+    vi.stubGlobal('innerHeight', 600);
+    window.dispatchEvent(new Event('resize'));
+    await vi.advanceTimersByTimeAsync(150);
+    await flush();
+    expect(modal.style.height).toBe('501px');
+    expect(host.adapter.list).toHaveBeenLastCalledWith(expect.objectContaining({ pageSize: 10 }));
+    measuredModalHeight = 501;
+    height = 311;
+    vi.stubGlobal('innerHeight', 900);
+    window.dispatchEvent(new Event('resize'));
+    await vi.advanceTimersByTimeAsync(150);
+    await flush();
+    expect(modal.style.height).toBe('662px');
+    expect(host.adapter.list).toHaveBeenLastCalledWith(expect.objectContaining({ pageSize: 15 }));
     expect(host.update).not.toHaveBeenCalled();
   });
 
@@ -324,7 +400,7 @@ describe('file picker measured pagination', () => {
   });
 
   it('keeps fixed page three and file IDs when changing view or viewport', async () => {
-    const host = mount({ props: { pageSize: 10 } });
+    const host = mount({ props: { pageSize: 10, fileTypes: ['image', 'document'] } });
     host.picker.value!.open();
     await flush();
     click('.a9-file-picker-modal .arco-pagination-item-next');
@@ -347,7 +423,7 @@ describe('file picker measured pagination', () => {
   it('keeps the same automatic page when changing view does not change capacity', async () => {
     width = 150;
     height = 80;
-    const host = mount();
+    const host = mount({ props: { fileTypes: ['image', 'document'] } });
     host.picker.value!.open();
     await flush();
     expect(host.adapter.list).toHaveBeenLastCalledWith(expect.objectContaining({ pageSize: 1 }));
@@ -451,6 +527,7 @@ describe('file picker measured pagination', () => {
     });
     host.picker.value!.open();
     await flush();
+    await manageFirst();
     click('[data-testid="file-picker-delete-selected"]');
     await flush();
     click('.a9-file-picker-delete .arco-btn-primary');
@@ -477,6 +554,7 @@ describe('file picker measured pagination', () => {
       });
       host.picker.value!.open();
       await flush();
+      await manageFirst();
       click('[data-testid="file-picker-delete-selected"]');
       await flush();
       click('.a9-file-picker-delete .arco-btn-primary');
@@ -496,8 +574,16 @@ describe('file picker measured pagination', () => {
       await flush();
       expect(host.adapter.list).toHaveBeenCalledOnce();
       expect(document.querySelector('.arco-message')).toBeNull();
+      if (document.querySelector('[data-testid="file-picker-exit-batch"]')) {
+        click('[data-testid="file-picker-exit-batch"]');
+        await flush();
+      }
       expect(document.querySelector(`[data-file-id="${expected[0].id}"]`)?.classList.contains('is-selected')).toBe(true);
       expect(host.update).not.toHaveBeenCalled();
+      if (document.querySelector('[data-testid="file-picker-exit-batch"]')) {
+        click('[data-testid="file-picker-exit-batch"]');
+        await flush();
+      }
       click('.a9-file-picker__footer-actions button:last-child');
       await flush();
       // Confirming the intact external value is intentionally a same-value no-op.
@@ -517,6 +603,7 @@ describe('file picker measured pagination', () => {
     });
     host.picker.value!.open();
     await flush();
+    await manageFirst();
     click('[data-testid="file-picker-delete-selected"]');
     await flush();
     click('.a9-file-picker-delete .arco-btn-primary');
@@ -549,6 +636,7 @@ describe('file picker measured pagination', () => {
     });
     host.picker.value!.open();
     await flush();
+    await manageFirst();
     click('.a9-file-picker-modal .arco-pagination-item-next');
     await flush();
     expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, pageSize: 15 }));
@@ -590,7 +678,7 @@ describe('file picker measured pagination', () => {
     expect(document.querySelector('.arco-message')?.textContent).toContain('Select them, then confirm');
   });
 
-  it('closes the move popup, More and the picker one layer per Escape', async () => {
+  it('closes the move popup, management mode and picker one layer per Escape', async () => {
     narrowViewport();
     const host = mount({
       props: { canMoveFiles: true, modelValue: [files[0]] },
@@ -601,11 +689,7 @@ describe('file picker measured pagination', () => {
     });
     host.picker.value!.open();
     await flush();
-    const more = document.querySelector<HTMLButtonElement>('[data-testid="file-picker-more"]')!;
-    more.focus();
-    more.click();
-    await flush();
-    expect(more.getAttribute('aria-expanded')).toBe('true');
+    await manageFirst();
     click('.a9-file-picker__move');
     await flush();
     const input = document.querySelector<HTMLInputElement>('.a9-file-picker__move input')!;
@@ -616,61 +700,59 @@ describe('file picker measured pagination', () => {
     await new Promise<void>((resolve) => {
       setTimeout(resolve, 50);
     });
-    expect(more.getAttribute('aria-expanded')).toBe('true');
+    expect(document.querySelector('.a9-file-picker__management')).not.toBeNull();
     expect(host.visibility).toHaveBeenLastCalledWith(true);
-    const cascaderPopup = document.querySelector('.arco-cascader-option')?.closest<HTMLElement>('.arco-trigger-popup');
-    expect(!cascaderPopup || cascaderPopup.style.display === 'none').toBe(true);
+    const popup = document.querySelector('.arco-cascader-option')?.closest<HTMLElement>('.arco-trigger-popup');
+    expect(!popup || popup.style.display === 'none').toBe(true);
     escape(input);
     await flush();
-    expect(more.getAttribute('aria-expanded')).toBe('false');
-    expect(document.activeElement).toBe(more);
+    const batch = document.querySelector<HTMLButtonElement>('[data-testid="file-picker-batch"]')!;
+    expect(document.querySelector('.a9-file-picker__management')).toBeNull();
+    expect(document.activeElement).toBe(batch);
     expect(host.visibility).toHaveBeenLastCalledWith(true);
-    escape(more);
+    escape(batch);
     await flush();
     expect(host.visibility).toHaveBeenLastCalledWith(false);
     expect(host.update).not.toHaveBeenCalled();
   });
 
-  it.each(['success', 'failure'] as const)('restores More focus after keyboard movement finishes with %s', async (outcome) => {
-    narrowViewport();
-    const host = mount({
-      props: { canMoveFiles: true, modelValue: [files[0]] },
-      adapter: {
-        listGroups: vi.fn(async () => [{ id: 'destination', name: 'Destination' }]),
-        moveFiles: vi.fn(async ({ ids }) => {
-          if (outcome === 'failure') throw new Error('Move rejected');
-          return ids;
-        }),
-      },
-    });
-    host.picker.value!.open();
-    await flush();
-    const more = document.querySelector<HTMLButtonElement>('[data-testid="file-picker-more"]')!;
-    more.focus();
-    more.click();
-    await flush();
-    click('.a9-file-picker__move');
-    const input = document.querySelector<HTMLInputElement>('.a9-file-picker__move input')!;
-    input.focus();
-    input.value = 'Destination';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    await flush();
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
-    input.dispatchEvent(enter);
-    expect(enter.defaultPrevented).toBe(true);
-    await flush();
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 50);
-    });
-    expect(host.adapter.moveFiles).toHaveBeenCalledWith({ ids: [files[0].id], groupId: 'destination' });
-    expect(more.getAttribute('aria-expanded')).toBe('false');
-    expect(document.activeElement).toBe(more);
-    expect(host.visibility).toHaveBeenLastCalledWith(true);
-    expect(host.update).not.toHaveBeenCalled();
-  });
+  it.each(['success', 'failure'] as const)(
+    'restores management focus after keyboard movement finishes with %s',
+    async (outcome) => {
+      narrowViewport();
+      const host = mount({
+        props: { canMoveFiles: true, modelValue: [files[0]] },
+        adapter: {
+          listGroups: vi.fn(async () => [{ id: 'destination', name: 'Destination' }]),
+          moveFiles: vi.fn(async ({ ids }) => {
+            if (outcome === 'failure') throw new Error('Move rejected');
+            return ids;
+          }),
+        },
+      });
+      host.picker.value!.open();
+      await flush();
+      await manageFirst();
+      click('.a9-file-picker__move');
+      const input = document.querySelector<HTMLInputElement>('.a9-file-picker__move input')!;
+      input.focus();
+      input.value = 'Destination';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      await flush();
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+      await flush();
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 50);
+      });
+      expect(host.adapter.moveFiles).toHaveBeenCalledWith({ ids: [files[0].id], groupId: 'destination' });
+      expect(document.activeElement).toBe(document.querySelector('[data-testid="file-picker-exit-batch"]'));
+      expect(host.visibility).toHaveBeenLastCalledWith(true);
+      expect(host.update).not.toHaveBeenCalled();
+    }
+  );
 
-  it('returns deletion cancellation focus to More and replaces hidden menus on desktop resize', async () => {
+  it('returns deletion cancellation focus to Delete and preserves management across desktop resize', async () => {
     const viewport = narrowViewport();
     const host = mount({
       props: { canDeleteFiles: true, modelValue: [files[0]] },
@@ -678,30 +760,27 @@ describe('file picker measured pagination', () => {
     });
     host.picker.value!.open();
     await flush();
-    const more = document.querySelector<HTMLButtonElement>('[data-testid="file-picker-more"]')!;
-    more.click();
+    await manageFirst();
+    const deleting = document.querySelector<HTMLButtonElement>('[data-testid="file-picker-delete-selected"]')!;
+    deleting.focus();
+    deleting.click();
     await flush();
-    click('[data-testid="file-picker-delete-selected"]');
-    await flush();
-    expect(more.getAttribute('aria-expanded')).toBe('false');
     click('.a9-file-picker-delete .arco-btn-secondary');
     await flush();
     await new Promise<void>((resolve) => {
       setTimeout(resolve, 50);
     });
-    expect(document.activeElement).toBe(more);
+    expect(document.activeElement).toBe(deleting);
     expect(host.adapter.deleteFiles).not.toHaveBeenCalled();
-    more.click();
-    await flush();
     viewport.matches = false;
     viewport.dispatchEvent(new Event('change'));
     await flush();
+    expect(document.querySelector('.a9-file-picker__management')).not.toBeNull();
+    expect(document.querySelector('.a9-file-picker__management [role="status"]')?.textContent).toBe('1 selected');
     expect(document.querySelector('[data-testid="file-picker-more"]')).toBeNull();
-    expect(document.activeElement).toBe(document.querySelector('.a9-file-picker__search input'));
-    expect(document.querySelector('.a9-file-picker__toolbar [data-testid="file-picker-delete-selected"]')).not.toBeNull();
   });
 
-  it('restores focus and closes the picker on the first Escape after all More permissions are removed', async () => {
+  it('restores focus and closes the picker on the first Escape after all management permissions are removed', async () => {
     narrowViewport();
     const host = mount({
       props: { canDeleteFiles: true, canMoveFiles: true, modelValue: [files[0]] },
@@ -713,15 +792,11 @@ describe('file picker measured pagination', () => {
     });
     host.picker.value!.open();
     await flush();
-    const more = document.querySelector<HTMLButtonElement>('[data-testid="file-picker-more"]')!;
-    more.focus();
-    more.click();
-    await flush();
-    expect(more.getAttribute('aria-expanded')).toBe('true');
+    await manageFirst();
     host.props.canDeleteFiles = false;
     host.props.canMoveFiles = false;
     await flush();
-    expect(document.querySelector('[data-testid="file-picker-more"]')).toBeNull();
+    expect(document.querySelector('.a9-file-picker__management')).toBeNull();
     expect(document.activeElement).toBe(document.querySelector('.a9-file-picker__search input'));
     expect(host.visibility).toHaveBeenLastCalledWith(true);
     escape();

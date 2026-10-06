@@ -5,13 +5,17 @@
   import formatFileSize from './file-size';
   import type { FileItem } from '../services/types';
 
-  const props = defineProps<{
-    item: FileItem;
-    available: boolean;
-    statusLabel: string;
-    previewEnabled: boolean;
-    view?: 'grid' | 'list';
-  }>();
+  const props = withDefaults(
+    defineProps<{
+      item: FileItem;
+      available: boolean;
+      statusLabel: string;
+      previewEnabled: boolean;
+      view?: 'grid' | 'list';
+      showMetadata?: boolean;
+    }>(),
+    { showMetadata: true }
+  );
 
   const emit = defineEmits<{
     (e: 'previewOpen', trigger?: HTMLElement): void;
@@ -50,7 +54,14 @@
 <template>
   <div
     class="a9-file-item"
-    :class="[`is-${item.type}`, { 'is-unavailable': !available, 'is-list': view === 'list' }]"
+    :class="[
+      `is-${item.type}`,
+      {
+        'is-unavailable': !available,
+        'is-list': view === 'list',
+        'is-compact': showMetadata === false && view !== 'list',
+      },
+    ]"
     :data-file-type="item.type"
     :data-available="String(available)"
   >
@@ -100,7 +111,7 @@
         :title="statusLabel"
         >{{ statusLabel }}</span
       >
-      <span v-else class="a9-file-item__meta" :title="meta">{{ meta }}</span>
+      <span v-else-if="showMetadata !== false" class="a9-file-item__meta" :title="meta">{{ meta }}</span>
     </div>
     <div v-if="available && url" class="a9-file-item__actions">
       <button
@@ -135,6 +146,10 @@
 
     &.is-list {
       grid-template-rows: auto;
+    }
+
+    &.is-compact {
+      grid-template-rows: auto 28px;
     }
 
     &__visual {
@@ -258,6 +273,28 @@
         outline: 2px solid rgb(var(--primary-6));
         outline-offset: 2px;
       }
+    }
+
+    &.is-compact &__heading {
+      grid-column: 1;
+    }
+
+    &.is-compact &__actions {
+      grid-row: 2;
+      grid-column: 2;
+      margin-top: 8px;
+    }
+
+    &.is-compact &__status {
+      grid-row: 2;
+      grid-column: 2;
+      align-self: end;
+      max-width: 80px;
+      padding-left: 8px;
+    }
+
+    &.is-compact &__open {
+      min-height: 20px;
     }
   }
 </style>

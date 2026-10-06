@@ -15,6 +15,7 @@ export interface AFilePickerProps {
   canCreateGroup?: boolean;
   canDeleteFiles?: boolean;
   canMoveFiles?: boolean;
+  /** 单一图片范围固定为网格，此选项仅影响其他文件范围的初始视图。 */
   defaultView?: FilePickerView;
   service?: FilePickerAdapter;
   disabled?: boolean;

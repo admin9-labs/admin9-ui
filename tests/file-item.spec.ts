@@ -18,7 +18,7 @@ const item: FileItem = {
 };
 
 function mount(file: FileItem, view: 'grid' | 'list' = 'grid') {
-  const state = reactive({ item: file, available: true, statusLabel: '', previewEnabled: true, view });
+  const state = reactive({ item: file, available: true, statusLabel: '', previewEnabled: true, view, showMetadata: true });
   const preview = vi.fn();
   const select = vi.fn();
   const host = document.createElement('div');
@@ -72,6 +72,11 @@ describe('file card image rendering', () => {
     const { host, state } = mount({ ...item });
     expect(host.querySelector('.a9-file-item__name')?.getAttribute('title')).toBe(item.name);
     expect(host.querySelector('.a9-file-item__meta')?.textContent).toContain('PNG');
+    state.showMetadata = false;
+    await nextTick();
+    expect(host.querySelector('.a9-file-item__meta')).toBeNull();
+    expect(host.querySelector('.a9-file-item__name')?.textContent).toBe(item.name);
+    expect(host.querySelector('.a9-file-item__open')).not.toBeNull();
     state.item = { ...item, status: 'pending' };
     state.available = false;
     state.statusLabel = 'The file is still processing. Please try again later.';

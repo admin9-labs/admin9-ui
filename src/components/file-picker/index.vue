@@ -1,6 +1,6 @@
 <script setup lang="ts">
   import { computed, getCurrentInstance, inject, nextTick, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue';
-  import { Cascader, Form, FormItem, Input, Message, Modal, Pagination, Popover, useFormItem } from '@arco-design/web-vue';
+  import { Cascader, Form, FormItem, Input, Message, Modal, Pagination, useFormItem } from '@arco-design/web-vue';
   import { useI18n } from 'vue-i18n';
   import type {
     AFilePickerProps,
@@ -55,9 +55,22 @@
   }>();
 
   defineSlots<{
-    trigger?: (slotProps: { open: () => void; selectedItems: FileItem[]; selectedCount: number; disabled: boolean }) => unknown;
-    item?: (slotProps: { item: FileItem; available: boolean; selected: boolean; view: FileView }) => unknown;
-    empty?: (slotProps: { constrained: boolean }) => unknown;
+    'trigger'?: (slotProps: {
+      open: () => void;
+      selectedItems: FileItem[];
+      selectedCount: number;
+      disabled: boolean;
+    }) => unknown;
+    'item'?: (slotProps: {
+      item: FileItem;
+      available: boolean;
+      selected: boolean;
+      view: FileView;
+      managing: boolean;
+    }) => unknown;
+    'empty'?: (slotProps: { constrained: boolean }) => unknown;
+    'toolbar-left'?: () => unknown;
+    'toolbar-right'?: () => unknown;
   }>();
 
   const { mergedDisabled, mergedSize, eventHandlers } = useFormItem({
@@ -97,7 +110,14 @@
   const showsAggregateType = computed(() => allowedFileTypes.value.length > 1);
 
   const visible = ref(false);
-  const view = ref<FileView>(props.defaultView);
+  const imagesOnly = computed(() => allowedFileTypes.value.length === 1 && allowedFileTypes.value[0] === 'image');
+  const preferredView = ref<FileView>(props.defaultView);
+  const view = computed({
+    get: () => (imagesOnly.value ? 'grid' : preferredView.value),
+    set: (value: FileView) => {
+      preferredView.value = value;
+    },
+  });
   const activeFileType = ref<FileType | undefined>();
   const activeGroupId = ref<GroupId>(undefined);
   const list = ref<FileItem[]>([]);
@@ -132,6 +152,7 @@
   const resolvedPageSize = ref(0);
   const results = ref<HTMLElement>();
   const gridColumns = ref(1);
+  const imageModalHeight = ref(720);
   let layoutObserver: ResizeObserver | undefined;
   let resizeTimer: ReturnType<typeof setTimeout> | undefined;
   let targetPageSize = 0;
@@ -156,9 +177,10 @@
   let createGeneration = 0;
   let groupCreateTrigger: HTMLElement | undefined;
   const fileActionBusy = ref(false);
-  const moreVisible = ref(false);
+  const managing = ref(false);
+  const managementMap = ref(new Map<string, FileItem>());
+  const canManage = computed(() => props.canDeleteFiles || props.canMoveFiles);
   const moveVisible = ref(false);
-  const moreTrigger = ref<HTMLElement>();
   const deleteVisible = ref(false);
   const deleteIds = ref<string[]>([]);
   let fileActionGeneration = 0;
@@ -240,13 +262,15 @@
   const selectedItems = computed(() => committedItems.value);
   const selectedCount = computed(() => committedItems.value.length);
   const draftItems = computed(() => Array.from(draftMap.value.values()));
+  const activeSelection = computed(() => (managing.value ? managementMap.value : draftMap.value));
   const fileActionsDisabled = computed(
     () =>
       interactionDisabled.value ||
       fileActionBusy.value ||
       uploading.value ||
       creatingGroup.value ||
-      draftItems.value.length === 0
+      !managing.value ||
+      managementMap.value.size === 0
   );
   const showFileActionResult = (action: 'delete' | 'move', succeeded: number, failed: number) => {
     let suffix = 'Success';
@@ -283,6 +307,7 @@
       hasAllowedTypes.value &&
       !interactionDisabled.value &&
       !fileActionBusy.value &&
+      !managing.value &&
       (draftCount.value > 0 || needsEmptyCommit.value)
   );
   const selectionLabel = computed(() =>
@@ -291,8 +316,8 @@
       : t('admin9Ui.filePicker.selectedCount', { count: draftCount.value })
   );
   const emptyDescription = computed(() => {
-    const imagesOnly = activeFileType.value === 'image';
-    if (imagesOnly) {
+    const browsingImages = activeFileType.value === 'image';
+    if (browsingImages) {
       if (keyword.value.trim()) return t('admin9Ui.filePicker.noMatchingImages');
       return t(activeGroupId.value === undefined ? 'admin9Ui.imagePicker.empty' : 'admin9Ui.filePicker.groupImagesEmpty');
     }
@@ -322,6 +347,56 @@
   });
   const isSelectable = (item: FileItem) =>
     isValueEligible(item) && (!activeFileType.value || item.type === activeFileType.value) && !duplicateIds.value.has(item.id);
+  const isManageable = (item: FileItem) =>
+    hasStableId(item) &&
+    hasKnownType(item) &&
+    allowedTypeSet.value.has(item.type) &&
+    (!activeFileType.value || item.type === activeFileType.value) &&
+    !duplicateIds.value.has(item.id);
+  const isAvailable = (item: FileItem) => (managing.value ? isManageable(item) : isSelectable(item));
+  const manageablePage = computed(() => list.value.filter(isManageable));
+  const pageSelected = computed(
+    () => manageablePage.value.length > 0 && manageablePage.value.every((item) => managementMap.value.has(item.id))
+  );
+  const pageIndeterminate = computed(
+    () => !pageSelected.value && manageablePage.value.some((item) => managementMap.value.has(item.id))
+  );
+  const togglePage = () => {
+    if (!managing.value || interactionDisabled.value || fileActionBusy.value || loading.value) return;
+    const remove = pageSelected.value;
+    const next = new Map(managementMap.value);
+    manageablePage.value.forEach((item) => {
+      if (remove) next.delete(item.id);
+      else next.set(item.id, item);
+    });
+    managementMap.value = next;
+  };
+  const enterManagement = () => {
+    if (!canManage.value || interactionDisabled.value || fileActionBusy.value || uploading.value || creatingGroup.value) return;
+    managementMap.value.clear();
+    clearLimitNotice();
+    managing.value = true;
+    nextTick(() => {
+      if (!visible.value || !managing.value) return;
+      (
+        workspace.value?.querySelector<HTMLInputElement>('[data-testid="file-picker-select-page"] input:not(:disabled)') ??
+        workspace.value?.querySelector<HTMLElement>('[data-testid="file-picker-exit-batch"]')
+      )?.focus();
+    });
+  };
+  const exitManagement = () => {
+    if (!managing.value || fileActionBusy.value || deleteVisible.value) return;
+    managing.value = false;
+    managementMap.value.clear();
+    moveVisible.value = false;
+    nextTick(() => {
+      if (!visible.value || interactionDisabled.value) return;
+      (
+        workspace.value?.querySelector<HTMLElement>('[data-testid="file-picker-batch"]') ??
+        workspace.value?.querySelector<HTMLElement>('.a9-file-picker__search input')
+      )?.focus();
+    });
+  };
   const statusLabel = (item: FileItem) => {
     if (!hasStableId(item) || duplicateIds.value.has(item.id)) return t('admin9Ui.filePicker.invalid');
     if (
@@ -404,7 +479,10 @@
   };
   const syncExternalModel = () => {
     const next = sanitizeItems(itemsFromModel(props.modelValue));
-    if (visible.value && !sameItems(committedItems.value, next)) invalidateFileActions();
+    if (visible.value && !sameItems(committedItems.value, next)) {
+      invalidateFileActions();
+      if (managing.value) exitManagement();
+    }
     modelNeedsNormalization.value = !modelMatches(props.modelValue, next);
     committedItems.value = next;
     if (visible.value) replaceDraft(next, false);
@@ -428,7 +506,9 @@
     pendingPageSize = undefined;
     pendingPageReset = false;
     resolvedPageSize.value = 0;
-    moreVisible.value = false;
+    imageModalHeight.value = 720;
+    managing.value = false;
+    managementMap.value.clear();
     moveVisible.value = false;
     invalidateFileActions();
   };
@@ -467,6 +547,13 @@
       else next.delete(item.id);
     });
     replaceDraft(Array.from(next.values()));
+    const managed = new Map(managementMap.value);
+    items.forEach((item) => {
+      if (!managed.has(item.id)) return;
+      if (isManageable(item)) managed.set(item.id, item);
+      else managed.delete(item.id);
+    });
+    managementMap.value = managed;
   };
 
   const requestList = async () => {
@@ -513,7 +600,28 @@
   const measureLayout = () => {
     if (!visible.value) return;
     const element = results.value;
-    const layout = resolveFilePickerLayout(element?.clientWidth ?? 0, element?.clientHeight ?? 0, view.value, narrow.value);
+    const modalHeight = element?.closest<HTMLElement>('.arco-modal')?.clientHeight ?? 0;
+    const width = element?.clientWidth ?? 0;
+    const height = element?.clientHeight ?? 0;
+    const outsideResultsHeight = modalHeight - height;
+    const maxImageHeight = Math.min(720, window.innerHeight - 32);
+    const fitImages =
+      imagesOnly.value &&
+      configuredPageSize.value === undefined &&
+      !instance?.slots.item &&
+      !shortViewport.value &&
+      width > 0 &&
+      height > 0 &&
+      modalHeight > 0 &&
+      outsideResultsHeight >= 0;
+    const layout = resolveFilePickerLayout(
+      width,
+      fitImages ? maxImageHeight - outsideResultsHeight : height,
+      view.value,
+      narrow.value,
+      imagesOnly.value
+    );
+    imageModalHeight.value = fitImages ? Math.min(maxImageHeight, Math.ceil(outsideResultsHeight + layout.gridHeight)) : 720;
     gridColumns.value = layout.columns;
     const next = configuredPageSize.value ?? layout.pageSize;
     if (!next) return;
@@ -567,6 +675,7 @@
     },
     { flush: 'post' }
   );
+  onMounted(() => window.addEventListener('resize', measureLayout));
   watch([view, narrow], () => nextTick(measureLayout));
   watch(fileActionBusy, (busy, previous) => {
     if (!busy && previous && (pendingPageSize || pendingPageReset)) fetchList();
@@ -620,9 +729,8 @@
   const openDelete = (event: MouseEvent) => {
     if (!visible.value || !props.canDeleteFiles || fileActionsDisabled.value) return;
     deleteTrigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined;
-    if (narrow.value) deleteTrigger = moreTrigger.value?.querySelector('button') ?? undefined;
-    moreVisible.value = false;
-    deleteIds.value = draftItems.value.map((item) => item.id);
+    moveVisible.value = false;
+    deleteIds.value = Array.from(managementMap.value.keys());
     deleteVisible.value = true;
   };
   const restoreDeleteFocus = () => {
@@ -630,7 +738,8 @@
     const target =
       deleteTrigger?.isConnected && !deleteTrigger.matches(':disabled')
         ? deleteTrigger
-        : workspace.value?.querySelector<HTMLElement>('.a9-file-picker__search input');
+        : workspace.value?.querySelector<HTMLElement>('[data-testid="file-picker-exit-batch"]') ??
+          workspace.value?.querySelector<HTMLElement>('.a9-file-picker__search input');
     target?.focus();
     deleteTrigger = undefined;
   };
@@ -643,6 +752,7 @@
     const generation = fileActionGeneration;
     const isCurrent = () =>
       visible.value &&
+      managing.value &&
       !interactionDisabled.value &&
       generation === fileActionGeneration &&
       service === resolvedService.value &&
@@ -663,10 +773,12 @@
       if (action === 'delete') {
         list.value = list.value.filter((item) => !succeeded.has(item.id));
         replaceDraft(draftItems.value.filter((item) => !succeeded.has(item.id)));
+        succeeded.forEach((id) => managementMap.value.delete(id));
       } else {
         // Do not mutate shared FileItem objects or the committed parent field.
         const moved = (item: FileItem) => (succeeded.has(item.id) ? { ...item, groupId } : item);
         replaceDraft(draftItems.value.map(moved));
+        managementMap.value = new Map(Array.from(managementMap.value.values(), (item) => [item.id, moved(item)]));
         list.value = list.value
           .map(moved)
           .filter((item) => activeGroupId.value === undefined || item.groupId === activeGroupId.value);
@@ -687,18 +799,11 @@
       fileActionBusy.value = false;
       deleteVisible.value = false;
       if (applyPendingCapacity()) await fetchList();
+      if (isCurrent() && action === 'move') {
+        await nextTick();
+        workspace.value?.querySelector<HTMLElement>('[data-testid="file-picker-exit-batch"]')?.focus();
+      }
     }
-  };
-  const closeMore = () => {
-    moveVisible.value = false;
-    moreVisible.value = false;
-    nextTick(() => {
-      if (!visible.value || interactionDisabled.value) return;
-      (
-        moreTrigger.value?.querySelector('button') ??
-        workspace.value?.querySelector<HTMLInputElement>('.a9-file-picker__search input')
-      )?.focus();
-    });
   };
   const moveFiles = (value: unknown) => {
     if (typeof value !== 'string' || !props.canMoveFiles || !groupsLoaded.value || groupLoading.value) return;
@@ -707,35 +812,29 @@
     else if (value.startsWith('group:')) groupId = value.slice(6);
     if (groupId === undefined || (groupId !== null && !groups.value.some((group) => group.id === groupId))) return;
     // Off-page selections may carry stale field metadata; the service owns idempotency.
-    const ids = draftItems.value.map((item) => item.id);
+    const ids = Array.from(managementMap.value.keys());
     if (ids.length) {
-      if (narrow.value) closeMore();
+      moveVisible.value = false;
       runFileAction('move', ids, groupId);
     }
   };
-  const onMoreKeydown = (event: KeyboardEvent) => {
+  const onManagementKeydown = (event: KeyboardEvent) => {
+    if (!managing.value || createGroupVisible.value || deleteVisible.value || activePreview.value) return;
     if (
       event.key === 'Enter' &&
       moveVisible.value &&
       event.target instanceof Element &&
       event.target.closest('.a9-file-picker__move')
     ) {
-      // Cascader handles Enter itself; do not activate the button receiving restored focus.
       event.preventDefault();
       return;
     }
-    if (event.key !== 'Escape' || !moreVisible.value) return;
+    if (event.key !== 'Escape') return;
     event.preventDefault();
     event.stopPropagation();
     if (moveVisible.value) moveVisible.value = false;
-    else closeMore();
+    else exitManagement();
   };
-  watch(narrow, () => {
-    const restore = moreVisible.value || moveVisible.value;
-    moreVisible.value = false;
-    moveVisible.value = false;
-    if (restore) nextTick(() => workspace.value?.querySelector<HTMLInputElement>('.a9-file-picker__search input')?.focus());
-  });
 
   const openCreateGroup = (event: MouseEvent) => {
     if (!visible.value || !props.canCreateGroup || createGroupDisabled.value) return;
@@ -904,7 +1003,14 @@
     close();
   };
   const toggleItem = (item: FileItem) => {
-    if (interactionDisabled.value || fileActionBusy.value || !isSelectable(item)) return;
+    if (interactionDisabled.value || fileActionBusy.value || !isAvailable(item)) return;
+    if (managing.value) {
+      const next = new Map(managementMap.value);
+      if (next.has(item.id)) next.delete(item.id);
+      else next.set(item.id, item);
+      managementMap.value = next;
+      return;
+    }
     if (!props.multiple) {
       replaceDraft(draftMap.value.has(item.id) ? [] : [item]);
     } else {
@@ -1050,8 +1156,8 @@
     () => [props.canDeleteFiles, props.canMoveFiles],
     () => {
       requireService();
-      if (moreVisible.value || moveVisible.value) closeMore();
       invalidateFileActions();
+      exitManagement();
     }
   );
   watch(configuredPageSize, async () => {
@@ -1072,6 +1178,7 @@
     layoutObserver?.disconnect();
     viewportQuery?.removeEventListener('change', updateViewport);
     heightQuery?.removeEventListener('change', updateViewport);
+    window.removeEventListener('resize', measureLayout);
   });
   defineExpose<AFilePickerExposed>({ open, close, clear, refresh });
 </script>
@@ -1173,7 +1280,7 @@
       width="calc(100vw - 32px)"
       :modal-style="{
         display: 'inline-flex',
-        height: 'min(800px, calc(100dvh - 32px))',
+        height: imagesOnly ? `${imageModalHeight}px` : 'min(800px, calc(100dvh - 32px))',
         maxWidth: '1040px',
         maxHeight: 'calc(100dvh - 32px)',
         flexDirection: 'column',
@@ -1181,7 +1288,8 @@
       :body-style="{ flex: 1, minHeight: 0, padding: '16px', overflow: shortViewport ? 'auto' : 'visible' }"
       modal-class="a9-file-picker-modal"
       unmount-on-close
-      :esc-to-close="!activePreview && !createGroupVisible && !deleteVisible && !moreVisible"
+      :esc-to-close="!activePreview && !createGroupVisible && !deleteVisible && !managing"
+      @keydown="onManagementKeydown"
       @cancel="close"
       @close="restoreTriggerFocus"
     >
@@ -1190,7 +1298,6 @@
           ref="workspace"
           class="a9-file-picker__workspace"
           :class="{ 'without-groups': !hasGroupNavigation, 'is-short': shortViewport }"
-          @keydown="onMoreKeydown"
         >
           <aside
             v-if="hasGroupNavigation && !narrow"
@@ -1375,43 +1482,16 @@
                     @click="clearFilters"
                     >{{ t('admin9Ui.filePicker.clearFilters') }}</a-button
                   >
-                </div>
-                <div v-if="!narrow && (canDeleteFiles || canMoveFiles)" class="a9-file-picker__file-actions">
-                  <a-button
-                    v-if="canDeleteFiles"
-                    status="danger"
-                    :disabled="fileActionsDisabled"
-                    data-testid="file-picker-delete-selected"
-                    @click="openDelete"
-                  >
-                    {{ t('admin9Ui.filePicker.deleteSelected') }}
-                  </a-button>
-                  <Cascader
-                    v-if="canMoveFiles"
-                    class="a9-file-picker__move"
-                    :model-value="''"
-                    :options="moveOptions"
-                    :disabled="fileActionsDisabled || !groupsLoaded || groupLoading"
-                    :placeholder="t('admin9Ui.filePicker.moveToGroup')"
-                    :aria-label="t('admin9Ui.filePicker.moveToGroup')"
-                    check-strictly
-                    allow-search
-                    @change="moveFiles"
-                  />
+                  <slot name="toolbar-left" />
                 </div>
                 <div class="a9-file-picker__toolbar-actions">
-                  <a-tooltip :content="t('admin9Ui.filePicker.refresh')">
-                    <a-button
-                      :aria-label="t('admin9Ui.filePicker.refresh')"
-                      :loading="loading"
-                      :disabled="fileActionBusy"
-                      data-testid="file-picker-refresh"
-                      @click="refresh"
-                    >
-                      <template #icon><icon-refresh /></template>
-                    </a-button>
-                  </a-tooltip>
-                  <a-radio-group v-model="view" type="button" class="a9-file-picker__view-toggle" :disabled="fileActionBusy">
+                  <a-radio-group
+                    v-if="!imagesOnly"
+                    v-model="view"
+                    type="button"
+                    class="a9-file-picker__view-toggle"
+                    :disabled="fileActionBusy || managing"
+                  >
                     <a-tooltip :content="t('admin9Ui.filePicker.gridView')">
                       <a-radio value="grid" :aria-label="t('admin9Ui.filePicker.gridView')"><icon-apps /></a-radio>
                     </a-tooltip>
@@ -1419,49 +1499,17 @@
                       <a-radio value="list" :aria-label="t('admin9Ui.filePicker.listView')"><icon-list /></a-radio>
                     </a-tooltip>
                   </a-radio-group>
-                  <Popover
-                    v-if="narrow && (canDeleteFiles || canMoveFiles)"
-                    v-model:popup-visible="moreVisible"
-                    trigger="click"
-                    position="br"
+                  <a-button
+                    v-if="canManage && !managing"
+                    :disabled="fileActionBusy || uploading || creatingGroup"
+                    data-testid="file-picker-batch"
+                    @click="enterManagement"
+                    >{{ t('admin9Ui.filePicker.batch') }}</a-button
                   >
-                    <span ref="moreTrigger" @keydown="onMoreKeydown">
-                      <a-button :aria-expanded="moreVisible" data-testid="file-picker-more">{{
-                        t('admin9Ui.filePicker.more')
-                      }}</a-button>
-                    </span>
-                    <template #content>
-                      <div class="a9-file-picker__file-actions" @keydown.capture="onMoreKeydown">
-                        <a-button
-                          v-if="canDeleteFiles"
-                          status="danger"
-                          :disabled="fileActionsDisabled"
-                          data-testid="file-picker-delete-selected"
-                          @click="openDelete"
-                        >
-                          {{ t('admin9Ui.filePicker.deleteSelected') }}
-                        </a-button>
-                        <Cascader
-                          v-if="canMoveFiles"
-                          :popup-visible="moveVisible"
-                          class="a9-file-picker__move"
-                          :model-value="''"
-                          :options="moveOptions"
-                          :disabled="fileActionsDisabled || !groupsLoaded || groupLoading"
-                          :placeholder="t('admin9Ui.filePicker.moveToGroup')"
-                          :aria-label="t('admin9Ui.filePicker.moveToGroup')"
-                          check-strictly
-                          allow-search
-                          @popup-visible-change="moveVisible = $event"
-                          @change="moveFiles"
-                        />
-                      </div>
-                    </template>
-                  </Popover>
                   <div v-if="canUpload" class="a9-file-picker__upload">
                     <AFileUploader
                       ref="uploader"
-                      :disabled="fileActionBusy"
+                      :disabled="fileActionBusy || managing"
                       :service="resolvedService"
                       :file-types="allowedFileTypes"
                       :group-id="uploadGroupId"
@@ -1475,6 +1523,59 @@
                       <template #result><span hidden /></template>
                     </AFileUploader>
                   </div>
+                  <slot name="toolbar-right" />
+                  <a-tooltip :content="t('admin9Ui.filePicker.refresh')">
+                    <a-button
+                      :aria-label="t('admin9Ui.filePicker.refresh')"
+                      :loading="loading"
+                      :disabled="fileActionBusy"
+                      data-testid="file-picker-refresh"
+                      @click="refresh"
+                    >
+                      <template #icon><icon-refresh /></template>
+                    </a-button>
+                  </a-tooltip>
+                </div>
+              </div>
+
+              <div v-if="managing" class="a9-file-picker__management" @keydown.capture="onManagementKeydown">
+                <a-checkbox
+                  :model-value="pageSelected"
+                  :indeterminate="pageIndeterminate"
+                  :disabled="fileActionBusy || loading || !manageablePage.length"
+                  data-testid="file-picker-select-page"
+                  @change="togglePage"
+                  >{{ t('admin9Ui.filePicker.selectPage') }}</a-checkbox
+                >
+                <span role="status">{{ t('admin9Ui.filePicker.selectedCount', { count: managementMap.size }) }}</span>
+                <div class="a9-file-picker__file-actions">
+                  <Cascader
+                    v-if="canMoveFiles"
+                    size="mini"
+                    :popup-visible="moveVisible"
+                    class="a9-file-picker__move"
+                    :model-value="''"
+                    :options="moveOptions"
+                    :disabled="fileActionsDisabled || !groupsLoaded || groupLoading"
+                    :placeholder="t('admin9Ui.filePicker.moveToGroup')"
+                    :aria-label="t('admin9Ui.filePicker.moveToGroup')"
+                    check-strictly
+                    allow-search
+                    @popup-visible-change="moveVisible = $event"
+                    @change="moveFiles"
+                  />
+                  <a-button
+                    v-if="canDeleteFiles"
+                    size="mini"
+                    status="danger"
+                    :disabled="fileActionsDisabled"
+                    data-testid="file-picker-delete-selected"
+                    @click="openDelete"
+                    >{{ t('admin9Ui.filePicker.delete') }}</a-button
+                  >
+                  <a-button size="mini" :disabled="fileActionBusy" data-testid="file-picker-exit-batch" @click="exitManagement">
+                    {{ t('admin9Ui.filePicker.exitBatch') }}
+                  </a-button>
                 </div>
               </div>
 
@@ -1498,15 +1599,15 @@
                       :key="`${item.id || `${item.type}-${item.name}`}:${index}`"
                       class="a9-file-picker__item"
                       :class="{
-                        'is-selected': draftMap.has(item.id),
-                        'is-disabled': !isSelectable(item),
+                        'is-selected': activeSelection.has(item.id),
+                        'is-disabled': !isAvailable(item),
                         'is-custom': !!$slots.item,
                       }"
                       :data-file-id="item.id"
                       @click="onCardClick($event, item)"
                     >
                       <span
-                        v-if="view === 'grid' && draftMap.has(item.id)"
+                        v-if="!managing && view === 'grid' && activeSelection.has(item.id)"
                         class="a9-file-picker__selection-order"
                         aria-hidden="true"
                         >{{ draftItems.findIndex((selected) => selected.id === item.id) + 1 }}</span
@@ -1514,20 +1615,23 @@
                       <FileSelection
                         v-if="$slots.item"
                         :card="view === 'grid'"
-                        :selected="draftMap.has(item.id)"
-                        :disabled="fileActionBusy || !isSelectable(item)"
+                        :managing="managing"
+                        :selected="activeSelection.has(item.id)"
+                        :disabled="fileActionBusy || !isAvailable(item)"
                         :name="item.name"
                         @toggle="toggleItem(item)"
                       />
                       <slot
                         name="item"
                         :item="item"
-                        :available="isSelectable(item)"
-                        :selected="draftMap.has(item.id)"
+                        :available="isAvailable(item)"
+                        :selected="activeSelection.has(item.id)"
                         :view="view"
+                        :managing="managing"
                       >
                         <FileItemView
                           :item="item"
+                          :show-metadata="!imagesOnly"
                           :available="isSelectable(item)"
                           :status-label="statusLabel(item)"
                           :view="view"
@@ -1537,8 +1641,9 @@
                           <template #selection>
                             <FileSelection
                               :card="view === 'grid'"
-                              :selected="draftMap.has(item.id)"
-                              :disabled="fileActionBusy || !isSelectable(item)"
+                              :managing="managing"
+                              :selected="activeSelection.has(item.id)"
+                              :disabled="fileActionBusy || !isAvailable(item)"
                               :name="item.name"
                               @toggle="toggleItem(item)"
                             />
@@ -1557,9 +1662,9 @@
         </div>
       </FormItem>
       <template #footer>
-        <div class="a9-file-picker__footer-content" @keydown="onMoreKeydown">
+        <div class="a9-file-picker__footer-content">
           <div class="a9-file-picker__footer">
-            <span v-if="multiple" class="a9-file-picker__selected-count" role="status">{{ selectionLabel }}</span>
+            <span v-if="multiple && !managing" class="a9-file-picker__selected-count" role="status">{{ selectionLabel }}</span>
             <div class="a9-file-picker__pagination">
               <Pagination
                 v-show="hasAllowedTypes && total > resolvedPageSize && !listError"
@@ -1644,7 +1749,8 @@
     </Modal>
     <Modal
       :visible="deleteVisible"
-      :title="t('admin9Ui.filePicker.deleteSelected')"
+      :title="t('admin9Ui.filePicker.delete')"
+      simple
       width="calc(100vw - 32px)"
       :modal-style="{ maxWidth: '420px' }"
       :footer="false"
@@ -1687,6 +1793,7 @@
     &__trigger-row,
     &__toolbar,
     &__toolbar-actions,
+    &__management,
     &__footer,
     &__footer-actions {
       display: flex;
@@ -1708,7 +1815,7 @@
 
     &__filters {
       display: flex;
-      flex: 1 1 320px;
+      flex: 1 1 280px;
       flex-wrap: wrap;
       gap: 8px;
       min-width: 0;
@@ -1801,7 +1908,8 @@
       gap: 4px;
       min-width: 0;
       min-height: 0;
-      padding-right: 14px;
+      margin: -16px 0;
+      padding: 16px 14px 16px 0;
       border-right: 1px solid var(--color-neutral-3);
     }
 
@@ -2000,13 +2108,33 @@
       margin-bottom: 12px;
     }
 
+    &__management {
+      flex: none;
+      flex-wrap: wrap;
+      min-width: 0;
+      margin-bottom: 12px;
+      font-size: 12px;
+
+      :deep(.arco-checkbox) {
+        font-size: inherit;
+      }
+    }
+
+    &__management &__file-actions {
+      margin-left: auto;
+    }
+
     &__filters :deep(.a9-file-picker__search) {
-      flex: 1 1 180px;
-      min-width: min(180px, 100%);
+      flex: 0 0 280px;
+      width: 280px;
+      min-width: 0;
+      max-width: 100%;
     }
 
     &__toolbar-actions {
       flex: none;
+      flex-wrap: wrap;
+      max-width: 100%;
       margin-left: auto;
     }
 

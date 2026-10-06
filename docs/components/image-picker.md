@@ -37,17 +37,19 @@
 | service      | FilePickerAdapter                                   | 插件 fileService | 后端无关的浏览和可选上传能力                                  |
 | canUpload    | boolean                                             | false            | 开启内部选图弹窗的上传入口                                    |
 | canCreateGroup | boolean | false | 开启内部弹窗的一级／二级分组创建；要求 service 提供 listGroups 和 createGroup，独立于上传权限 |
-| canDeleteFiles | boolean | false | 开启内部弹窗的删除选中；要求 deleteFiles，不自动清理字段引用 |
-| canMoveFiles | boolean | false | 开启内部弹窗的移至分组；要求 listGroups 和 moveFiles，不自动修改字段 |
+| canDeleteFiles | boolean | false | 启用内部批量管理的删除；要求 deleteFiles，不自动清理字段引用 |
+| canMoveFiles | boolean | false | 启用内部批量管理的移动；要求 listGroups 和 moveFiles，不自动修改字段 |
 | accept       | string                                              | `image/*`        | 传给内部上传入口的原生文件选择提示                            |
 | disabled     | boolean                                             | false            | 禁止修改和预览，同时继承 Form disabled                        |
 | readonly     | boolean                                             | false            | 禁止修改，保留图片预览                                        |
 | size         | Arco Size                                           | 继承             | 默认按钮尺寸，不改变图片卡片规格                              |
 | buttonText   | string                                              | locale“选择图片” | 默认选择入口文案                                              |
 | pageSize     | number                                              | 未设置           | 默认按弹窗空间自动分页；正整数固定每页请求数量                |
-| defaultView  | `grid \| list`                                      | grid             | 弹窗初始视图                                                  |
+| defaultView  | `grid \| list`                                      | grid             | 已弃用，内部弹窗固定为网格                                                  |
 
 class/style、ARIA 及原生属性落在组件根节点，不透传到 Upload 或弹窗。缩略图加载失败回退原图，再失败显示占位；大图预览始终完整展示原图，不继承 fit，也不会裁剪或改写文件。安全 URL 规则与 AFilePicker 相同，只允许 HTTP(S)、相对地址和 blob。
+
+内部选图弹窗默认按完整网格行与周边控件收紧高度，上限 720px，受视口限制；末页不足一页时保持高度稳定。固定使用网格，卡片只展示缩略图、文件名和预览入口，不单独展示后缀与大小；处理中、失败等状态与文件名同行，完整状态保留在提示中，不额外增高卡片。隐藏列表切换；`defaultView` 仅为兼容已有调用保留，传入 `list` 也使用网格。批量操作使用独立管理勾选，不受外层单选／数量上限限制，管理期间暂停确认选图，退出后恢复有效选图草稿。布局与管理规则同 AFilePicker。
 
 内部选图弹窗使用 [AFilePicker 的稳定布局与响应式分页](./file-picker.md#布局与分页)：默认网格最多五列、三行，图片框固定 4:3 并完整显示原图或服务提供的完整缩略图；`displayMode` 和 `fit` 只控制字段外层卡片。翻页、搜索、分组切换和空结果保持弹窗与底部操作位置稳定。显式 `:page-size="24"` 可保留旧版每页 24 项，必要时仅结果区域滚动；服务端实际容量、超高内容和矮屏正文滚动兜底同 AFilePicker。
 
@@ -103,6 +105,8 @@ canUpload 不是后端授权；应用及后端仍需验证格式、大小、内�
 TypeScript 事件名使用 visibleChange、uploadSuccess、uploadError，Vue 模板使用 kebab-case。不透出内部 selection-change 草稿事件。
 
 ## 自定义入口与公开方法
+
+`toolbar-left` 和 `toolbar-right` 透传至内部选图弹窗，用法同 [AFilePicker 工具栏插槽](./file-picker.md#slots-与实例方法)。二者均无参数：左侧在搜索／筛选后追加控件，右侧在上传后、最右侧刷新前追加控件。
 
 trigger 参数为 `{ open, selectedItems, selectedCount, disabled, readonly, limitReached }`。disabled 已合并 Form disabled 和 readonly；limitReached 独立表示容量状态，不禁止打开完整集合。自定义入口不随满额隐藏，即使插槽没有禁用按钮，open 也会阻止禁用／只读状态的操作。
 
