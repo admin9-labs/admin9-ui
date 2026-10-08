@@ -278,12 +278,13 @@ describe('ACoverPicker', () => {
     mountedApps.splice(0).forEach((app) => app.unmount());
   });
 
-  it('labels every empty cover position visibly and shows a fact instead of an unavailable action when disabled', async () => {
+  it('keeps short visible position labels and descriptive action labels when disabled', async () => {
     const disabled = ref(false);
     mountCoverPicker({ value: { mode: 'triple', images: [null, null, null] }, disabled });
     await flush();
     const slots = Array.from(document.querySelectorAll<HTMLButtonElement>('.a9-cover-picker__slot'));
-    expect(slots.map((slot) => slot.textContent?.trim())).toEqual([
+    expect(slots.map((slot) => slot.textContent?.trim())).toEqual(['Cover 1', 'Cover 2', 'Cover 3']);
+    expect(slots.map((slot) => slot.getAttribute('aria-label'))).toEqual([
       'Add cover image 1',
       'Add cover image 2',
       'Add cover image 3',
@@ -291,7 +292,8 @@ describe('ACoverPicker', () => {
     disabled.value = true;
     await flush();
     expect(slots.every((slot) => slot.disabled)).toBe(true);
-    expect(slots.map((slot) => slot.textContent?.trim())).toEqual([
+    expect(slots.map((slot) => slot.textContent?.trim())).toEqual(['Cover 1', 'Cover 2', 'Cover 3']);
+    expect(slots.map((slot) => slot.getAttribute('aria-label'))).toEqual([
       'Cover image 1 is empty',
       'Cover image 2 is empty',
       'Cover image 3 is empty',

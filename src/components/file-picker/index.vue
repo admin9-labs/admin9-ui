@@ -188,7 +188,6 @@
   const deleteItems = computed(() =>
     deleteIds.value.map((id) => managementMap.value.get(id)).filter((item): item is FileItem => Boolean(item))
   );
-  const managementCompleted = ref(false);
   let fileActionGeneration = 0;
   let deleteTrigger: HTMLElement | undefined;
   const draftMap = ref(new Map<string, FileItem>());
@@ -549,7 +548,6 @@
     imageModalHeight.value = 720;
     managing.value = false;
     managementMap.value.clear();
-    managementCompleted.value = false;
     moveVisible.value = false;
     invalidateFileActions();
   };
@@ -817,7 +815,6 @@
       if (!isCurrent()) return;
       if (!Array.isArray(result)) throw new Error('[admin9-ui] File operations must return successful IDs.');
       const succeeded = new Set(result.filter((id): id is string => typeof id === 'string' && requested.has(id)));
-      if (succeeded.size) managementCompleted.value = true;
       if (action === 'delete') {
         list.value = list.value.filter((item) => !succeeded.has(item.id));
         replaceDraft(draftItems.value.filter((item) => !succeeded.has(item.id)));
@@ -1217,7 +1214,6 @@
     const failed = result.failed.filter((failure) => uploadTaskIds.has(failure.task.id));
     const cancelled = result.cancelled.filter((task) => uploadTaskIds.has(task.id));
     uploadResult.value = { succeeded, failed: failed.length, cancelled: cancelled.length };
-    if (succeeded) managementCompleted.value = true;
     if (succeeded || failed.some((failure) => Boolean(failure.task.item))) await refresh();
   };
   const chooseUpload = () => {
@@ -1642,7 +1638,11 @@
                 </div>
               </div>
 
-              <div v-if="uploadResult" class="a9-file-picker__upload-result" data-testid="file-picker-upload-result">
+              <div
+                v-if="uploadResult && (uploadCandidates.length || uploadResult.failed || uploadResult.cancelled)"
+                class="a9-file-picker__upload-result"
+                data-testid="file-picker-upload-result"
+              >
                 <div role="status">
                   <p>{{ uploadSummary }}</p>
                   <p v-if="uploadCandidates.length">{{
@@ -1650,9 +1650,6 @@
                       count: uploadCandidates.length,
                     })
                   }}</p>
-                  <p v-else-if="uploadResult.succeeded">{{ t('admin9Ui.filePicker.uploadCheckSelection') }}</p>
-                  <p v-if="uploadResult.failed">{{ t('admin9Ui.filePicker.uploadRecover') }}</p>
-                  <p v-if="uploadResult.cancelled">{{ t('admin9Ui.filePicker.uploadCancelled') }}</p>
                   <p v-if="uploadSelectionBlocked">{{
                     t(multiple ? 'admin9Ui.filePicker.uploadLimitReached' : 'admin9Ui.filePicker.uploadSingleOccupied')
                   }}</p>
@@ -1849,9 +1846,6 @@
               </template>
             </div>
           </div>
-          <p v-if="managementCompleted" class="a9-file-picker__management-note">{{
-            t('admin9Ui.filePicker.managementPersisted')
-          }}</p>
         </div>
       </template>
     </Modal>
@@ -2423,12 +2417,6 @@
       p {
         margin: 0;
       }
-    }
-
-    &__management-note {
-      margin: 8px 0 0;
-      color: var(--color-text-2);
-      font-size: 12px;
     }
 
     &__delete-targets {

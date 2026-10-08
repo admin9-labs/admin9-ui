@@ -307,7 +307,7 @@
             </template>
             <span v-else class="a9-cover-picker__empty">
               <icon-plus v-if="!interactionDisabled" class="a9-cover-picker__add-icon" aria-hidden="true" />
-              <span>{{ slotLabel(item, index) }}</span>
+              <span>{{ t('admin9Ui.coverPicker.positionLabel', { index: index + 1 }) }}</span>
             </span>
           </button>
           <a-tooltip v-if="item" :content="t('admin9Ui.coverPicker.removePosition', { index: index + 1 })">

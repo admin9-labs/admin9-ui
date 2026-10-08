@@ -1050,7 +1050,7 @@ describe('AFilePicker', () => {
     await flush();
     const unit = count === 1 ? 'image' : 'images';
     const text = document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent;
-    expect(text).toContain(`${count} ${unit} uploaded to the library`);
+    expect(text).toContain(`${count} ${unit} uploaded`);
     expect(text).toContain(`${count} image ${count === 1 ? 'upload' : 'uploads'} failed`);
     expect(text).toContain(`${count} ${unit} cancelled`);
     expect(text).toContain(`${count} uploaded ${unit} ${count === 1 ? 'has' : 'have'} not been selected`);
@@ -1065,6 +1065,7 @@ describe('AFilePicker', () => {
     const newFirst = { ...image, id: 'new-first' };
     const newSecond = { ...image, id: 'new-second' };
     const service = makeService({
+      list: vi.fn().mockResolvedValue(result([image, newFirst, newSecond])),
       upload: vi.fn().mockReturnValueOnce(firstUpload.promise).mockReturnValueOnce(secondUpload.promise),
     });
     const { emitted } = mountPicker({
@@ -1079,9 +1080,7 @@ describe('AFilePicker', () => {
     firstUpload.resolve(newFirst);
     secondUpload.resolve(newSecond);
     await flush();
-    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain(
-      '2 images uploaded to the library'
-    );
+    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain('2 images uploaded');
     expect(emitted.selectionChange).toBeUndefined();
     vi.useFakeTimers();
     vi.advanceTimersByTime(6000);
@@ -1095,7 +1094,7 @@ describe('AFilePicker', () => {
     expect(emitted.change).toBeUndefined();
     expect(document.querySelector<HTMLButtonElement>('[data-testid="file-picker-select-uploaded"]')?.disabled).toBe(true);
     expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain(
-      'selection limit is reached'
+      'Selection limit reached'
     );
     selectItem(image.id);
     await flush();
@@ -1103,7 +1102,11 @@ describe('AFilePicker', () => {
     await flush();
     expect(emitted.selectionChange?.at(-1)?.[0]).toEqual([newFirst, newSecond]);
     expect(document.querySelector('[data-testid="file-picker-select-uploaded"]')).toBeNull();
-    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain('Review the selection');
+    expect(document.querySelector('[data-testid="file-picker-upload-result"]')).toBeNull();
+    selectItem(newSecond.id);
+    await flush();
+    expect(document.querySelector('[data-testid="file-picker-upload-result"]')).not.toBeNull();
+    expect(document.querySelector<HTMLButtonElement>('[data-testid="file-picker-select-uploaded"]')?.disabled).toBe(false);
   });
 
   it('protects an existing single selection and selects an upload after explicit deselection', async () => {
@@ -1149,14 +1152,15 @@ describe('AFilePicker', () => {
     cancelButton?.click();
     await flush();
     const text = document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent;
-    expect(text).toContain('1 image uploaded to the library');
+    expect(text).toContain('1 image uploaded');
     expect(text).toContain('1 image upload failed');
     expect(text).toContain('1 image cancelled');
-    expect(text).toContain('Uploaded assets remain in the library');
     expect(text).not.toContain('private error');
     click('[data-testid="file-picker-select-uploaded"]');
     await flush();
     expect(emitted.selectionChange?.at(-1)?.[0]).toEqual([uploaded]);
+    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain('1 image upload failed');
+    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain('1 image cancelled');
     cancelled.resolve({ ...image, id: 'late-cancelled' });
     await flush();
     expect(emitted.selectionChange).toHaveLength(1);
@@ -1180,9 +1184,7 @@ describe('AFilePicker', () => {
     expect(document.querySelector('[data-testid="file-picker-upload-result"]')).toBeNull();
     pending.resolve({ ...image, id: 'latest-upload' });
     await flush();
-    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain(
-      '1 image uploaded to the library'
-    );
+    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain('1 image uploaded');
     click('[data-testid="file-picker-select-uploaded"]');
     await flush();
     expect(emitted.selectionChange?.at(-1)?.[0]).toEqual([expect.objectContaining({ id: 'latest-upload' })]);
@@ -1216,9 +1218,7 @@ describe('AFilePicker', () => {
     document.querySelector<HTMLButtonElement>('button[aria-label="Retry upload for fixture.bin"]')?.click();
     await flush();
     expect(service.upload).toHaveBeenCalledTimes(3);
-    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain(
-      '2 images uploaded to the library'
-    );
+    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain('2 images uploaded');
     click('[data-testid="file-picker-select-uploaded"]');
     await flush();
     expect(emitted.selectionChange?.at(-1)?.[0]).toEqual([uploaded, retried]);

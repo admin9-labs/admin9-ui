@@ -188,9 +188,7 @@ describe('file library actions in the picker', () => {
       if (timing === 'during upload') pending.resolve(retried);
       else document.querySelector<HTMLButtonElement>('button[aria-label="Retry upload for B.png"]')!.click();
       await flush();
-      expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain(
-        '2 images uploaded to the library'
-      );
+      expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain('2 images uploaded');
       expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain(
         '2 uploaded images have not been selected'
       );
@@ -310,7 +308,7 @@ describe('file library actions in the picker', () => {
     );
   });
 
-  it('keeps upload facts but cannot select an asset after deleting it from the library', async () => {
+  it('hides the successful upload result after deleting its last selectable asset', async () => {
     const uploaded = { ...first, id: 'uploaded', name: 'Uploaded.png' };
     const host = mount({ props: { canUpload: true, fileTypes: ['image'] }, uploadResult: async () => uploaded });
     host.picker.value!.open();
@@ -332,9 +330,7 @@ describe('file library actions in the picker', () => {
     expect(host.adapter.deleteFiles).toHaveBeenCalledWith(['uploaded']);
     expect(document.querySelector('[data-file-id="uploaded"]')).toBeNull();
     expect(document.querySelector('[data-testid="file-picker-select-uploaded"]')).toBeNull();
-    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain(
-      '1 image uploaded to the library'
-    );
+    expect(document.querySelector('[data-testid="file-picker-upload-result"]')).toBeNull();
     expect(host.update).not.toHaveBeenCalled();
     expect(host.selection).not.toHaveBeenCalled();
   });

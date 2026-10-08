@@ -462,7 +462,7 @@
 
     <div v-if="constraints" class="a9-file-uploader__constraints">{{ constraints }}</div>
     <slot name="result" :succeeded-count="succeededCount" :dismiss="() => (succeededCount = 0)">
-      <div v-if="succeededCount" class="a9-file-uploader__result" role="status">
+      <div v-if="succeededCount && !panelVisible" class="a9-file-uploader__result" role="status">
         <span>{{ t('admin9Ui.fileUploader.uploaded', { count: succeededCount }) }}</span>
         <a-button type="text" size="mini" :aria-label="t('admin9Ui.fileUploader.dismissResult')" @click="succeededCount = 0">
           <template #icon><icon-close /></template>

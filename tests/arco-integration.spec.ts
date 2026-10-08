@@ -124,17 +124,17 @@ describe('real Arco 2.57 component contracts', () => {
         const content = document.querySelector('[data-testid="file-picker-upload-result"]')!.textContent!;
         expect(content).not.toContain('private backend detail');
         if (scenario === 'partial') {
-          expect(content).toContain('1 file uploaded to the library');
+          expect(content).toContain('1 file uploaded');
           expect(content).toContain('1 failed');
           retry = true;
           document.querySelector<HTMLButtonElement>('[aria-label="Retry upload for two.png"]')!.click();
           await flush();
           expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain(
-            '2 files uploaded to the library'
+            '2 files uploaded'
           );
           expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).not.toContain('1 failed');
         } else if (scenario === 'success') {
-          expect(content).toContain('2 files uploaded to the library');
+          expect(content).toContain('2 files uploaded');
         } else {
           expect(content).toContain('2 failed');
         }

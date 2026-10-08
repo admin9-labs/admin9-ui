@@ -158,6 +158,13 @@ describe('AFileUploader', () => {
     expect(complete).toHaveBeenCalledOnce();
     expect(uploader.tasks.map((task) => task.status)).toEqual(['succeeded', 'failed']);
     expect(uploader.tasks[0].progress).toBe(100);
+    await flush();
+    expect(document.querySelector('.a9-file-uploader__panel')).not.toBeNull();
+    expect(document.querySelector('.a9-file-uploader__result')).toBeNull();
+    document.querySelector<HTMLButtonElement>('[aria-label="Close upload queue"]')?.click();
+    await flush();
+    expect(document.querySelector('.a9-file-uploader__panel')).toBeNull();
+    expect(document.querySelector('.a9-file-uploader__result')?.textContent).toContain('Uploaded 1 file');
   });
 
   it('rejects wrong-type, pending, empty-url and duplicate successful results', async () => {
