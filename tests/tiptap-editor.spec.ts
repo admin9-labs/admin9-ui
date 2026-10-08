@@ -561,7 +561,7 @@ describe('ATiptapEditor public contract', () => {
     document.querySelector<HTMLButtonElement>('button[aria-label="Format painter"]')?.click();
     await flush();
     expect(document.querySelector('.a9-tiptap-editor__painter [role="status"]')?.textContent).toBe(
-      'Format copied. Select the text to apply it to.'
+      'Format copied. Select the target text.'
     );
     const help = document.querySelector<HTMLDetailsElement>('.a9-tiptap-editor__painter-help');
     const summary = help?.querySelector('summary');

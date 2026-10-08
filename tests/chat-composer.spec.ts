@@ -238,6 +238,6 @@ describe('AChatComposer', () => {
   it('exposes focus and gives the textarea an accessible name', () => {
     exposed?.focus();
     expect(document.activeElement).toBe(input());
-    expect(input().getAttribute('aria-label')).toContain('Message');
+    expect(input().getAttribute('aria-label')).toBe('Enter a message');
   });
 });

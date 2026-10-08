@@ -111,11 +111,11 @@ function mountPicker(props: Record<string, unknown> = {}) {
       messages: {
         'en-US': {
           'admin9Ui.iconPicker.placeholder': 'Select icon',
-          'admin9Ui.iconPicker.searchPlaceholder': 'Search by English name, e.g. search',
-          'admin9Ui.iconPicker.resetSearch': 'Clear search and show all icons',
+          'admin9Ui.iconPicker.searchPlaceholder': 'Search English names',
+          'admin9Ui.iconPicker.resetSearch': 'Clear search',
           'admin9Ui.iconPicker.categoryLabel': 'Icon categories',
           'admin9Ui.iconPicker.searchResults': 'Search results',
-          'admin9Ui.iconPicker.empty': 'No matching icons. Try another English keyword or category.',
+          'admin9Ui.iconPicker.empty': 'No matching icons',
           'admin9Ui.iconPicker.clear': 'Clear icon',
           'admin9Ui.iconPicker.categories.all': 'All',
           'admin9Ui.iconPicker.categories.direction': 'Direction',
@@ -290,7 +290,7 @@ describe('AIconPicker public contract', () => {
     const search = document.querySelector<HTMLInputElement>('[data-testid="icon-search"]');
     if (!search) throw new Error('Icon search was not rendered');
     expect(document.querySelector('[data-testid="icon-input"]')?.getAttribute('data-placeholder')).toBe('Select icon');
-    expect(search.placeholder).toBe('Search by English name, e.g. search');
+    expect(search.placeholder).toBe('Search English names');
 
     search.value = 'icon-dashboard';
     search.dispatchEvent(new Event('input', { bubbles: true }));
@@ -357,10 +357,8 @@ describe('AIconPicker public contract', () => {
     await flush();
 
     expect(document.querySelectorAll('.a9-icon-picker__cell')).toHaveLength(0);
-    expect(document.querySelector('.a9-icon-picker__empty [role="status"]')?.textContent?.trim()).toBe(
-      'No matching icons. Try another English keyword or category.'
-    );
-    expect(search.placeholder).toBe('Search by English name, e.g. search');
+    expect(document.querySelector('.a9-icon-picker__empty [role="status"]')?.textContent?.trim()).toBe('No matching icons');
+    expect(search.placeholder).toBe('Search English names');
     const reset = document.querySelector<HTMLButtonElement>('.a9-icon-picker__empty button');
     reset?.focus();
     reset?.click();
