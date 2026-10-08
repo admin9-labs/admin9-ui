@@ -1026,7 +1026,7 @@ describe('AFilePicker', () => {
     expect(emitted.selectionChange ?? []).toHaveLength(eventsBeforeUpload);
   });
 
-  it.each([1, 2])('renders singular/plural upload counts, unselected counts and selection for %i images', async (count) => {
+  it.each([1, 2])('keeps %i successful, failed and cancelled uploads in the queue without a picker reminder', async (count) => {
     const success = Array.from({ length: count }, () => deferred<FileItem>());
     let request = 0;
     const service = makeService({
@@ -1048,18 +1048,13 @@ describe('AFilePicker', () => {
     expect(cancelButtons).toHaveLength(count);
     cancelButtons.forEach((button) => button.click());
     await flush();
-    const unit = count === 1 ? 'image' : 'images';
-    const text = document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent;
-    expect(text).toContain(`${count} ${unit} uploaded`);
-    expect(text).toContain(`${count} image ${count === 1 ? 'upload' : 'uploads'} failed`);
-    expect(text).toContain(`${count} ${unit} cancelled`);
-    expect(text).toContain(`${count} uploaded ${unit} ${count === 1 ? 'has' : 'have'} not been selected`);
-    click('[data-testid="file-picker-select-uploaded"]');
-    await flush();
-    expect(document.querySelector('.a9-file-picker__selected-count')?.textContent).toBe(`${count} ${unit} selected`);
+    expect(document.querySelectorAll('button[aria-label="Retry upload for fixture.bin"]')).toHaveLength(count * 2);
+    expect(document.querySelector('[data-testid="file-picker-upload-result"]')).toBeNull();
+    expect(document.querySelector('[data-testid="file-picker-select-uploaded"]')).toBeNull();
+    expect(document.querySelector('.a9-file-picker__selected-count')?.textContent).toBe('0 images selected');
   });
 
-  it('keeps upload results visible and adds uploaded files only to available draft capacity', async () => {
+  it('refreshes uploaded files without a reminder and respects capacity during manual selection', async () => {
     const firstUpload = deferred<FileItem>();
     const secondUpload = deferred<FileItem>();
     const newFirst = { ...image, id: 'new-first' };
@@ -1080,55 +1075,44 @@ describe('AFilePicker', () => {
     firstUpload.resolve(newFirst);
     secondUpload.resolve(newSecond);
     await flush();
-    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain('2 images uploaded');
+    expect(document.querySelector('[data-testid="file-picker-upload-result"]')).toBeNull();
+    expect(document.querySelector('[data-testid="file-picker-select-uploaded"]')).toBeNull();
     expect(emitted.selectionChange).toBeUndefined();
-    vi.useFakeTimers();
-    vi.advanceTimersByTime(6000);
-    vi.useRealTimers();
-    await flush();
-    expect(document.querySelector('[data-testid="file-picker-upload-result"]')).not.toBeNull();
-    click('[data-testid="file-picker-select-uploaded"]');
+    selectItem(newFirst.id);
     await flush();
     expect(emitted.selectionChange?.at(-1)?.[0]).toEqual([image, newFirst]);
-    expect(emitted['update:modelValue']).toBeUndefined();
-    expect(emitted.change).toBeUndefined();
-    expect(document.querySelector<HTMLButtonElement>('[data-testid="file-picker-select-uploaded"]')?.disabled).toBe(true);
-    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain(
-      'Selection limit reached'
-    );
-    selectItem(image.id);
-    await flush();
-    click('[data-testid="file-picker-select-uploaded"]');
-    await flush();
-    expect(emitted.selectionChange?.at(-1)?.[0]).toEqual([newFirst, newSecond]);
-    expect(document.querySelector('[data-testid="file-picker-select-uploaded"]')).toBeNull();
-    expect(document.querySelector('[data-testid="file-picker-upload-result"]')).toBeNull();
     selectItem(newSecond.id);
     await flush();
-    expect(document.querySelector('[data-testid="file-picker-upload-result"]')).not.toBeNull();
-    expect(document.querySelector<HTMLButtonElement>('[data-testid="file-picker-select-uploaded"]')?.disabled).toBe(false);
+    expect(emitted.selectionChange).toHaveLength(1);
+    expect(emitted['update:modelValue']).toBeUndefined();
+    expect(emitted.change).toBeUndefined();
+    selectItem(image.id);
+    await flush();
+    selectItem(newSecond.id);
+    await flush();
+    expect(emitted.selectionChange?.at(-1)?.[0]).toEqual([newFirst, newSecond]);
   });
 
-  it('protects an existing single selection and selects an upload after explicit deselection', async () => {
+  it('keeps an existing single selection until an uploaded file is manually chosen', async () => {
     const uploaded = { ...image, id: 'single-upload' };
-    const service = makeService({ upload: vi.fn().mockResolvedValue(uploaded) });
+    const service = makeService({
+      list: vi.fn().mockResolvedValue(result([image, uploaded])),
+      upload: vi.fn().mockResolvedValue(uploaded),
+    });
     const { emitted } = mountPicker({ service, props: { modelValue: image, fileTypes: ['image'], canUpload: true } });
     click('[data-testid="file-picker-trigger"]');
     await flush();
     click('[data-testid="file-picker-upload"]');
     await flush();
-    expect(document.querySelector<HTMLButtonElement>('[data-testid="file-picker-select-uploaded"]')?.disabled).toBe(true);
-    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain('already a selection');
+    expect(document.querySelector('[data-testid="file-picker-upload-result"]')).toBeNull();
     expect(emitted.selectionChange).toBeUndefined();
-    selectItem(image.id);
-    await flush();
-    click('[data-testid="file-picker-select-uploaded"]');
+    selectItem(uploaded.id);
     await flush();
     expect(emitted.selectionChange?.at(-1)?.[0]).toEqual([uploaded]);
     expect(emitted['update:modelValue']).toBeUndefined();
   });
 
-  it('summarizes partial uploads and cancellation while selecting only confirmed successes', async () => {
+  it('keeps partial upload failures and cancellation in the queue without changing selection', async () => {
     const success = deferred<FileItem>();
     const cancelled = deferred<FileItem>();
     const uploaded = { ...image, id: 'partial-upload' };
@@ -1151,22 +1135,15 @@ describe('AFilePicker', () => {
     expect(cancelButton).not.toBeNull();
     cancelButton?.click();
     await flush();
-    const text = document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent;
-    expect(text).toContain('1 image uploaded');
-    expect(text).toContain('1 image upload failed');
-    expect(text).toContain('1 image cancelled');
-    expect(text).not.toContain('private error');
-    click('[data-testid="file-picker-select-uploaded"]');
-    await flush();
-    expect(emitted.selectionChange?.at(-1)?.[0]).toEqual([uploaded]);
-    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain('1 image upload failed');
-    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain('1 image cancelled');
+    expect(document.querySelector('[data-testid="file-picker-upload-result"]')).toBeNull();
+    expect(document.querySelector('button[aria-label="Retry upload for fixture.bin"]')).not.toBeNull();
+    expect(document.body.textContent).not.toContain('private error');
     cancelled.resolve({ ...image, id: 'late-cancelled' });
     await flush();
-    expect(emitted.selectionChange).toHaveLength(1);
+    expect(emitted.selectionChange).toBeUndefined();
   });
 
-  it('bounds the result to the latest upload cycle and clears it on close', async () => {
+  it('refreshes each upload cycle without changing selection or showing a result reminder', async () => {
     const pending = deferred<FileItem>();
     const service = makeService({
       upload: vi
@@ -1184,10 +1161,9 @@ describe('AFilePicker', () => {
     expect(document.querySelector('[data-testid="file-picker-upload-result"]')).toBeNull();
     pending.resolve({ ...image, id: 'latest-upload' });
     await flush();
-    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain('1 image uploaded');
-    click('[data-testid="file-picker-select-uploaded"]');
-    await flush();
-    expect(emitted.selectionChange?.at(-1)?.[0]).toEqual([expect.objectContaining({ id: 'latest-upload' })]);
+    expect(document.querySelector('[data-testid="file-picker-upload-result"]')).toBeNull();
+    expect(service.list).toHaveBeenCalledTimes(3);
+    expect(emitted.selectionChange).toBeUndefined();
     click('[data-testid="modal-cancel"]');
     await flush();
     click('[data-testid="file-picker-trigger"]');
@@ -1196,7 +1172,7 @@ describe('AFilePicker', () => {
     expect(emitted['update:modelValue']).toBeUndefined();
   });
 
-  it('keeps confirmed success available while retrying only a failed task in the same upload batch', async () => {
+  it('refreshes again after retrying only the failed task in the same upload batch', async () => {
     const firstUpload = deferred<FileItem>();
     const uploaded = { ...image, id: 'before-retry' };
     const retried = { ...image, id: 'after-retry' };
@@ -1214,14 +1190,14 @@ describe('AFilePicker', () => {
     click('[data-testid="file-picker-upload"]');
     firstUpload.resolve(uploaded);
     await flush();
-    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain('1 image upload failed');
+    expect(document.querySelector('[data-testid="file-picker-upload-result"]')).toBeNull();
+    expect(service.list).toHaveBeenCalledTimes(2);
     document.querySelector<HTMLButtonElement>('button[aria-label="Retry upload for fixture.bin"]')?.click();
     await flush();
     expect(service.upload).toHaveBeenCalledTimes(3);
-    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain('2 images uploaded');
-    click('[data-testid="file-picker-select-uploaded"]');
-    await flush();
-    expect(emitted.selectionChange?.at(-1)?.[0]).toEqual([uploaded, retried]);
+    expect(document.querySelector('[data-testid="file-picker-upload-result"]')).toBeNull();
+    expect(service.list).toHaveBeenCalledTimes(3);
+    expect(emitted.selectionChange).toBeUndefined();
     expect(emitted['update:modelValue']).toBeUndefined();
   });
 
@@ -1451,9 +1427,7 @@ describe('AFilePicker', () => {
     pending.resolve({ ...image, id: 'new-mixed' });
     await flush();
     expect(document.querySelector<HTMLButtonElement>('.a9-file-picker__group-button')?.disabled).toBe(false);
-    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain(
-      'uploaded file has not been selected'
-    );
+    expect(document.querySelector('[data-testid="file-picker-upload-result"]')).toBeNull();
     expect(emitted.selectionChange).toBeUndefined();
     expect(emitted['update:modelValue']).toBeUndefined();
   });
@@ -1590,7 +1564,7 @@ describe('AFilePicker', () => {
     expect(document.querySelector('[data-testid="file-picker-clear"]')).toBeNull();
   });
 
-  it('places upload success outside toolbar and hides single-page pagination and group counts', async () => {
+  it('omits upload result reminders and hides single-page pagination and group counts', async () => {
     mountPicker({
       service: makeService({ list: vi.fn().mockResolvedValue(result([image], 1, 24)) }),
       props: { canUpload: true },
@@ -1602,7 +1576,7 @@ describe('AFilePicker', () => {
     click('[data-testid="file-picker-upload"]');
     await flush();
     expect(document.querySelector('.a9-file-picker__toolbar .arco-message')).toBeNull();
-    expect(document.querySelector('[data-testid="file-picker-upload-result"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="file-picker-upload-result"]')).toBeNull();
   });
   it('shows only a live count without a selected-list entry or focus stop', async () => {
     const { emitted } = mountPicker({ service: makeService(), props: { multiple: true, limit: 4 } });

@@ -188,11 +188,11 @@ describe('file library actions in the picker', () => {
       if (timing === 'during upload') pending.resolve(retried);
       else document.querySelector<HTMLButtonElement>('button[aria-label="Retry upload for B.png"]')!.click();
       await flush();
-      expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain('2 images uploaded');
-      expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain(
-        '2 uploaded images have not been selected'
-      );
-      document.querySelector<HTMLButtonElement>('[data-testid="file-picker-select-uploaded"]')!.click();
+      expect(document.querySelector('[data-testid="file-picker-upload-result"]')).toBeNull();
+      expect(document.querySelector('[data-testid="file-picker-select-uploaded"]')).toBeNull();
+      expect(host.selection).not.toHaveBeenCalled();
+      document.querySelector<HTMLInputElement>('[data-file-id="upload-a"] input')!.click();
+      document.querySelector<HTMLInputElement>('[data-file-id="upload-b"] input')!.click();
       await flush();
       expect(host.selection).toHaveBeenLastCalledWith([first, second, uploaded, retried]);
       expect(host.update).not.toHaveBeenCalled();
@@ -204,7 +204,7 @@ describe('file library actions in the picker', () => {
     { label: 'failed', metadata: { status: 'failed' } },
     // eslint-disable-next-line no-script-url -- The regression must reject a script URL from the adapter.
     { label: 'unsafe URL', metadata: { url: 'javascript:alert(1)' } },
-  ] as const)('keeps observed upload ineligibility after leaving the page: $label', async (invalid) => {
+  ] as const)('disables an ineligible uploaded file in the refreshed list: $label', async (invalid) => {
     const uploaded: FileItem = { ...first, id: 'uploaded', name: 'Uploaded.png' };
     const host = mount({ props: { canUpload: true, fileTypes: ['image'] }, uploadResult: async () => uploaded });
     host.picker.value!.open();
@@ -219,6 +219,7 @@ describe('file library actions in the picker', () => {
     });
     await host.picker.value!.refresh();
     await flush();
+    expect(document.querySelector<HTMLInputElement>('[data-file-id="uploaded"] input')?.disabled).toBe(true);
     expect(document.querySelector('[data-testid="file-picker-select-uploaded"]')).toBeNull();
     document.querySelector<HTMLButtonElement>('[data-group-id="root"]')!.click();
     await flush();
@@ -263,10 +264,17 @@ describe('file library actions in the picker', () => {
       await flush();
       document.querySelector<HTMLButtonElement>('button[aria-label="Retry upload for B.png"]')!.click();
       await flush();
-      document.querySelector<HTMLButtonElement>('[data-testid="file-picker-select-uploaded"]')!.click();
+      expect(document.querySelector('[data-file-id="upload-a"]')).toBeNull();
+      document.querySelector<HTMLInputElement>('[data-file-id="upload-b"] input')!.click();
       await flush();
+      if (action === 'move') {
+        document.querySelector<HTMLButtonElement>('[data-group-id="root"]')!.click();
+        await flush();
+        document.querySelector<HTMLInputElement>('[data-file-id="upload-a"] input')!.click();
+        await flush();
+      }
       const expected =
-        action === 'delete' ? [first, second, retried] : [first, second, { ...uploaded, groupId: 'root' }, retried];
+        action === 'delete' ? [first, second, retried] : [first, second, retried, { ...uploaded, groupId: 'root' }];
       expect(host.selection).toHaveBeenLastCalledWith(expected);
       expect(host.update).not.toHaveBeenCalled();
       expect(uploadResult).toHaveBeenCalledTimes(3);
@@ -308,7 +316,7 @@ describe('file library actions in the picker', () => {
     );
   });
 
-  it('hides the successful upload result after deleting its last selectable asset', async () => {
+  it('deletes an uploaded asset without showing a persistent result reminder', async () => {
     const uploaded = { ...first, id: 'uploaded', name: 'Uploaded.png' };
     const host = mount({ props: { canUpload: true, fileTypes: ['image'] }, uploadResult: async () => uploaded });
     host.picker.value!.open();
@@ -317,7 +325,8 @@ describe('file library actions in the picker', () => {
     Object.defineProperty(input, 'files', { value: [new File(['image'], 'Uploaded.png', { type: 'image/png' })] });
     input.dispatchEvent(new Event('change', { bubbles: true }));
     await flush();
-    expect(document.querySelector('[data-testid="file-picker-select-uploaded"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="file-picker-select-uploaded"]')).toBeNull();
+    expect(document.querySelector('[data-file-id="uploaded"]')).not.toBeNull();
     await beginManagement(false);
     document.querySelector<HTMLInputElement>('[data-file-id="uploaded"] input')!.click();
     await flush();
@@ -335,7 +344,7 @@ describe('file library actions in the picker', () => {
     expect(host.selection).not.toHaveBeenCalled();
   });
 
-  it('selects a moved upload with updated group metadata even outside the currently browsed group', async () => {
+  it('manually selects a moved upload from its destination with updated group metadata', async () => {
     const uploaded = { ...first, id: 'uploaded', name: 'Uploaded.png' };
     const host = mount({ props: { canUpload: true, fileTypes: ['image'] }, uploadResult: async () => uploaded });
     host.picker.value!.open();
@@ -355,7 +364,9 @@ describe('file library actions in the picker', () => {
       .click();
     await flush();
     expect(document.querySelector('[data-file-id="uploaded"]')).toBeNull();
-    document.querySelector<HTMLButtonElement>('[data-testid="file-picker-select-uploaded"]')!.click();
+    document.querySelector<HTMLButtonElement>('[data-group-id="root"]')!.click();
+    await flush();
+    document.querySelector<HTMLInputElement>('[data-file-id="uploaded"] input')!.click();
     await flush();
     expect(host.adapter.moveFiles).toHaveBeenCalledWith({ ids: ['uploaded'], groupId: 'root' });
     expect(host.selection).toHaveBeenLastCalledWith([first, second, { ...uploaded, groupId: 'root' }]);

@@ -675,9 +675,7 @@ describe('file picker measured pagination', () => {
     expect(host.adapter.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, pageSize: 9 }));
     expect(host.update).not.toHaveBeenCalled();
     expect(document.querySelectorAll('.a9-file-picker__item.is-selected')).toHaveLength(0);
-    expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain(
-      'uploaded image has not been selected'
-    );
+    expect(document.querySelector('[data-testid="file-picker-upload-result"]')).toBeNull();
   });
 
   it('closes the move popup, management mode and picker one layer per Escape', async () => {

@@ -193,20 +193,12 @@
   const draftMap = ref(new Map<string, FileItem>());
   const committedItems = ref<FileItem[]>([]);
   const uploading = ref(false);
-  const uploadResult = ref<{ succeeded: number; failed: number; cancelled: number }>();
-  const uploadedItems = ref(new Map<string, FileItem>());
-  let uploadTaskIds = new Set<string>();
-  const deletedUploadIds = new Set<string>();
+  const uploadTaskIds = new Set<string>();
   const completedUploadTaskIds = new Set<string>();
-  const ambiguousUploadIds = ref(new Set<string>());
   let uploadCycleSettled = false;
-  const clearUploadResult = () => {
-    uploadResult.value = undefined;
-    uploadedItems.value.clear();
+  const clearUploadTracking = () => {
     uploadTaskIds.clear();
-    deletedUploadIds.clear();
     completedUploadTaskIds.clear();
-    ambiguousUploadIds.value.clear();
     uploadCycleSettled = false;
   };
   const triggerRoot = ref<HTMLElement>();
@@ -527,7 +519,7 @@
   };
   const invalidateRequests = () => {
     clearMessages();
-    clearUploadResult();
+    clearUploadTracking();
     viewGeneration += 1;
     latestListRequest += 1;
     latestGroupRequest += 1;
@@ -579,12 +571,6 @@
   };
 
   const reconcilePage = (items: FileItem[]) => {
-    items.forEach((item) => {
-      if (!uploadedItems.value.has(item.id) || deletedUploadIds.has(item.id)) return;
-      uploadedItems.value.set(item.id, item);
-      if (duplicateIds.value.has(item.id)) ambiguousUploadIds.value.add(item.id);
-      else ambiguousUploadIds.value.delete(item.id);
-    });
     const next = new Map(draftMap.value);
     items.forEach((item) => {
       if (!next.has(item.id)) return;
@@ -820,14 +806,11 @@
         replaceDraft(draftItems.value.filter((item) => !succeeded.has(item.id)));
         succeeded.forEach((id) => {
           managementMap.value.delete(id);
-          uploadedItems.value.delete(id);
-          deletedUploadIds.add(id);
         });
       } else {
         // Do not mutate shared FileItem objects or the committed parent field.
         const moved = (item: FileItem) => (succeeded.has(item.id) ? { ...item, groupId } : item);
         replaceDraft(draftItems.value.map(moved));
-        uploadedItems.value = new Map(Array.from(uploadedItems.value.values(), (item) => [item.id, moved(item)]));
         managementMap.value = new Map(
           Array.from(managementMap.value.values())
             .filter((item) => !succeeded.has(item.id))
@@ -1138,72 +1121,18 @@
     await nextTick();
     triggerRoot.value?.querySelector<HTMLElement>('[data-testid="file-picker-trigger"], button')?.focus();
   };
-  const uploadCandidates = computed(() =>
-    Array.from(uploadedItems.value.values()).flatMap((item) => {
-      const pageItems = list.value.filter((entry) => entry.id === item.id);
-      const candidate = pageItems[0] ?? item;
-      return pageItems.length <= 1 &&
-        !ambiguousUploadIds.value.has(candidate.id) &&
-        !deletedUploadIds.has(candidate.id) &&
-        isValueEligible(candidate) &&
-        !draftMap.value.has(candidate.id)
-        ? [candidate]
-        : [];
-    })
-  );
-  const uploadCapacity = computed(() => {
-    if (!props.multiple) return Math.max(0, 1 - draftCount.value);
-    return props.limit > 0 ? Math.max(0, props.limit - draftCount.value) : Infinity;
-  });
-  const uploadSelectionBlocked = computed(() => uploadCandidates.value.length > 0 && uploadCapacity.value === 0);
-  const uploadSummary = computed(() => {
-    const result = uploadResult.value;
-    if (!result) return '';
-    return [
-      result.succeeded &&
-        t(`admin9Ui.filePicker.uploadSummary.${imagesOnly.value ? 'imageSucceeded' : 'succeeded'}`, {
-          count: result.succeeded,
-        }),
-      result.failed &&
-        t(`admin9Ui.filePicker.uploadSummary.${imagesOnly.value ? 'imageFailed' : 'failed'}`, { count: result.failed }),
-      result.cancelled &&
-        t(`admin9Ui.filePicker.uploadSummary.${imagesOnly.value ? 'imageCancelled' : 'cancelled'}`, {
-          count: result.cancelled,
-        }),
-    ]
-      .filter(Boolean)
-      .join(t('admin9Ui.filePicker.uploadSummary.separator'));
-  });
-  const selectUploaded = () => {
-    if (!visible.value || managing.value || interactionDisabled.value || fileActionBusy.value || uploading.value) return;
-    if (uploadSelectionBlocked.value) return;
-    const additions = uploadCandidates.value.slice(0, uploadCapacity.value);
-    replaceDraft([...draftItems.value, ...additions]);
-  };
   const onUploadTasksChange = (tasks: readonly FileUploadTask[]) => {
     const active = tasks.filter((task) => task.status === 'pending' || task.status === 'uploading');
     if (active.length && !uploading.value) {
-      if (uploadCycleSettled && active.some((task) => !uploadTaskIds.has(task.id))) {
-        uploadedItems.value.clear();
-        deletedUploadIds.clear();
-        completedUploadTaskIds.clear();
-        ambiguousUploadIds.value.clear();
-        uploadTaskIds = new Set();
-      }
-      uploadResult.value = undefined;
+      if (uploadCycleSettled && active.some((task) => !uploadTaskIds.has(task.id))) clearUploadTracking();
       uploadCycleSettled = false;
     }
     active.forEach((task) => uploadTaskIds.add(task.id));
     tasks.forEach((task) => {
-      if (!uploadTaskIds.has(task.id) || task.status !== 'succeeded' || !task.item || completedUploadTaskIds.has(task.id))
-        return;
-      completedUploadTaskIds.add(task.id);
-      if (!deletedUploadIds.has(task.item.id)) uploadedItems.value.set(task.item.id, task.item);
+      if (uploadTaskIds.has(task.id) && task.status === 'succeeded') completedUploadTaskIds.add(task.id);
     });
     uploading.value = active.length > 0;
-    // AFileUploader clears a fully successful queue after complete; keep its result available for selection.
-    if (!tasks.length && (!uploadCycleSettled || uploadResult.value?.failed || uploadResult.value?.cancelled))
-      clearUploadResult();
+    if (!tasks.length) clearUploadTracking();
   };
   const onUploadResponse = (item: FileItem) => emit('uploadSuccess', item);
   const onUploadError = (failure: FileUploadFailure) => emit('uploadError', failure.error);
@@ -1212,8 +1141,6 @@
     uploadCycleSettled = true;
     const succeeded = completedUploadTaskIds.size;
     const failed = result.failed.filter((failure) => uploadTaskIds.has(failure.task.id));
-    const cancelled = result.cancelled.filter((task) => uploadTaskIds.has(task.id));
-    uploadResult.value = { succeeded, failed: failed.length, cancelled: cancelled.length };
     if (succeeded || failed.some((failure) => Boolean(failure.task.item))) await refresh();
   };
   const chooseUpload = () => {
@@ -1642,32 +1569,6 @@
                     </a-button>
                   </a-tooltip>
                 </div>
-              </div>
-
-              <div
-                v-if="uploadResult && (uploadCandidates.length || uploadResult.failed || uploadResult.cancelled)"
-                class="a9-file-picker__upload-result"
-                data-testid="file-picker-upload-result"
-              >
-                <div role="status">
-                  <p>{{ uploadSummary }}</p>
-                  <p v-if="uploadCandidates.length">{{
-                    t(`admin9Ui.filePicker.${imagesOnly ? 'uploadImagesNotSelected' : 'uploadNotSelected'}`, {
-                      count: uploadCandidates.length,
-                    })
-                  }}</p>
-                  <p v-if="uploadSelectionBlocked">{{
-                    t(multiple ? 'admin9Ui.filePicker.uploadLimitReached' : 'admin9Ui.filePicker.uploadSingleOccupied')
-                  }}</p>
-                </div>
-                <a-button
-                  v-if="uploadCandidates.length && !managing"
-                  size="small"
-                  :disabled="uploadSelectionBlocked || interactionDisabled || fileActionBusy || uploading"
-                  data-testid="file-picker-select-uploaded"
-                  @click="selectUploaded"
-                  >{{ contextLabel('selectUploaded', 'selectUploadedImages') }}</a-button
-                >
               </div>
 
               <div v-if="managing" class="a9-file-picker__management" @keydown.capture="onManagementKeydown">
@@ -2437,24 +2338,6 @@
     &__item.is-disabled &__checkbox :deep(.arco-checkbox-icon) {
       background-color: var(--color-fill-2);
       border-color: var(--color-neutral-5);
-    }
-
-    &__upload-result {
-      display: flex;
-      flex: none;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 12px;
-      color: var(--color-text-2);
-      font-size: 12px;
-      background: var(--color-fill-1);
-      border-radius: 4px;
-
-      p {
-        margin: 0;
-      }
     }
 
     &__delete-targets {
