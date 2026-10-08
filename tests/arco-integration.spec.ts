@@ -90,13 +90,13 @@ describe('real Arco 2.57 component contracts', () => {
   });
 
   it.each(['success', 'partial', 'failed', 'cancelled'] as const)(
-    'keeps the %s upload result available without committing the field',
+    'handles %s uploads in the queue without a persistent picker reminder or field commit',
     async (scenario) => {
       let retry = false;
       const pending = deferred<import('../src').FileItem>();
       const change = vi.fn();
       const service: import('../src').FilePickerAdapter = {
-        list: async () => ({ list: [], pagination: { page: 1, pageSize: 15, total: 0, hasMore: false } }),
+        list: vi.fn(async () => ({ list: [], pagination: { page: 1, pageSize: 15, total: 0, hasMore: false } })),
         upload: async ({ file }) => {
           if (scenario === 'cancelled') return pending.promise;
           if (!retry && (scenario === 'failed' || (scenario === 'partial' && file.name === 'two.png')))
@@ -119,28 +119,29 @@ describe('real Arco 2.57 component contracts', () => {
         await flush();
         pending.resolve({ id: 'late', name: 'late.png', type: 'image', url: '/late.png' });
         await flush();
-        expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain('2 cancelled');
+        expect(document.querySelector('.a9-file-uploader__summary')?.textContent).toContain('2 cancelled');
+        expect(service.list).toHaveBeenCalledOnce();
+      } else if (scenario === 'partial') {
+        expect(document.querySelector('.a9-file-uploader__summary')?.textContent).toContain('1 succeeded');
+        expect(document.querySelector('.a9-file-uploader__summary')?.textContent).toContain('1 failed');
+        expect(service.list).toHaveBeenCalledTimes(2);
+        retry = true;
+        document.querySelector<HTMLButtonElement>('[aria-label="Retry upload for two.png"]')!.click();
+        await flush();
+        expect(document.querySelector('.a9-file-uploader__panel')).toBeNull();
+        expect(service.list).toHaveBeenCalledTimes(3);
+      } else if (scenario === 'success') {
+        expect(document.querySelector('.a9-file-uploader__panel')).toBeNull();
+        expect(service.list).toHaveBeenCalledTimes(2);
       } else {
-        const content = document.querySelector('[data-testid="file-picker-upload-result"]')!.textContent!;
-        expect(content).not.toContain('private backend detail');
-        if (scenario === 'partial') {
-          expect(content).toContain('1 file uploaded');
-          expect(content).toContain('1 failed');
-          retry = true;
-          document.querySelector<HTMLButtonElement>('[aria-label="Retry upload for two.png"]')!.click();
-          await flush();
-          expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).toContain(
-            '2 files uploaded'
-          );
-          expect(document.querySelector('[data-testid="file-picker-upload-result"]')?.textContent).not.toContain('1 failed');
-        } else if (scenario === 'success') {
-          expect(content).toContain('2 files uploaded');
-        } else {
-          expect(content).toContain('2 failed');
-        }
+        expect(document.querySelector('.a9-file-uploader__summary')?.textContent).toContain('2 failed');
+        expect(document.querySelectorAll('.a9-file-uploader__error')).toHaveLength(2);
+        expect(service.list).toHaveBeenCalledOnce();
       }
+      expect(document.body.textContent).not.toContain('private backend detail');
       expect(document.querySelector('.arco-message')).toBeNull();
-      expect(document.querySelectorAll('[data-testid="file-picker-upload-result"]')).toHaveLength(1);
+      expect(document.querySelector('[data-testid="file-picker-upload-result"]')).toBeNull();
+      expect(document.querySelector('[data-testid="file-picker-select-uploaded"]')).toBeNull();
       expect(document.querySelector('.a9-file-uploader__result')).toBeNull();
       expect(document.querySelector('.a9-file-picker__feedback-strip')).toBeNull();
       expect(change).not.toHaveBeenCalled();
