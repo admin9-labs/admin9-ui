@@ -154,7 +154,7 @@
   const resolvedPageSize = ref(0);
   const results = ref<HTMLElement>();
   const gridColumns = ref(1);
-  const imageModalHeight = ref(720);
+  const fittedModalHeight = ref<number>();
   let layoutObserver: ResizeObserver | undefined;
   let resizeTimer: ReturnType<typeof setTimeout> | undefined;
   let targetPageSize = 0;
@@ -537,7 +537,7 @@
     pendingPageSize = undefined;
     pendingPageReset = false;
     resolvedPageSize.value = 0;
-    imageModalHeight.value = 720;
+    fittedModalHeight.value = undefined;
     managing.value = false;
     managementMap.value.clear();
     moveVisible.value = false;
@@ -635,9 +635,9 @@
     const width = element?.clientWidth ?? 0;
     const height = element?.clientHeight ?? 0;
     const outsideResultsHeight = modalHeight - height;
-    const maxImageHeight = Math.min(720, window.innerHeight - 32);
-    const fitImages =
-      imagesOnly.value &&
+    const maxModalHeight = Math.min(imagesOnly.value ? 720 : 800, window.innerHeight - 32);
+    const fitGrid =
+      view.value === 'grid' &&
       configuredPageSize.value === undefined &&
       !instance?.slots.item &&
       !shortViewport.value &&
@@ -647,12 +647,14 @@
       outsideResultsHeight >= 0;
     const layout = resolveFilePickerLayout(
       width,
-      fitImages ? maxImageHeight - outsideResultsHeight : height,
+      fitGrid ? maxModalHeight - outsideResultsHeight : height,
       view.value,
       narrow.value,
       imagesOnly.value
     );
-    imageModalHeight.value = fitImages ? Math.min(maxImageHeight, Math.ceil(outsideResultsHeight + layout.gridHeight)) : 720;
+    fittedModalHeight.value = fitGrid
+      ? Math.min(maxModalHeight, Math.ceil(outsideResultsHeight + layout.gridHeight))
+      : undefined;
     gridColumns.value = layout.columns;
     const next = configuredPageSize.value ?? layout.pageSize;
     if (!next) return;
@@ -1307,7 +1309,7 @@
       width="calc(100vw - 32px)"
       :modal-style="{
         display: 'inline-flex',
-        height: imagesOnly ? `${imageModalHeight}px` : 'min(800px, calc(100dvh - 32px))',
+        height: `${fittedModalHeight ?? (imagesOnly ? 720 : 800)}px`,
         maxWidth: '1040px',
         maxHeight: 'calc(100dvh - 32px)',
         flexDirection: 'column',
@@ -1952,6 +1954,7 @@
 
     &__selected-count {
       color: var(--color-text-2);
+      text-align: left;
     }
 
     &__workspace {
@@ -2246,7 +2249,7 @@
     &__spin {
       display: block;
       width: 100%;
-      min-height: 100%;
+      height: 100%;
     }
 
     &__results {

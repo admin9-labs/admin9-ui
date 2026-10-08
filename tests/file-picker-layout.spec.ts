@@ -203,28 +203,35 @@ describe('file picker measured pagination', () => {
     expect(host.update).not.toHaveBeenCalled();
   });
 
-  it('fits the image dialog to complete rows without shrinking on the final page or requerying after fitting', async () => {
-    measuredModalHeight = 720;
-    height = 540;
-    const host = mount();
+  it.each([
+    { label: 'image', fileTypes: ['image'] as const, initialHeight: 720, fittedHeight: 568, resultsHeight: 388 },
+    { label: 'file', fileTypes: ['image', 'document'] as const, initialHeight: 800, fittedHeight: 724, resultsHeight: 544 },
+  ])('fits the $label dialog to complete rows and keeps its height on the final or empty page', async (scenario) => {
+    measuredModalHeight = scenario.initialHeight;
+    height = measuredModalHeight - 180;
+    const host = mount({ props: { fileTypes: scenario.fileTypes } });
     host.picker.value!.open();
     await flush();
     const modal = document.querySelector<HTMLElement>('.arco-modal')!;
-    // Three 121.1px thumbnail cards and two 12px gaps fit in a 388px results region.
-    expect(modal.style.height).toBe('568px');
+    expect(modal.style.height).toBe(`${scenario.fittedHeight}px`);
     expect(host.adapter.list).toHaveBeenCalledOnce();
     expect(host.adapter.list).toHaveBeenLastCalledWith(expect.objectContaining({ pageSize: 15 }));
-    measuredModalHeight = 568;
+    measuredModalHeight = scenario.fittedHeight;
     vi.useFakeTimers();
-    await settleResize(822, 388);
+    await settleResize(822, scenario.resultsHeight);
     expect(host.adapter.list).toHaveBeenCalledOnce();
-    expect(modal.style.height).toBe('568px');
+    expect(modal.style.height).toBe(`${scenario.fittedHeight}px`);
     click('.a9-file-picker-modal .arco-pagination-item-next');
     await flush();
     click('.a9-file-picker-modal .arco-pagination-item-next');
     await flush();
     expect(renderedIds()).toHaveLength(7);
-    expect(modal.style.height).toBe('568px');
+    expect(modal.style.height).toBe(`${scenario.fittedHeight}px`);
+    vi.mocked(host.adapter.list).mockResolvedValue(pageResult({ page: 1, pageSize: 15 }, 15, []));
+    await host.picker.value!.refresh();
+    await flush();
+    expect(document.querySelector('.a9-file-picker__empty')).not.toBeNull();
+    expect(modal.style.height).toBe(`${scenario.fittedHeight}px`);
     expect(host.update).not.toHaveBeenCalled();
   });
 
