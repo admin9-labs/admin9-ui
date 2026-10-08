@@ -220,6 +220,47 @@ describe('AFilterForm public contract', () => {
     expect(form?.querySelector('input')).toBe(input);
   });
 
+  it('shares label widths for multiple rows and both collapse states', async () => {
+    const { count } = mountFilterForm({ count: 4, cols: 3 });
+    await flush();
+    const form = document.querySelector('.a9-filter-form');
+    expect(form?.classList.contains('arco-form-auto-label-width')).toBe(true);
+
+    count.value = 7;
+    await flush();
+    expect(form?.getAttribute('data-layout')).toBe('collapsible-collapsed');
+    expect(form?.classList.contains('arco-form-auto-label-width')).toBe(true);
+
+    document.querySelector<HTMLButtonElement>('.a9-filter-form__toggle')?.click();
+    await flush();
+    expect(form?.getAttribute('data-layout')).toBe('collapsible-expanded');
+    expect(form?.classList.contains('arco-form-auto-label-width')).toBe(true);
+
+    document.querySelector<HTMLButtonElement>('.a9-filter-form__toggle')?.click();
+    await flush();
+    expect(form?.classList.contains('arco-form-auto-label-width')).toBe(true);
+
+    count.value = 3;
+    await flush();
+    expect(form?.classList.contains('arco-form-auto-label-width')).toBe(false);
+  });
+
+  it('shares label widths when responsive columns turn a single row into multiple rows', async () => {
+    mountFilterForm({ count: 3 });
+    await flush();
+    const form = document.querySelector('.a9-filter-form');
+    expect(form?.classList.contains('arco-form-auto-label-width')).toBe(false);
+
+    setViewport(800);
+    await flush();
+    expect(form?.getAttribute('data-layout')).toBe('multiple');
+    expect(form?.classList.contains('arco-form-auto-label-width')).toBe(true);
+
+    setViewport(1280);
+    await flush();
+    expect(form?.classList.contains('arco-form-auto-label-width')).toBe(false);
+  });
+
   it.each([2, 3, 4])('preserves equal columns and empty positions for %i unweighted fields', async (count) => {
     mountFilterForm({ count, cols: 3 });
     await flush();

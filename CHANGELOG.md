@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- AFilterForm 多行与可折叠布局统一 label 宽度，让同列控件对齐，收起时仍保持统一宽度。
+
 ## [0.28.3] - 2026-10-08
 
 ### Changed

@@ -215,7 +215,7 @@
             'size': props.size,
             'layout': 'horizontal',
             'labelAlign': 'left',
-            'autoLabelWidth': viewportWidth.value <= 767,
+            'autoLabelWidth': rowCount > 1 || viewportWidth.value <= 767,
             'labelColProps': { flex: 'none' },
             'wrapperColProps': { flex: '1' },
             'class': 'a9-filter-form',
