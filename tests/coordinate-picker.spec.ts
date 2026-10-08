@@ -232,7 +232,8 @@ describe('ACoordinatePicker', () => {
     expect(document.body.textContent).toContain('Search again');
     expect(document.body.textContent).not.toContain('地点搜索失败');
     expect(search.value).toBe('邛海');
-    expect(document.body.textContent).toContain('Selected coordinates: latitude 27.890000, longitude 102.260000');
+    const inputs = [...document.body.querySelectorAll<HTMLInputElement>('.arco-input-number input')];
+    expect(inputs.map((input) => Number(input.value))).toEqual([27.89, 102.26]);
   });
 
   it('updates visible map and search fallback errors when the locale changes', async () => {
@@ -286,14 +287,14 @@ describe('ACoordinatePicker', () => {
     expect(mounted.model.value).toEqual({ latitude: 27.89, longitude: 102.26 });
   });
 
-  it('distinguishes initial guidance, an unsubmitted keyword and a completed empty search', async () => {
+  it('only shows an empty search state after submitting a keyword', async () => {
     installTencentMap();
     suggestion.getSuggestions.mockResolvedValueOnce({ data: [] });
     const mounted = mountPicker();
     click(mounted.host.querySelector('.a9-coordinate-picker__trigger'));
     await waitFor(() => FakeMap.instances.length === 1);
     const results = document.body.querySelector('.a9-coordinate-picker__results');
-    expect(results?.textContent).toContain('搜索地点，或在地图上选择位置。');
+    expect(results?.querySelector('.arco-empty')).toBeNull();
     const input = document.body.querySelector<HTMLInputElement>('.a9-coordinate-picker__search input');
     if (!input) throw new Error('Missing search input');
     input.value = '不存在的地点';
@@ -303,7 +304,6 @@ describe('ACoordinatePicker', () => {
     click(document.body.querySelector('.a9-coordinate-picker__search .arco-input-search-btn'));
     await flush();
     expect(results?.textContent).toContain('暂无匹配地点');
-    expect(results?.textContent).not.toContain('搜索地点，或在地图上选择位置。');
   });
 
   it('retries failed place search without losing its keyword or the selected map draft', async () => {
@@ -328,7 +328,8 @@ describe('ACoordinatePicker', () => {
     await flush();
     expect(suggestion.getSuggestions).toHaveBeenCalledTimes(2);
     expect(search.value).toBe('邛海');
-    expect(document.body.textContent).toContain('已选坐标：纬度 27.890000，经度 102.260000');
+    const inputs = [...document.body.querySelectorAll<HTMLInputElement>('.arco-input-number input')];
+    expect(inputs.map((input) => Number(input.value))).toEqual([27.89, 102.26]);
     click(document.body.querySelector('.arco-modal-footer .arco-btn-primary'));
     await nextTick();
     expect(mounted.model.value).toEqual({ latitude: 27.89, longitude: 102.26 });
@@ -343,6 +344,7 @@ describe('ACoordinatePicker', () => {
     await nextTick();
     const inputs = [...document.body.querySelectorAll<HTMLInputElement>('.arco-input-number input')];
     const confirm = document.body.querySelector<HTMLButtonElement>('.arco-modal-footer .arco-btn-primary');
+    expect(document.body.querySelector('.a9-coordinate-picker__coordinates [role="status"]')).toBeNull();
     inputs[0].value = '';
     inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
     await nextTick();
@@ -364,6 +366,7 @@ describe('ACoordinatePicker', () => {
     inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
     await nextTick();
     expect(confirm?.disabled).toBe(false);
+    expect(document.body.querySelector('.a9-coordinate-picker__coordinates [role="status"]')).toBeNull();
     click(confirm);
     await nextTick();
     expect(mounted.model.value).toEqual({ latitude: -90, longitude: 102.26 });

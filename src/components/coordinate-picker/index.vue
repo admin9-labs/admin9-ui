@@ -125,15 +125,11 @@
     return normalizeCoordinate({ latitude: latitudeInput.value, longitude: longitudeInput.value });
   });
   const coordinateHint = computed(() => {
-    if (latitudeInput.value === undefined && longitudeInput.value === undefined)
-      return t('admin9Ui.coordinatePicker.chooseHint');
+    if (latitudeInput.value === undefined && longitudeInput.value === undefined) return '';
     if (latitudeInput.value === undefined || longitudeInput.value === undefined)
       return t('admin9Ui.coordinatePicker.incompleteCoordinates');
     if (!manualCoordinate.value) return t('admin9Ui.coordinatePicker.invalidCoordinates');
-    return t('admin9Ui.coordinatePicker.selectedCoordinates', {
-      latitude: manualCoordinate.value.latitude.toFixed(normalizedPrecision.value),
-      longitude: manualCoordinate.value.longitude.toFixed(normalizedPrecision.value),
-    });
+    return '';
   });
 
   const displayValue = computed(() => {
@@ -484,9 +480,6 @@
                   v-if="hasSearched && !searchLoading && !searchError && suggestions.length === 0"
                   :description="t('admin9Ui.coordinatePicker.noResults')"
                 />
-                <p v-else-if="!hasSearched && !searchLoading" class="a9-coordinate-picker__search-hint">
-                  {{ t(mapError ? 'admin9Ui.coordinatePicker.searchUnavailable' : 'admin9Ui.coordinatePicker.searchHint') }}
-                </p>
               </div>
             </div>
 
@@ -503,7 +496,6 @@
                   hide-button
                   @blur="handleManualCoordinate"
                 />
-                <small>{{ t('admin9Ui.coordinatePicker.latitudeRange') }}</small>
               </div>
               <div class="a9-coordinate-picker__coordinate-field">
                 <label>{{ t('admin9Ui.coordinatePicker.longitude') }}</label>
@@ -517,9 +509,8 @@
                   hide-button
                   @blur="handleManualCoordinate"
                 />
-                <small>{{ t('admin9Ui.coordinatePicker.longitudeRange') }}</small>
               </div>
-              <p role="status">{{ coordinateHint }}</p>
+              <p v-if="coordinateHint" role="status">{{ coordinateHint }}</p>
             </div>
           </aside>
 
@@ -619,13 +610,6 @@
     border-radius: 4px;
   }
 
-  .a9-coordinate-picker__search-hint {
-    padding: 12px;
-    color: var(--color-text-3);
-    font-size: 13px;
-    line-height: 1.6;
-  }
-
   .a9-coordinate-picker__result {
     display: grid;
     gap: 3px;
@@ -698,12 +682,6 @@
     label {
       color: var(--color-text-2);
       font-size: 13px;
-    }
-
-    small {
-      grid-column: 2;
-      color: var(--color-text-3);
-      font-size: 12px;
     }
   }
 
