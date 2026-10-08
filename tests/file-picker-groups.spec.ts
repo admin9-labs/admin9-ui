@@ -85,7 +85,7 @@ async function openGroup(picker: { value: AFilePickerExposed | undefined }) {
   await flush();
 }
 async function submit(name: string) {
-  const input = document.querySelector<HTMLInputElement>('.a9-file-picker-create-group input');
+  const input = document.querySelector<HTMLInputElement>('.a9-file-picker-create-group [aria-label="Group name"] input');
   if (!input) throw new Error('Missing group form');
   input.value = name;
   input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -186,7 +186,9 @@ describe('file group creation', () => {
     await submit('New');
     expect(document.body.textContent).toContain('Failed to create group. Please retry.');
     expect(document.body.textContent).not.toContain('secret backend detail');
-    expect(document.querySelector<HTMLInputElement>('.a9-file-picker-create-group input')?.value).toBe('New');
+    expect(
+      document.querySelector<HTMLInputElement>('.a9-file-picker-create-group [aria-label="Group name"] input')?.value
+    ).toBe('New');
     vi.mocked(host.adapter.listGroups!).mockRejectedValueOnce(new Error('refresh failed'));
     await submit('New');
     expect(document.querySelector('[aria-label="New"]')).not.toBeNull();

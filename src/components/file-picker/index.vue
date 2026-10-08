@@ -1430,7 +1430,7 @@
                 t('admin9Ui.filePicker.retry')
               }}</a-button>
             </div>
-            <div class="a9-file-picker__group-list">
+            <div class="a9-file-picker__group-list" :aria-busy="groupLoading">
               <button
                 type="button"
                 class="a9-file-picker__group-button"
@@ -1457,7 +1457,13 @@
                   class="a9-file-picker__group-icon a9-file-picker__group-icon--folder"
                 /><span>{{ t('admin9Ui.filePicker.groupUngrouped') }}</span>
               </button>
-              <a-spin :loading="groupLoading" class="a9-file-picker__group-spin">
+              <div v-if="groupLoading" class="a9-file-picker__group-skeleton" aria-hidden="true">
+                <div v-for="width in ['72%', '92%', '60%', '80%']" :key="width" class="a9-file-picker__group-skeleton-row">
+                  <span class="a9-file-picker__group-skeleton-icon" />
+                  <span class="a9-file-picker__group-skeleton-text" :style="{ width }" />
+                </div>
+              </div>
+              <div v-else>
                 <div
                   v-for="row in visibleGroupRows"
                   :key="row.group.id"
@@ -1501,7 +1507,7 @@
                     /><span :title="row.label">{{ row.group.name }}</span>
                   </button>
                 </div>
-              </a-spin>
+              </div>
             </div>
           </aside>
 
@@ -1863,6 +1869,12 @@
     >
       <FormItem no-style :validate-trigger="[]">
         <Form :model="groupForm" layout="vertical" @submit-success="createGroup">
+          <FormItem field="parentId" :label="t('admin9Ui.filePicker.parentGroup')" :validate-trigger="[]">
+            <a-select v-model="groupForm.parentId" :disabled="creatingGroup" :aria-label="t('admin9Ui.filePicker.parentGroup')">
+              <a-option value="">{{ t('admin9Ui.filePicker.rootGroup') }}</a-option>
+              <a-option v-for="group in rootGroups" :key="group.id" :value="group.id">{{ group.name }}</a-option>
+            </a-select>
+          </FormItem>
           <FormItem
             field="name"
             :label="t('admin9Ui.filePicker.groupName')"
@@ -1877,12 +1889,6 @@
               :aria-label="t('admin9Ui.filePicker.groupName')"
               @input="groupNameError = false"
             />
-          </FormItem>
-          <FormItem field="parentId" :label="t('admin9Ui.filePicker.parentGroup')" :validate-trigger="[]">
-            <a-select v-model="groupForm.parentId" :disabled="creatingGroup" :aria-label="t('admin9Ui.filePicker.parentGroup')">
-              <a-option value="">{{ t('admin9Ui.filePicker.rootGroup') }}</a-option>
-              <a-option v-for="group in rootGroups" :key="group.id" :value="group.id">{{ group.name }}</a-option>
-            </a-select>
           </FormItem>
           <a-alert v-if="groupCreateError" type="error" role="alert">{{ t('admin9Ui.filePicker.groupCreateFailed') }}</a-alert>
           <div class="a9-file-picker__create-actions">
@@ -2299,9 +2305,41 @@
       margin-bottom: 12px;
     }
 
-    &__group-spin {
-      display: block;
-      width: 100%;
+    &__group-skeleton {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      animation: a9-file-picker-group-pulse 1.8s ease-in-out infinite alternate;
+    }
+
+    &__group-skeleton-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      min-height: 36px;
+      padding: 6px 10px;
+    }
+
+    &__group-skeleton-icon,
+    &__group-skeleton-text {
+      background: var(--color-fill-3);
+      border-radius: 3px;
+    }
+
+    &__group-skeleton-icon {
+      flex: none;
+      width: 16px;
+      height: 16px;
+    }
+
+    &__group-skeleton-text {
+      height: 12px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      &__group-skeleton {
+        animation: none;
+      }
     }
 
     &__spin {
@@ -2616,6 +2654,16 @@
         grid-column: 2;
         margin-left: auto;
       }
+    }
+  }
+
+  @keyframes a9-file-picker-group-pulse {
+    from {
+      opacity: 0.45;
+    }
+
+    to {
+      opacity: 1;
     }
   }
 </style>
