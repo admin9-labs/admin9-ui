@@ -79,6 +79,18 @@ const flush = async () => {
   await nextTick();
 };
 
+const mockFormWidth = (initialWidth: number) => {
+  let width = initialWidth;
+  const original = HTMLElement.prototype.getBoundingClientRect;
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function measureForm(this: HTMLElement) {
+    const rect = original.call(this);
+    return this.classList.contains('a9-filter-form') ? { ...rect, width } : rect;
+  });
+  return (nextWidth: number) => {
+    width = nextWidth;
+  };
+};
+
 interface MountOptions {
   count?: number;
   cols?: number | ResponsiveValue;
@@ -259,6 +271,76 @@ describe('AFilterForm public contract', () => {
     setViewport(1280);
     await flush();
     expect(form?.classList.contains('arco-form-auto-label-width')).toBe(false);
+  });
+
+  it('responds to the form border-box width, keeps controls mounted, and disconnects its observer', async () => {
+    setViewport(1440);
+    const setFormWidth = mockFormWidth(336);
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    let notifyResize: () => void = () => undefined;
+    vi.stubGlobal(
+      'ResizeObserver',
+      vi.fn((callback: () => void) => {
+        notifyResize = callback;
+        return { observe, disconnect };
+      })
+    );
+    mountFilterForm();
+    await flush();
+    const form = document.querySelector('.a9-filter-form');
+    const inputs = Array.from(form?.querySelectorAll('input') ?? []);
+    expect(observe).toHaveBeenCalledWith(form, { box: 'border-box' });
+    expect(form?.getAttribute('data-active-cols')).toBe('1');
+    expect(form?.classList.contains('a9-filter-form--narrow')).toBe(true);
+    expect(form?.classList.contains('arco-form-auto-label-width')).toBe(true);
+    expectWidths([1008, 1008, 1008]);
+
+    setFormWidth(0);
+    notifyResize();
+    await flush();
+    expect(form?.getAttribute('data-active-cols')).toBe('1');
+    expect(form?.classList.contains('a9-filter-form--narrow')).toBe(true);
+
+    setFormWidth(800);
+    notifyResize();
+    await flush();
+    expect(form?.getAttribute('data-active-cols')).toBe('2');
+    expect(form?.classList.contains('a9-filter-form--narrow')).toBe(false);
+
+    setFormWidth(1200);
+    notifyResize();
+    await flush();
+    expect(form?.getAttribute('data-active-cols')).toBe('3');
+    expect(form?.classList.contains('a9-filter-form--narrow')).toBe(false);
+    const currentInputs = Array.from(form?.querySelectorAll('input') ?? []);
+    inputs.forEach((input, index) => expect(currentInputs[index]).toBe(input));
+
+    setViewport(500);
+    await flush();
+    expect(form?.getAttribute('data-active-cols')).toBe('1');
+    expect(form?.classList.contains('a9-filter-form--narrow')).toBe(true);
+    mountedApps.splice(0).forEach((app) => app.unmount());
+    expect(disconnect).toHaveBeenCalledOnce();
+  });
+
+  it('measures on window resize without ResizeObserver and preserves explicit numeric columns', async () => {
+    vi.stubGlobal('ResizeObserver', undefined);
+    const setFormWidth = mockFormWidth(336);
+    const { cols } = mountFilterForm({ cols: 2 });
+    await flush();
+    const form = document.querySelector('.a9-filter-form');
+    expect(form?.getAttribute('data-active-cols')).toBe('2');
+    expect(form?.classList.contains('a9-filter-form--narrow')).toBe(true);
+
+    cols.value = undefined;
+    await flush();
+    expect(form?.getAttribute('data-active-cols')).toBe('1');
+    setFormWidth(800);
+    window.dispatchEvent(new Event('resize'));
+    await flush();
+    expect(form?.getAttribute('data-active-cols')).toBe('2');
+    expect(form?.classList.contains('a9-filter-form--narrow')).toBe(false);
   });
 
   it.each([2, 3, 4])('preserves equal columns and empty positions for %i unweighted fields', async (count) => {

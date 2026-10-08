@@ -80,19 +80,35 @@
       const formRef = ref<FormInstance>();
       const collapsed = ref(true);
       const viewportWidth = ref(1600);
-      const activeCols = computed(() => resolveCols(props.cols, viewportWidth.value));
+      const containerWidth = ref<number>();
+      const availableWidth = computed(() => Math.min(viewportWidth.value, containerWidth.value ?? viewportWidth.value));
+      const narrow = computed(() => availableWidth.value <= 767);
+      const activeCols = computed(() => resolveCols(props.cols, availableWidth.value));
+      let resizeObserver: ResizeObserver | undefined;
       let resetCollapseScheduled = false;
       let currentOverflow = false;
 
+      const updateContainerWidth = () => {
+        const width = formRef.value?.$el?.getBoundingClientRect().width;
+        if (width > 0) containerWidth.value = width;
+      };
       const updateViewportWidth = () => {
         viewportWidth.value = window.innerWidth;
+        updateContainerWidth();
       };
 
       onMounted(() => {
         updateViewportWidth();
+        if (typeof ResizeObserver !== 'undefined' && formRef.value?.$el) {
+          resizeObserver = new ResizeObserver(updateContainerWidth);
+          resizeObserver.observe(formRef.value.$el, { box: 'border-box' });
+        }
         window.addEventListener('resize', updateViewportWidth);
       });
-      onBeforeUnmount(() => window.removeEventListener('resize', updateViewportWidth));
+      onBeforeUnmount(() => {
+        resizeObserver?.disconnect();
+        window.removeEventListener('resize', updateViewportWidth);
+      });
 
       const scheduleCollapseReset = () => {
         if (!resetCollapseScheduled) {
@@ -215,10 +231,10 @@
             'size': props.size,
             'layout': 'horizontal',
             'labelAlign': 'left',
-            'autoLabelWidth': rowCount > 1 || viewportWidth.value <= 767,
+            'autoLabelWidth': rowCount > 1 || narrow.value,
             'labelColProps': { flex: 'none' },
             'wrapperColProps': { flex: '1' },
-            'class': 'a9-filter-form',
+            'class': ['a9-filter-form', { 'a9-filter-form--narrow': narrow.value }],
             'data-layout': layout,
             'data-field-count': String(fieldNodes.length),
             'data-active-cols': String(activeCols.value),
@@ -308,6 +324,16 @@
       :deep(.arco-form-item-wrapper-col) {
         min-width: 0;
       }
+
+      :deep(.arco-picker) {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+      }
+
+      :deep(.arco-picker-input) {
+        min-width: 0;
+      }
     }
 
     &__actions {
@@ -340,29 +366,37 @@
     }
   }
 
+  .narrow-layout() {
+    padding: 16px;
+
+    .a9-filter-form__body {
+      display: block;
+    }
+
+    .a9-filter-form__actions,
+    .a9-filter-form__actions--single {
+      flex-flow: row wrap;
+      gap: 8px;
+      width: 100%;
+      margin-top: 16px;
+      padding-top: 16px;
+      padding-left: 0;
+      border-top: 1px solid var(--color-neutral-3);
+      border-left: 0;
+
+      :deep(.arco-btn) {
+        width: auto;
+      }
+    }
+  }
+
+  .a9-filter-form--narrow {
+    .narrow-layout();
+  }
+
   @media (width <= 767px) {
     .a9-filter-form {
-      padding: 16px;
-
-      &__body {
-        display: block;
-      }
-
-      &__actions,
-      &__actions--single {
-        flex-flow: row wrap;
-        gap: 8px;
-        width: 100%;
-        margin-top: 16px;
-        padding-top: 16px;
-        padding-left: 0;
-        border-top: 1px solid var(--color-neutral-3);
-        border-left: 0;
-
-        :deep(.arco-btn) {
-          width: auto;
-        }
-      }
+      .narrow-layout();
     }
   }
 </style>
