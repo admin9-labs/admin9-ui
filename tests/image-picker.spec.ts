@@ -222,7 +222,7 @@ afterEach(() => {
 
 describe('AImagePicker with real Arco', () => {
   it.each([
-    { pageSize: undefined, expected: 15 },
+    { pageSize: undefined, expected: 20 },
     { pageSize: 3, expected: 3 },
   ])('uses picker pagination capacity $expected when pageSize is $pageSize', async ({ pageSize, expected }) => {
     const host = mount({ props: { pageSize } });

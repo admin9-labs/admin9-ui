@@ -314,7 +314,7 @@ describe('ATiptapEditor real AFilePicker integration', () => {
     expect(document.querySelector('[data-testid="file-picker-modal"]')).not.toBeNull();
     expect(service.list).toHaveBeenCalledWith({
       page: 1,
-      pageSize: 15,
+      pageSize: 20,
       keyword: undefined,
       fileType: expectedType,
       groupId: undefined,

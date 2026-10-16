@@ -142,7 +142,6 @@
             ><AFilePicker
               v-model="files"
               :limit="4"
-              :page-size="6"
               :service="service"
               :readonly="readonly"
               multiple

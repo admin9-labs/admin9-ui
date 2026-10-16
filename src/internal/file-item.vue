@@ -5,18 +5,13 @@
   import formatFileSize from './file-size';
   import type { FileItem } from '../services/types';
 
-  const props = withDefaults(
-    defineProps<{
-      item: FileItem;
-      available: boolean;
-      statusLabel: string;
-      previewEnabled: boolean;
-      view?: 'grid' | 'list';
-      showMetadata?: boolean;
-      showName?: boolean;
-    }>(),
-    { showMetadata: true, showName: true }
-  );
+  const props = defineProps<{
+    item: FileItem;
+    available: boolean;
+    statusLabel: string;
+    previewEnabled: boolean;
+    view?: 'grid' | 'list';
+  }>();
 
   const emit = defineEmits<{
     (e: 'previewOpen', trigger?: HTMLElement): void;
@@ -60,15 +55,12 @@
       {
         'is-unavailable': !available,
         'is-list': view === 'list',
-        'is-compact': showMetadata === false && view !== 'list',
-        'is-thumbnail-only': !showName && showMetadata === false && view !== 'list',
       },
     ]"
     :data-file-type="item.type"
     :data-available="String(available)"
   >
     <div v-if="view === 'list' && $slots.selection" class="a9-file-item__selection"><slot name="selection" /></div>
-    <slot v-if="view !== 'list' && !showName" name="selection" />
     <div class="a9-file-item__visual">
       <a-image
         v-if="item.type === 'image' && (thumbnail || url)"
@@ -103,7 +95,7 @@
       </span>
     </div>
     <div class="a9-file-item__details">
-      <div v-if="showName" class="a9-file-item__heading">
+      <div class="a9-file-item__heading">
         <slot v-if="view !== 'list'" name="selection" />
         <span class="a9-file-item__name" :title="item.name">{{ item.name }}</span>
       </div>
@@ -114,7 +106,7 @@
         :title="statusLabel"
         >{{ statusLabel }}</span
       >
-      <span v-else-if="showMetadata !== false" class="a9-file-item__meta" :title="meta">{{ meta }}</span>
+      <span v-else class="a9-file-item__meta" :title="meta">{{ meta }}</span>
     </div>
     <div v-if="available && url" class="a9-file-item__actions">
       <button
@@ -148,14 +140,6 @@
     min-width: 0;
 
     &.is-list {
-      grid-template-rows: auto;
-    }
-
-    &.is-compact {
-      grid-template-rows: auto 28px;
-    }
-
-    &.is-thumbnail-only {
       grid-template-rows: auto;
     }
 
@@ -280,53 +264,6 @@
         outline: 2px solid rgb(var(--primary-6));
         outline-offset: 2px;
       }
-    }
-
-    &.is-compact &__heading {
-      grid-column: 1;
-    }
-
-    &.is-compact &__actions {
-      grid-row: 2;
-      grid-column: 2;
-      margin-top: 8px;
-    }
-
-    &.is-compact &__status {
-      grid-row: 2;
-      grid-column: 2;
-      align-self: end;
-      max-width: 80px;
-      padding-left: 8px;
-    }
-
-    &.is-compact &__open {
-      min-height: 20px;
-    }
-
-    &.is-thumbnail-only &__actions {
-      position: absolute;
-      right: 6px;
-      bottom: 6px;
-      grid-row: auto;
-      grid-column: auto;
-      margin-top: 0;
-      padding: 2px 6px;
-      background: var(--color-bg-popup);
-      border-radius: 4px;
-    }
-
-    &.is-thumbnail-only &__status {
-      position: absolute;
-      right: 6px;
-      bottom: 6px;
-      left: 6px;
-      grid-row: auto;
-      grid-column: auto;
-      max-width: none;
-      padding: 2px 6px;
-      background: var(--color-bg-popup);
-      border-radius: 4px;
     }
   }
 </style>

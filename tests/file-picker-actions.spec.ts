@@ -408,7 +408,7 @@ describe('file library actions in the picker', () => {
     await flush();
     expect(document.querySelector('.a9-file-picker__items')?.getAttribute('data-view')).toBe('grid');
     expect(document.querySelector('.a9-file-picker__view-toggle')).toBeNull();
-    expect(document.querySelector('.a9-file-item__meta')).toBeNull();
+    expect(document.querySelector('.a9-file-item__meta')?.textContent).toContain('PNG');
     host.props.fileTypes = ['image', 'document'];
     await flush();
     expect(document.querySelector('.a9-file-picker__items')?.getAttribute('data-view')).toBe('list');

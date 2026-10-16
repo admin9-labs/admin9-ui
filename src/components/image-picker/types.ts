@@ -23,6 +23,7 @@ export interface AImagePickerProps {
   readonly?: boolean;
   size?: Size;
   buttonText?: string;
+  /** 每页请求数量，默认 20；正整数可覆盖默认值。 */
   pageSize?: number;
   /** @deprecated 图片弹窗固定为网格；仅为兼容已有调用保留。 */
   defaultView?: FilePickerView;

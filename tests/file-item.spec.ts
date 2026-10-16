@@ -24,8 +24,6 @@ function mount(file: FileItem, view: 'grid' | 'list' = 'grid') {
     statusLabel: '',
     previewEnabled: true,
     view,
-    showMetadata: true,
-    showName: true,
   });
   const preview = vi.fn();
   const select = vi.fn();
@@ -48,13 +46,11 @@ afterEach(() => {
 });
 
 describe('file card image rendering', () => {
-  it('keeps image-only cards free of filenames while retaining preview names and unavailable status', async () => {
+  it('shows image filenames and metadata while retaining preview names and unavailable status', async () => {
     const { host, state, preview } = mount({ ...item });
-    state.showName = false;
-    state.showMetadata = false;
     await nextTick();
-    expect(host.querySelector('.a9-file-item__name')).toBeNull();
-    expect(host.querySelector('.a9-file-item__meta')).toBeNull();
+    expect(host.querySelector('.a9-file-item__name')?.textContent).toBe(item.name);
+    expect(host.querySelector('.a9-file-item__meta')?.textContent).toBe('PNG · 2 KB');
     expect(host.querySelector('img')?.getAttribute('alt')).toBe(item.name);
     const button = host.querySelector<HTMLButtonElement>('.a9-file-item__open');
     expect(button?.getAttribute('aria-label')).toBe(`Preview ${item.name}`);
@@ -65,7 +61,7 @@ describe('file card image rendering', () => {
     state.statusLabel = 'Image is processing';
     await nextTick();
     expect(host.querySelector('.a9-file-item__status')?.textContent).toBe('Image is processing');
-    expect(host.querySelector('.a9-file-item__name')).toBeNull();
+    expect(host.querySelector('.a9-file-item__name')?.textContent).toBe(item.name);
   });
   it.each(['grid', 'list'] as const)('preserves image and video thumbnails without cropping in %s view', async (view) => {
     const { host, state } = mount({ ...item }, view);
@@ -99,9 +95,6 @@ describe('file card image rendering', () => {
     const { host, state } = mount({ ...item });
     expect(host.querySelector('.a9-file-item__name')?.getAttribute('title')).toBe(item.name);
     expect(host.querySelector('.a9-file-item__meta')?.textContent).toContain('PNG');
-    state.showMetadata = false;
-    await nextTick();
-    expect(host.querySelector('.a9-file-item__meta')).toBeNull();
     expect(host.querySelector('.a9-file-item__name')?.textContent).toBe(item.name);
     expect(host.querySelector('.a9-file-item__open')).not.toBeNull();
     state.item = { ...item, status: 'pending' };

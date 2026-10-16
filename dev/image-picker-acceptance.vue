@@ -27,7 +27,7 @@
   const narrow = ref(false);
   const dark = ref(false);
   const state = ref<AcceptanceState>('normal');
-  const fixedPageSize = ref(false);
+  const customPageSize = ref(false);
   const serverPageSize = ref(0);
   const showGroups = ref(true);
   const completedRequests = ref(0);
@@ -86,7 +86,7 @@
       <label><input v-model="custom" type="checkbox" /> 自定义入口</label>
       <label><input v-model="narrow" type="checkbox" /> 320px 容器</label>
       <label><input v-model="dark" type="checkbox" /> Dark</label>
-      <label><input v-model="fixedPageSize" type="checkbox" /> 固定每页 24 张</label>
+      <label><input v-model="customPageSize" type="checkbox" /> 每页 10 张（默认 20）</label>
       <label><input v-model="showGroups" type="checkbox" /> 显示分组</label>
       <label
         >服务实际每页
@@ -132,7 +132,7 @@
             :show-file-list="showFileList"
             :display-mode="displayMode"
             :fit="fit"
-            :page-size="fixedPageSize ? 24 : undefined"
+            :page-size="customPageSize ? 10 : undefined"
             @change="changes += 1"
             @confirm="confirmations += 1"
             @upload-success="uploads += 1"

@@ -431,7 +431,7 @@ describe('AFilePicker', () => {
 
     click('[data-testid="file-picker-trigger"]');
     await flush();
-    expect(allService.list).toHaveBeenCalledWith({ page: 1, pageSize: 15, keyword: undefined, groupId: undefined });
+    expect(allService.list).toHaveBeenCalledWith({ page: 1, pageSize: 20, keyword: undefined, groupId: undefined });
     expect((allService.list as ReturnType<typeof vi.fn>).mock.calls[0][0]).not.toHaveProperty('fileTypes');
     expect((allService.list as ReturnType<typeof vi.fn>).mock.calls[0][0]).toHaveProperty('groupId', undefined);
 
@@ -444,7 +444,7 @@ describe('AFilePicker', () => {
 
     expect(subsetService.list).toHaveBeenCalledWith({
       page: 1,
-      pageSize: 15,
+      pageSize: 20,
       keyword: undefined,
       fileTypes: ['image', 'document'],
       groupId: undefined,
@@ -460,7 +460,7 @@ describe('AFilePicker', () => {
 
     expect(service.list).toHaveBeenCalledWith({
       page: 1,
-      pageSize: 15,
+      pageSize: 20,
       keyword: undefined,
       fileType: 'image',
       groupId: undefined,
@@ -638,8 +638,8 @@ describe('AFilePicker', () => {
     const checkbox = item('image-1').querySelector<HTMLInputElement>('input[type="checkbox"]');
     const disabledCheckbox = item('failed').querySelector<HTMLInputElement>('input[type="checkbox"]');
     expect(checkbox?.labels).toHaveLength(1);
-    expect(checkbox?.closest('.a9-file-item__heading')).toBeNull();
-    expect(item('image-1').querySelector('.a9-file-item__name')).toBeNull();
+    expect(checkbox?.closest('.a9-file-item__heading')).not.toBeNull();
+    expect(item('image-1').querySelector('.a9-file-item__name')?.textContent).toBe(image.name);
     expect(checkbox?.labels?.[0]?.classList.contains('a9-file-picker__checkbox--card')).toBe(true);
     expect(checkbox?.closest('.a9-file-item__visual')).toBeNull();
     expect(checkbox?.labels?.[0]?.textContent?.trim()).toBe('Select dashboard.png');
@@ -694,6 +694,7 @@ describe('AFilePicker', () => {
     const footer = modal?.querySelector<HTMLElement>('.arco-modal-footer');
     expect(modal?.style.width).toBe('calc(100vw - 32px)');
     expect(modal?.style.maxWidth).toBe('1040px');
+    expect(modal?.style.height).toBe('720px');
     // Geometry and scroll bounds require real-browser acceptance; happy-dom only checks this contract.
     expect(modal?.parentElement?.classList.contains('arco-modal-wrapper-align-center')).toBe(true);
     expect(modal?.style.top).toBe('');
@@ -1477,7 +1478,7 @@ describe('AFilePicker', () => {
     click('[data-testid="file-picker-trigger"]');
     await flush();
     expect(service.list).toHaveBeenCalledTimes(1);
-    expect(service.list).toHaveBeenCalledWith({ page: 1, pageSize: 15, keyword: undefined, groupId: undefined });
+    expect(service.list).toHaveBeenCalledWith({ page: 1, pageSize: 20, keyword: undefined, groupId: undefined });
     expect(document.querySelector<HTMLInputElement>('[data-testid="picker-search"]')?.value).toBe('');
   });
 

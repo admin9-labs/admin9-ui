@@ -214,7 +214,7 @@
   const filePickerMultiple = ref(true);
   const filePickerCustomItem = ref(false);
   const filePickerTallItem = ref(false);
-  const filePickerFixedPageSize = ref(false);
+  const filePickerCustomPageSize = ref(false);
   const filePickerShowGroups = ref(true);
   const filePickerServerPageSize = ref(0);
   const filePickerRequestSummary = ref('尚未请求');
@@ -725,7 +725,7 @@
             </a-radio-group>
             <label><input v-model="filePickerCustomItem" type="checkbox" /> 自定义文件卡片</label>
             <label><input v-model="filePickerTallItem" type="checkbox" /> 超高自定义内容</label>
-            <label><input v-model="filePickerFixedPageSize" type="checkbox" /> 固定每页 24 项</label>
+            <label><input v-model="filePickerCustomPageSize" type="checkbox" /> 每页 10 项（默认 20）</label>
             <label><input v-model="filePickerShowGroups" type="checkbox" /> 显示分组</label>
             <label
               >服务实际每页
@@ -761,7 +761,7 @@
               :service="filePickerService"
               :file-types="filePickerTypes"
               default-view="list"
-              :page-size="filePickerFixedPageSize ? 24 : undefined"
+              :page-size="filePickerCustomPageSize ? 10 : undefined"
               :limit="4"
               :multiple="filePickerMultiple"
               can-upload

@@ -310,7 +310,7 @@ describe('ACoverPicker', () => {
     await flush();
     expect(pickerService.list).toHaveBeenCalledWith({
       page: 1,
-      pageSize: 15,
+      pageSize: 20,
       keyword: undefined,
       fileType: 'image',
       groupId: undefined,

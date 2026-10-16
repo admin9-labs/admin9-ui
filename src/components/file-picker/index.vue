@@ -18,7 +18,7 @@
   import FileImagePreview from '../../internal/file-image-preview.vue';
   import FileFolderIcon from '../../internal/file-folder-icon.vue';
   import admin9UIOptionsKey from '../../internal/options';
-  import resolveFilePickerLayout from './layout';
+  import resolveFilePickerColumns from './layout';
   import type { FileGroup, FileItem, FileListParams, FilePickerAdapter, FileType } from '../../services/types';
 
   type GroupId = string | null | undefined;
@@ -149,19 +149,13 @@
   };
   const current = ref(1);
   const configuredPageSize = computed(() =>
-    Number.isInteger(props.pageSize) && Number(props.pageSize) > 0 ? props.pageSize : undefined
+    typeof props.pageSize === 'number' && Number.isInteger(props.pageSize) && props.pageSize > 0 ? props.pageSize : 20
   );
   const resolvedPageSize = ref(0);
   const results = ref<HTMLElement>();
   const gridColumns = ref(1);
-  const fittedModalHeight = ref<number>();
   let layoutObserver: ResizeObserver | undefined;
-  let resizeTimer: ReturnType<typeof setTimeout> | undefined;
-  let targetPageSize = 0;
-  let pendingPageSize: number | undefined;
   let pendingPageReset = false;
-  let resolveLayout: (() => void) | undefined;
-  let firstListLoad: Promise<void> | undefined;
   let initialRefresh: Promise<void> | undefined;
   const total = ref(0);
   const keyword = ref('');
@@ -528,16 +522,9 @@
     createGeneration += 1;
     createGroupVisible.value = false;
     creatingGroup.value = false;
-    clearTimeout(resizeTimer);
-    resolveLayout?.();
-    resolveLayout = undefined;
-    firstListLoad = undefined;
     initialRefresh = undefined;
-    targetPageSize = 0;
-    pendingPageSize = undefined;
     pendingPageReset = false;
     resolvedPageSize.value = 0;
-    fittedModalHeight.value = undefined;
     managing.value = false;
     managementMap.value.clear();
     moveVisible.value = false;
@@ -614,15 +601,10 @@
     }
   };
 
-  const applyPendingCapacity = () => {
-    clearTimeout(resizeTimer);
-    if (!pendingPageSize && !pendingPageReset) return false;
-    const next = pendingPageSize ?? resolvedPageSize.value;
-    pendingPageSize = undefined;
-    const reset = pendingPageReset;
+  const applyPendingPageSize = () => {
+    if (!pendingPageReset) return false;
     pendingPageReset = false;
-    if (next === resolvedPageSize.value && !reset) return false;
-    resolvedPageSize.value = next;
+    resolvedPageSize.value = configuredPageSize.value;
     current.value = 1;
     list.value = [];
     return true;
@@ -630,71 +612,15 @@
 
   const measureLayout = () => {
     if (!visible.value) return;
-    const element = results.value;
-    const modalHeight = element?.closest<HTMLElement>('.arco-modal')?.clientHeight ?? 0;
-    const width = element?.clientWidth ?? 0;
-    const height = element?.clientHeight ?? 0;
-    const outsideResultsHeight = modalHeight - height;
-    const maxModalHeight = Math.min(imagesOnly.value ? 720 : 800, window.innerHeight - 32);
-    const fitGrid =
-      view.value === 'grid' &&
-      configuredPageSize.value === undefined &&
-      !instance?.slots.item &&
-      !shortViewport.value &&
-      width > 0 &&
-      height > 0 &&
-      modalHeight > 0 &&
-      outsideResultsHeight >= 0;
-    const layout = resolveFilePickerLayout(
-      width,
-      fitGrid ? maxModalHeight - outsideResultsHeight : height,
-      view.value,
-      narrow.value,
-      imagesOnly.value
-    );
-    fittedModalHeight.value = fitGrid
-      ? Math.min(maxModalHeight, Math.ceil(outsideResultsHeight + layout.gridHeight))
-      : undefined;
-    gridColumns.value = layout.columns;
-    const next = configuredPageSize.value ?? layout.pageSize;
-    if (!next) return;
-    if (!resolvedPageSize.value) {
-      targetPageSize = next;
-      resolvedPageSize.value = next;
-      resolveLayout?.();
-      resolveLayout = undefined;
-      return;
-    }
-    if (next === targetPageSize) return;
-    targetPageSize = next;
-    pendingPageSize = next;
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-      if (!visible.value || fileActionBusy.value) return;
-      if (applyPendingCapacity()) requestList();
-    }, 150);
+    gridColumns.value = resolveFilePickerColumns(results.value?.clientWidth ?? 0, narrow.value);
   };
 
   function fetchList(afterFileAction = false): Promise<void> {
     if (!visible.value || !hasAllowedTypes.value || (fileActionBusy.value && !afterFileAction)) return Promise.resolve();
-    if (firstListLoad) return firstListLoad;
-    applyPendingCapacity();
-    if (resolvedPageSize.value) return requestList();
-    const generation = viewGeneration;
-    loading.value = true;
-    const layoutReady = new Promise<void>((resolve) => {
-      resolveLayout = resolve;
-    });
-    const load = (async () => {
-      await layoutReady;
-      if (generation !== viewGeneration || !visible.value) return;
-      firstListLoad = undefined;
-      initialRefresh = undefined;
-      await requestList();
-    })();
-    firstListLoad = load;
-    nextTick(measureLayout);
-    return load;
+    initialRefresh = undefined;
+    applyPendingPageSize();
+    if (!resolvedPageSize.value) resolvedPageSize.value = configuredPageSize.value;
+    return requestList();
   }
 
   watch(
@@ -711,7 +637,7 @@
   onMounted(() => window.addEventListener('resize', measureLayout));
   watch([view, narrow], () => nextTick(measureLayout));
   watch(fileActionBusy, (busy, previous) => {
-    if (!busy && previous && (pendingPageSize || pendingPageReset)) fetchList();
+    if (!busy && previous && pendingPageReset) fetchList();
   });
 
   const fetchGroups = async () => {
@@ -837,7 +763,7 @@
     if (isCurrent()) {
       fileActionBusy.value = false;
       deleteVisible.value = false;
-      if (applyPendingCapacity()) await fetchList();
+      if (applyPendingPageSize()) await fetchList();
       if (isCurrent() && action === 'move') {
         await nextTick();
         workspace.value?.querySelector<HTMLElement>('[data-testid="file-picker-exit-batch"]')?.focus();
@@ -1191,12 +1117,9 @@
       exitManagement();
     }
   );
-  watch(configuredPageSize, async () => {
+  watch(configuredPageSize, () => {
     pendingPageReset = true;
-    if (!visible.value || !hasAllowedTypes.value) return;
-    await nextTick();
-    measureLayout();
-    fetchList();
+    if (visible.value && hasAllowedTypes.value) fetchList();
   });
 
   watch(interactionDisabled, (value) => {
@@ -1309,7 +1232,7 @@
       width="calc(100vw - 32px)"
       :modal-style="{
         display: 'inline-flex',
-        height: `${fittedModalHeight ?? (imagesOnly ? 720 : 800)}px`,
+        height: '720px',
         maxWidth: '1040px',
         maxHeight: 'calc(100dvh - 32px)',
         flexDirection: 'column',
@@ -1664,8 +1587,6 @@
                       >
                         <FileItemView
                           :item="item"
-                          :show-metadata="!imagesOnly"
-                          :show-name="!imagesOnly"
                           :available="isSelectable(item)"
                           :status-label="statusLabel(item)"
                           :view="view"

@@ -8,6 +8,7 @@ export interface AFilePickerProps {
   fileTypes?: readonly FileType[];
   multiple?: boolean;
   limit?: number;
+  /** 每页请求数量，默认 20；正整数可覆盖默认值。 */
   pageSize?: number;
   buttonText?: string;
   accept?: string;
