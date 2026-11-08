@@ -1,6 +1,10 @@
 /* eslint-disable import/no-duplicates, @typescript-eslint/no-unused-vars -- Independent negative imports verify removed public types. */
 import type {
   FileListParams,
+  AImageCropperExposed,
+  ImageCropOptions,
+  ACoverPickerExposed,
+  FileOriginalReadCapability,
   FileItem,
   FileBeforeSelect,
   FileBeforeUpload,
@@ -180,3 +184,28 @@ export const croppedFiles: AFilePickerProps = { beforeUpload, beforeSelect };
 export const croppedImages: AImagePickerProps = { beforeUpload, beforeSelect };
 export const croppedCover: ACoverPickerProps = { aspectRatio: '3 / 4', beforeUpload, beforeSelect };
 export const croppedUploader: AFileUploaderProps = { beforeUpload };
+
+export const nativeCrop: ImageCropOptions = {
+  source: { maxBytes: 10_000_000, maxPixels: 20_000_000 },
+  output: { format: 'image/png', resize: { mode: 'exact', longEdge: 640 }, maxBytes: 2_000_000 },
+};
+export const nativeCover: ACoverPickerProps = { crop: nativeCrop, aspectRatio: 4 / 3 };
+export const originalReader: FileOriginalReadCapability = {
+  readOriginal: async ({ item, signal }) => {
+    if (!item.url) throw new Error('Missing original URL');
+    return new File([await (await fetch(item.url, { signal })).blob()], item.name);
+  },
+};
+export function nativeCropMethods(cropper: AImageCropperExposed, cover: ACoverPickerExposed, file: File) {
+  const result: Promise<File | null> = cropper.open(file);
+  cropper.cancel();
+  cover.cancel();
+  return result;
+}
+// @ts-expect-error PNG has no quality setting.
+export const invalidPng: ImageCropOptions['output'] = {
+  format: 'image/png',
+  quality: 0.8,
+  resize: { mode: 'exact', longEdge: 640 },
+  maxBytes: 1_000_000,
+};

@@ -1,4 +1,28 @@
 export default {
+  imageCropper: {
+    title: 'Crop image',
+    hint: 'Drag the selection to move it; drag a corner to resize',
+    image: 'Image to crop',
+    move: 'Move selection, or use arrow keys',
+    resize: 'Resize selection, or use arrow keys',
+    loading: 'Reading image…',
+    cancel: 'Cancel',
+    retry: 'Retry',
+    confirm: 'Confirm crop',
+    uploading: 'Uploading cropped image…',
+    retryUpload: 'Retry upload',
+    errors: {
+      format: 'Choose a static JPEG or PNG image',
+      animated: 'Animated images are not supported',
+      sourceSize: 'The original image is empty or exceeds the size limit',
+      pixels: 'The image dimensions exceed the processing limit',
+      decode: 'Image processing failed. Retry or choose another image',
+      outputSize: 'The result exceeds the file size limit. Adjust the crop or choose another image',
+      configuration: 'The crop configuration is incomplete or conflicting. Contact your administrator',
+      read: 'Could not read the original image. Please retry',
+      upload: 'Could not upload the cropped image. Please retry',
+    },
+  },
   modal: {
     close: 'Close dialog',
   },

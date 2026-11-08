@@ -100,10 +100,11 @@ export type CoverPickerValue =
 | `update:modelValue` | `CoverPickerValue` | 用户提交的封面值真实变化时                        |
 | `change`            | `CoverPickerValue` | 与 `update:modelValue` 同次触发，便于表单重新校验 |
 | `visible-change`    | `boolean`          | 内部文件选择弹窗打开或关闭                        |
-| `upload-success`    | `FileItem`         | 文件上传成功；不会自动填入封面位置                |
+| `upload-success`    | `FileItem`         | 文件上传成功；原生裁剪成功会写回目标位置                |
+| `processing-change` | `boolean` | 当前选择是否正在读取、裁剪或上传 |
 | `upload-error`      | `unknown`          | 文件上传失败                                      |
 
-TypeScript 声明使用 `visibleChange`、`uploadSuccess`、`uploadError`；Vue 模板使用表中的 kebab-case。
+TypeScript 声明使用 `visibleChange`、`uploadSuccess`、`uploadError`、`processingChange`；Vue 模板使用表中的 kebab-case。
 
 ## 模式与位置
 
@@ -115,28 +116,64 @@ TypeScript 声明使用 `visibleChange`、`uploadSuccess`、`uploadError`；Vue 
 
 点击空位置选择图片，点击已有图片进行替换。取消文件弹窗不会写回，确认相同图片不会重复触发值事件。移除只解除当前位置的引用，不调用后端删除接口。
 
-## 裁剪与处理接入
+## 原生裁剪
 
-`beforeSelect: (item: FileItem) => Promise<FileItem | null>` 在内部文件弹窗确认后、写回封面位置前执行。返回有效图片用于替换；返回 `null` 或抛错时保留原封面。处理期间禁止模式切换、替换及移除；外部值、禁用状态或组件生命周期使任务失效后，迟到结果不会写回。显式确认空选择仍会清空当前位置。
+传入 `crop: ImageCropOptions` 开启原生流程。`aspectRatio` 是预览和裁剪框的唯一比例来源，由业务使用点配置，弹窗不提供比例切换。`size` 只控制卡片宽度，与成品像素无关。
 
-`beforeUpload` 规则同 [AFileUploader](./file-uploader.md#上传前处理)，只影响本地文件上传，不会自动选中上传结果。
+```vue
+<ACoverPicker
+  v-model="cover"
+  :service="fileService"
+  :aspect-ratio="4 / 3"
+  :crop="cropOptions"
+  can-upload
+  @processing-change="processing = $event"
+/>
+```
 
-裁剪弹窗、业务比例、输出像素尺寸和生成文件的保存由消费应用实现。应用可以使用同一业务规格配置 `aspectRatio` 和自己的裁剪器；已有图片是否需要重新裁剪也由应用判断。组件不内置四种比例或 640px 输出限制。返回的 `FileItem.width` / `height` 可记录处理后尺寸；使用临时 blob URL 时，由创建方在不再引用后释放。
+```ts
+import type { ImageCropOptions } from '@admin9-labs/admin9-ui';
+const cropOptions: ImageCropOptions = {
+  source: { maxBytes: 10 * 1024 ** 2, maxPixels: 20_000_000 },
+  output: {
+    resize: { mode: 'exact', longEdge: 640 },
+    format: 'image/png',
+    maxBytes: 2 * 1024 ** 2,
+  },
+};
+```
+
+点击某个封面位置打开素材库，选择已有图片，或在素材库上传后选择新图片。选定后通过 adapter 的可选 `readOriginal({ item, signal }): Promise<File>` 读取原图，不能用缩略图替代。原图经过 [AImageCropper](./image-cropper.md)，再调用现有 `upload` 创建新素材；上传成功取得有效 `FileItem` 后才替换当前封面。原素材不被覆盖。
+
+启用裁剪需要 `upload` 和 `readOriginal`。缺少能力时选择入口不可用并提示配置问题，不会跳过裁剪提交原图。`canUpload` 控制素材库内的上传入口；显式配置 `crop` 后，选定图片会上传裁剪后的派生文件。功能启用和操作权限由应用决定，实际授权由 adapter 和后端执行。
+
+- 首版 `crop` 与 `beforeUpload` / `beforeSelect` 互斥，同时配置会阻止处理并显示配置错误。
+- 取消保留旧封面；上传失败保留裁剪好的文件，重试只重传失败项，不要求重新构图。
+- 一次只处理当前选中的一个位置，三个位置独立替换。取消或失败保留旧封面，不回退其他位置已完成的结果。比例变化更新展示并取消未完成的处理，不产生待重裁状态；业务应在使用点预设比例。
+- 原图来源、绑定值、服务、裁剪配置或禁用/只读状态变化后，旧操作取消，迟到结果不写回。关闭或卸载也会释放处理资源；取消无法撤回已成功的远端上传，不自动删除素材。
+- `processing-change` 返回布尔值，表示当前选择正在读取、裁剪或上传。应用可据此控制保存；不要把自身 `processing` 回传给组件的 `disabled`，否则会取消当前操作。
+- 文章、账户等业务上下文改变时，应用调用公开 `cancel()`。组件不监听业务状态。
+
+公开实例方法：`cancel(): void`，取消当前选择和处理。封面选择统一由卡片入口发起。
+
+## 旧钩子接入
+
+未配置 `crop` 时保持原行为。`beforeSelect: (item: FileItem) => Promise<FileItem | null>` 在内部文件弹窗确认后、写回封面位置前执行；返回有效图片用于替换，返回 `null` 或抛错保留原值。显式确认空选择仍清空当前位置。`beforeUpload` 规则同 [AFileUploader](./file-uploader.md#上传前处理)，只影响本地文件上传，不自动选中上传结果。
 
 ## 图片与安全边界
 
 组件只接受具有稳定非空 ID、`type: 'image'`、非空 URL，并且状态为 `ready` 或未提供的 `FileItem`。非法外部图片按原位置校正为 `null`，不会移动其他位置。
 
-预览优先使用 `thumbnail`，加载失败后回退 `url`，再次失败则显示占位。预览框默认 `4:3`，可通过 `aspectRatio` 调整，并使用 `object-fit: cover`。比例变化只改变展示，不会裁剪或改写原文件，也不会触发值变更。
+预览优先使用 `thumbnail`，加载失败后回退 `url`，再次失败则显示占位。预览框默认 `4:3`，可通过 `aspectRatio` 调整，并使用 `object-fit: cover`。比例变化只改变展示，不会自行改写原文件或触发值变更；启用裁剪时会取消尚未完成的处理。
 
 `canUpload` 只是界面能力开关。adapter 和后端仍需校验文件内容、MIME、扩展名、大小、身份、资源归属和权限。
 
 ## 表单与受控值
 
-`readonly?: boolean` 默认 false，与继承的 Form disabled 一起阻止模式切换、选择与移除。用户正式提交封面后触发字段 change 校验，无须额外调用 validateField。外部不合法输入仅归一化展示，不回写父模型或触发 change；下一次用户确认会提交规范后的完整封面值，即使所选图片与展示相同。上传成功只表示文件准备就绪，不自动改变封面。
+`readonly?: boolean` 默认 false，与继承的 Form disabled 一起阻止模式切换、选择与移除。用户正式提交封面后触发字段 change 校验，无须额外调用 validateField。外部不合法输入仅归一化展示，不回写父模型或触发 change；下一次用户确认会提交规范后的完整封面值，即使所选图片与展示相同。未启用原生裁剪时，素材库中的上传成功只表示文件准备就绪，不自动改变封面。
 
 CoverPickerSize 使用官方 Size，增加 mini（封面最大宽 88px、添加图标 20px、替换图标 20px）；显式 size 优先，其次 Form，组合布局最终默认 medium。单独使用时封面格保持该布局默认值；Arco 模式控件仍可继承 ConfigProvider。该差异用于区分图片画布尺寸与输入控件高度。
 
 内部选图弹窗仅使用网格；批量管理的勾选独立于当前封面位置，即使每次封面选择仅一张，也可同时管理多个素材。管理操作立即作用于素材库，退出或取消不会撤销；退出管理后恢复有效选图草稿。
 
-组件无额外公开方法或插槽；class/style 和原生根属性附在封面根节点，内部文件选择器不作为公共实例 API。
+组件无额外插槽；class/style 和原生根属性附在封面根节点，内部文件选择器不作为公共实例 API。

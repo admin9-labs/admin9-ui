@@ -294,6 +294,7 @@ describe('package public API', () => {
         'AIconPicker',
         'ACoordinatePicker',
         'AFilePicker',
+        'AImageCropper',
         'AImagePicker',
         'AFileUploader',
         'AFilterForm',
@@ -325,6 +326,7 @@ describe('package public API', () => {
     expect(app.component('AChatMessageList')).toBe(publicApi.AChatMessageList);
     expect(app.component('AChatComposer')).toBe(publicApi.AChatComposer);
     expect(app.component('ACoverPicker')).toBe(publicApi.ACoverPicker);
+    expect(app.component('AImageCropper')).toBe(publicApi.AImageCropper);
 
     expect(app.component('AMediaLibrary')).toBeUndefined();
     expect(app.component('AFileManager')).toBeUndefined();

@@ -90,6 +90,11 @@ export interface FileBrowseCapability {
   listGroups?(): Promise<FileGroup[]>;
 }
 
+export interface FileOriginalReadCapability {
+  /** Read the selected file's original bytes, not its thumbnail. Auth belongs to the adapter. */
+  readOriginal(options: { item: FileItem; signal: AbortSignal }): Promise<File>;
+}
+
 export interface FileUploadCapability {
   upload(options: FileUploadOptions): Promise<FileItem>;
 }
@@ -127,7 +132,9 @@ export type FileUploadRejection =
 
 /** AFilePicker only requires browsing; writes remain optional capabilities. */
 export type FilePickerAdapter = FileBrowseCapability &
-  Partial<FileUploadCapability & FileGroupCreateCapability & FileDeleteCapability & FileMoveCapability>;
+  Partial<
+    FileOriginalReadCapability & FileUploadCapability & FileGroupCreateCapability & FileDeleteCapability & FileMoveCapability
+  >;
 
 /** Plugin installation options for app.use(Admin9UI, options). */
 export interface Admin9UIPluginOptions {

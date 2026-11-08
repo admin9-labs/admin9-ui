@@ -43,6 +43,7 @@ app.use(Admin9UI, {
 ```ts
 import {
   ACoverPicker,
+  AImageCropper,
   ACoordinatePicker,
   AFilePicker,
   AImagePicker,
@@ -59,6 +60,7 @@ import { messages, localePrefix } from '@admin9-labs/admin9-ui/locale';
 
 ## 组件
 
+- [`AImageCropper`](./docs/components/image-cropper.md)：固定业务比例的原图裁剪、方向处理与成品编码，返回 File
 - [`ACoverPicker`](./docs/components/cover-picker.md)：支持单图、三图和无封面的固定位置封面选择器
 - [`ACoordinatePicker`](./docs/components/coordinate-picker.md)：基于腾讯地图 JavaScript API GL 的表单级坐标选择器
 - [`AImagePicker`](./docs/components/image-picker.md)：图片字段卡片、预览、更换和移除，支持方形、横图、竖图与横幅外观
