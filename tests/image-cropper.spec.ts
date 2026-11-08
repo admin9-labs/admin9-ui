@@ -43,9 +43,9 @@ const tick = async () => {
   await nextTick();
 };
 let app: App;
-function mount() {
+function mount(onVisibleChange?: (visible: boolean) => void) {
   const exposed = ref<AImageCropperExposed>();
-  app = createApp({ setup: () => () => h(AImageCropper, { ref: exposed, crop, aspectRatio: 1 }) });
+  app = createApp({ setup: () => () => h(AImageCropper, { ref: exposed, crop, aspectRatio: 1, onVisibleChange }) });
   app.use(createI18n({ legacy: false, locale: 'en-US', messages }));
   app.component(
     'AButton',
@@ -83,6 +83,37 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 describe('AImageCropper lifecycle', () => {
+  it('settles when an opening listener cancels synchronously without decoding', async () => {
+    const api = mount((visible) => {
+      if (visible) api.cancel();
+    });
+    const settled = vi.fn();
+    api.open(source).then(settled);
+    await tick();
+    expect(settled).toHaveBeenCalledWith(null);
+    expect(engine.decode).not.toHaveBeenCalled();
+    expect(document.querySelector('canvas')).toBeNull();
+  });
+  it('starts only the replacement when an opening listener opens another file', async () => {
+    engine.decode.mockResolvedValue({ width: 200, height: 200, close: vi.fn() });
+    const nextSource = new File(['replacement'], 'replacement.png');
+    let replacement: Promise<File | null> | undefined;
+    let replaceOnOpen = true;
+    const api = mount((visible) => {
+      if (visible && replaceOnOpen) {
+        replaceOnOpen = false;
+        replacement = api.open(nextSource);
+      }
+    });
+    const settled = vi.fn();
+    api.open(source).then(settled);
+    await tick();
+    expect(settled).toHaveBeenCalledWith(null);
+    expect(engine.decode).toHaveBeenCalledOnce();
+    expect(engine.decode).toHaveBeenCalledWith(nextSource, crop.source);
+    api.cancel();
+    expect(await replacement).toBeNull();
+  });
   it('closes a late decoded bitmap after cancellation without opening stale content', async () => {
     const decoding = deferred<ImageBitmap>();
     engine.decode.mockReturnValue(decoding.promise);

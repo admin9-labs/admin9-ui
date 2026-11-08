@@ -214,18 +214,19 @@
   const open = (file: File) => {
     cancel();
     validateCropOptions(props.aspectRatio, props.crop);
+    const current = generation;
     source = file;
     cropNatural.width = 0;
     cropNatural.height = 0;
     Object.assign(cropBox, { x: 10, y: 10, width: 80, height: 80 });
     cropAutoPositioned = false;
     interacted = false;
-    cropVisible.value = true;
-    emit('visibleChange', true);
     const result = new Promise<File | null>((done) => {
       resolve = done;
     });
-    prepare();
+    cropVisible.value = true;
+    emit('visibleChange', true);
+    if (current === generation) prepare();
     return result;
   };
   const confirm = async () => {
