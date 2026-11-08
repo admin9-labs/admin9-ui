@@ -1,11 +1,16 @@
 <script setup lang="ts">
-  import { computed, nextTick, onBeforeUnmount, ref, toRef, watch } from 'vue';
+  import { computed, inject, nextTick, onBeforeUnmount, ref, toRef, watch } from 'vue';
   import { FormItem, useFormItem } from '@arco-design/web-vue';
   import { useI18n } from 'vue-i18n';
   import safeFileUrl from '../../internal/file-url';
+  import AImageCropper from '../image-cropper/index.vue';
+  import type { AImageCropperExposed } from '../image-cropper/types';
+  import admin9UIOptionsKey from '../../internal/options';
+  import createImageCropSession, { type CropSessionState } from '../../internal/image-crop-session';
+  import { validateCropOptions } from '../../internal/image-crop';
   import AFilePicker from '../file-picker/index.vue';
   import type { FileItem } from '../../services/types';
-  import type { ACoverPickerProps, CoverMode, CoverPickerValue } from './types';
+  import type { ACoverPickerProps, ACoverPickerExposed, CoverMode, CoverPickerValue } from './types';
 
   defineOptions({ name: 'ACoverPicker' });
 
@@ -28,6 +33,7 @@
   const emit = defineEmits<{
     (e: 'update:modelValue', value: CoverPickerValue): void;
     (e: 'change', value: CoverPickerValue): void;
+    (e: 'processingChange', processing: boolean): void;
     (e: 'visibleChange', visible: boolean): void;
     (e: 'uploadSuccess', item: FileItem): void;
     (e: 'uploadError', error: unknown): void;
@@ -41,6 +47,31 @@
   const interactionDisabled = computed(() => mergedDisabled.value || props.readonly);
   const resolvedSize = computed(() => mergedSize.value ?? 'medium');
   const slotStyle = computed(() => ({ '--a9-cover-picker-slot-ratio': String(props.aspectRatio) }));
+  const globalOptions = inject(admin9UIOptionsKey, undefined);
+  const resolvedService = computed(() => props.service ?? globalOptions?.fileService);
+  const cropper = ref<AImageCropperExposed>();
+  const cropState = ref<CropSessionState>({ stage: 'idle' });
+  const cropRatio = computed(() => {
+    if (typeof props.aspectRatio === 'number') return props.aspectRatio;
+    const parts = props.aspectRatio.split('/').map(Number);
+    return parts.length === 2 ? parts[0] / parts[1] : Number(props.aspectRatio);
+  });
+  const libraryCropUnavailable = computed(() => Boolean(props.crop && !resolvedService.value?.readOriginal));
+  const cropConfigurationError = computed(() => {
+    if (!props.crop) return false;
+    try {
+      validateCropOptions(cropRatio.value, props.crop);
+      return Boolean(props.beforeUpload || props.beforeSelect || !resolvedService.value?.upload);
+    } catch {
+      return true;
+    }
+  });
+  const cropSession = createImageCropSession(
+    (state) => {
+      cropState.value = state;
+    },
+    (error) => emit('uploadError', error)
+  );
   const picker = ref<{ open: () => void; close: () => void; clear: () => void }>();
   const pickerValue = ref<FileItem>();
   const currentValue = ref<CoverPickerValue>({ mode: 'single', images: [null] });
@@ -149,6 +180,9 @@
   };
 
   const closePicker = (restoreFocus: boolean) => {
+    const previousIndex = activeIndex.value;
+    cropSession.cancel();
+    cropper.value?.cancel();
     operationGeneration += 1;
     selectionGeneration += 1;
     selectionPending.value = false;
@@ -159,6 +193,7 @@
       activeIndex.value = undefined;
       pickerValue.value = undefined;
       suppressFocusRestore = false;
+      if (restoreFocus && previousIndex !== undefined) nextTick(() => slotButtons[previousIndex]?.focus());
     }
   };
   const publish = (value: CoverPickerValue) => {
@@ -187,7 +222,15 @@
     else publish({ mode: 'triple', images: [firstImage, null, null] });
   };
   const openPicker = async (index: number) => {
-    if (interactionDisabled.value || selectionPending.value || index < 0 || index >= currentValue.value.images.length) return;
+    if (
+      cropConfigurationError.value ||
+      libraryCropUnavailable.value ||
+      interactionDisabled.value ||
+      selectionPending.value ||
+      index < 0 ||
+      index >= currentValue.value.images.length
+    )
+      return;
     closePicker(false);
     const generation = operationGeneration;
     activeIndex.value = index;
@@ -215,7 +258,15 @@
     selectionTarget = index;
     selectionPending.value = true;
     try {
+      if (generation !== selectionGeneration) return;
       let item: FileItem | null = items[0] ?? null;
+      if (item !== null && props.crop) {
+        if (cropConfigurationError.value || !resolvedService.value || !cropper.value) return;
+        const cropperInstance = cropper.value;
+        const output = await cropSession.run(item, resolvedService.value, (file) => cropperInstance.open(file));
+        if (!output) return;
+        item = output;
+      }
       if (item !== null && props.beforeSelect) {
         try {
           const transformed = await props.beforeSelect(item);
@@ -232,6 +283,10 @@
         (item !== null && !isEligibleImage(item))
       )
         return;
+      if (props.crop && item) {
+        emit('uploadSuccess', item);
+        if (generation !== selectionGeneration) return;
+      }
       if (currentValue.value.mode === 'single' && index === 0) {
         publish({ mode: 'single', images: [item] });
         return;
@@ -240,6 +295,8 @@
       const images: [FileItem | null, FileItem | null, FileItem | null] = [...currentValue.value.images];
       images[index] = item;
       publish({ mode: 'triple', images });
+    } catch (error) {
+      if (generation === selectionGeneration) emit('uploadError', error);
     } finally {
       if (generation === selectionGeneration) {
         selectionPending.value = false;
@@ -253,6 +310,8 @@
       }
     }
   };
+  defineExpose<ACoverPickerExposed>({ cancel: () => closePicker(false) });
+
   const onPickerVisibleChange = (visible: boolean) => {
     pickerVisible.value = visible;
     emit('visibleChange', visible);
@@ -288,7 +347,7 @@
     { deep: true, immediate: true }
   );
   watch(
-    () => props.service,
+    () => resolvedService.value,
     (service, previous) => {
       if (service !== previous && (pickerVisible.value || selectionPending.value)) closePicker(false);
     }
@@ -299,6 +358,14 @@
       if (disabled && (pickerVisible.value || selectionPending.value)) closePicker(false);
     }
   );
+  watch(
+    () => [props.crop, props.beforeUpload, props.beforeSelect, props.aspectRatio],
+    (current, previous) => {
+      if (current[0] || previous[0]) closePicker(false);
+    },
+    { deep: true, flush: 'sync' }
+  );
+  watch(selectionPending, (processing) => emit('processingChange', processing), { immediate: true, flush: 'sync' });
   onBeforeUnmount(() => closePicker(false));
 </script>
 
@@ -337,7 +404,7 @@
             type="button"
             class="a9-cover-picker__slot"
             :class="{ 'has-image': item }"
-            :disabled="interactionDisabled || selectionPending"
+            :disabled="interactionDisabled || selectionPending || cropConfigurationError || libraryCropUnavailable"
             :aria-label="slotLabel(item, index)"
             :data-testid="`cover-picker-slot-${index}`"
             @click="openPicker(index)"
@@ -366,7 +433,35 @@
               <span>{{ t('admin9Ui.coverPicker.positionLabel', { index: index + 1 }) }}</span>
             </span>
           </button>
-          <a-tooltip v-if="item" :content="t('admin9Ui.coverPicker.removePosition', { index: index + 1 })">
+          <div
+            v-if="activeIndex === index && cropState.stage !== 'idle' && cropState.stage !== 'cropping'"
+            class="a9-cover-picker__crop-status"
+            :class="{ 'is-error': cropState.stage === 'error' }"
+            :data-testid="`cover-picker-status-${index}`"
+            role="status"
+          >
+            <a-tooltip v-if="cropState.stage === 'error'" :content="t(`admin9Ui.imageCropper.errors.${cropState.error}`)">
+              <span class="a9-cover-picker__status-text" tabindex="0">{{
+                t(cropState.error === 'upload' ? 'admin9Ui.filePicker.uploadFailed' : 'admin9Ui.filePicker.failed')
+              }}</span>
+            </a-tooltip>
+            <div v-else class="a9-cover-picker__status-message">
+              <a-spin :size="14" />
+              <span class="a9-cover-picker__status-text">{{
+                t(cropState.stage === 'uploading' ? 'admin9Ui.fileUploader.status.uploading' : 'admin9Ui.filePicker.processing')
+              }}</span>
+            </div>
+            <div class="a9-cover-picker__status-actions">
+              <a-button v-if="cropState.stage === 'error'" size="mini" @click="cropSession.retry()">{{
+                t('admin9Ui.imageCropper.retry')
+              }}</a-button>
+              <a-button size="mini" @click="closePicker(true)">{{ t('admin9Ui.imageCropper.cancel') }}</a-button>
+            </div>
+          </div>
+          <a-tooltip
+            v-if="item && !(activeIndex === index && selectionPending)"
+            :content="t('admin9Ui.coverPicker.removePosition', { index: index + 1 })"
+          >
             <a-button
               class="a9-cover-picker__remove"
               :size="resolvedSize === 'large' ? 'small' : 'mini'"
@@ -404,11 +499,70 @@
           <template #trigger><span aria-hidden="true" /></template>
         </AFilePicker>
       </div>
+      <AImageCropper v-if="crop && !cropConfigurationError" ref="cropper" :crop="crop" :aspect-ratio="cropRatio" />
+      <a-alert v-if="libraryCropUnavailable && !cropConfigurationError" type="error">{{
+        t('admin9Ui.imageCropper.errors.configuration')
+      }}</a-alert>
+      <a-alert v-if="cropConfigurationError" type="error">{{ t('admin9Ui.imageCropper.errors.configuration') }}</a-alert>
     </FormItem>
   </div>
 </template>
 
 <style lang="less" scoped>
+  .a9-cover-picker__crop-status {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+    padding: 6px;
+    overflow: auto;
+    color: var(--color-text-1);
+    font-size: 12px;
+    background: var(--color-bg-2);
+    border: 1px solid var(--color-border-3);
+    border-radius: 4px;
+
+    > :first-child {
+      margin-top: auto;
+    }
+
+    > :last-child {
+      margin-bottom: auto;
+    }
+
+    &.is-error {
+      border-color: rgb(var(--danger-6));
+    }
+  }
+
+  .a9-cover-picker__status-message {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .a9-cover-picker__status-text {
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+
+  .a9-cover-picker__status-actions {
+    display: flex;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    gap: 4px;
+    justify-content: center;
+    max-width: 100%;
+
+    :deep(.arco-btn) {
+      padding: 0 3px;
+      font-size: 12px;
+    }
+  }
+
   .a9-cover-picker {
     position: relative;
     width: max-content;

@@ -2,7 +2,7 @@
   import { computed, inject, markRaw, nextTick, onBeforeUnmount, onMounted, reactive, ref, toRaw, toRef, watch } from 'vue';
   import { useFormItem, type RequestOption, type UploadRequest } from '@arco-design/web-vue';
   import { useI18n } from 'vue-i18n';
-  import safeFileUrl from '../../internal/file-url';
+  import fileUploadResultError from '../../internal/file-upload-result';
   import { normalizeFileTypes } from '../../internal/file-types';
   import formatFileSize from '../../internal/file-size';
   import fileUploadRejection from '../../internal/file-upload-rejection';
@@ -123,12 +123,8 @@
   const normalizeProgress = (percent: number) => (Number.isFinite(percent) ? Math.min(100, Math.max(0, percent)) : undefined);
   const createError = (message: string) => new Error(`[admin9-ui] AFileUploader ${message}`);
   const validateResult = (item: FileItem, fileTypes: readonly FileType[], taskId: string) => {
-    if (!item || typeof item !== 'object') return createError('received an invalid FileItem result.');
-    if (typeof item.id !== 'string' || item.id.trim().length === 0)
-      return createError('requires a stable non-empty FileItem id.');
-    if (!fileTypes.includes(item.type)) return createError('received a FileItem with a mismatched type.');
-    if (item.status !== undefined && item.status !== 'ready') return createError('received a FileItem that is not ready.');
-    if (!safeFileUrl(item.url)) return createError('received a FileItem without a usable URL.');
+    const invalid = fileUploadResultError(item, fileTypes);
+    if (invalid) return createError(invalid);
     const duplicate = internalTasks.value.some(
       (task) => task.id !== taskId && task.status === 'succeeded' && task.item?.id === item.id
     );

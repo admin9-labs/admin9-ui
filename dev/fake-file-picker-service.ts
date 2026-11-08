@@ -213,12 +213,29 @@ export default function createFakeFilePickerService(
   state: AcceptanceState,
   scenario: FakeFilePickerOptions = {}
 ): FilePickerAdapter {
-  let files = demoFiles.map((item) => ({ ...item }));
+  let files = demoFiles.map((item) =>
+    item.type === 'image' && item.url?.endsWith('.svg')
+      ? {
+          ...item,
+          name: item.name.replace(/\.svg$/, '.png'),
+          url: item.url.replace(/\.svg$/, '.png'),
+          extension: 'png',
+          mime: 'image/png',
+        }
+      : { ...item }
+  );
   let uploadSequence = 0;
   const failedOnce = new Set<string>();
   const groups = demoGroups.map((group) => ({ ...group }));
 
   return {
+    async readOriginal({ item, signal }) {
+      if (!item.url) throw new Error('Missing original');
+      const response = await fetch(item.url, { signal });
+      if (!response.ok) throw new Error('Could not read original');
+      const blob = await response.blob();
+      return new File([blob], item.name, { type: blob.type });
+    },
     async list(params: FileListParams): Promise<FileListResult> {
       const pageSize = scenario.pageSize ?? params.pageSize;
       if (state === 'loading') await wait(5000);
@@ -356,6 +373,12 @@ export default function createFakeFilePickerService(
         size: options.file.size,
         status: 'ready',
       };
+      if (['image/jpeg', 'image/png'].includes(options.file.type)) {
+        const bitmap = await createImageBitmap(options.file);
+        item.width = bitmap.width;
+        item.height = bitmap.height;
+        bitmap.close();
+      }
       files = [item, ...files];
       return item;
     },

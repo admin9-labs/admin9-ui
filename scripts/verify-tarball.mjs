@@ -102,6 +102,8 @@ try {
     'docs/components/chat-message-list.md',
     'docs/components/chat-composer.md',
     'docs/components/cover-picker.md',
+    'docs/components/image-cropper.md',
+    'dist/components/image-cropper/types.d.ts',
     'docs/components/coordinate-picker.md',
     'docs/components/file-uploader.md',
     'docs/components/filter-form.md',

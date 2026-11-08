@@ -5,6 +5,7 @@ import type { Admin9UIPluginOptions } from './services/types';
 // 组件
 import AChatMessageList from './components/chat-message-list/index.vue';
 import AChatComposer from './components/chat-composer/index.vue';
+import AImageCropper from './components/image-cropper/index.vue';
 import ACoverPicker from './components/cover-picker/index.vue';
 import AFilePicker from './components/file-picker/index.vue';
 import AImagePicker from './components/image-picker/index.vue';
@@ -31,7 +32,21 @@ export type {
   AChatComposerExposed,
 } from './components/chat-composer/types';
 
-export type { ACoverPickerProps, CoverMode, CoverPickerSize, CoverPickerValue } from './components/cover-picker/types';
+export type {
+  ACoverPickerProps,
+  ACoverPickerExposed,
+  CoverMode,
+  CoverPickerSize,
+  CoverPickerValue,
+} from './components/cover-picker/types';
+
+export type {
+  AImageCropperProps,
+  AImageCropperExposed,
+  ImageCropOptions,
+  ImageCropSourceOptions,
+  ImageCropOutputOptions,
+} from './components/image-cropper/types';
 
 // 服务接口契约（供 App 实现 adapter 时 import 类型）
 export type {
@@ -48,6 +63,7 @@ export type {
   FileUploadRejection,
   FileBrowseCapability,
   FileUploadCapability,
+  FileOriginalReadCapability,
   FileGroupCreateOptions,
   FileGroupCreateCapability,
   FileDeleteCapability,
@@ -143,6 +159,7 @@ export {
   AChatComposer,
   ACoordinatePicker,
   ACoverPicker,
+  AImageCropper,
   AFilePicker,
   AImagePicker,
   AFileUploader,
@@ -168,6 +185,7 @@ const Admin9UI = {
       'AChatMessageList',
       'AChatComposer',
       'ACoverPicker',
+      'AImageCropper',
       'AFilePicker',
       'AImagePicker',
       'AFileUploader',
@@ -187,6 +205,7 @@ const Admin9UI = {
     app.component('AChatMessageList', AChatMessageList);
     app.component('AChatComposer', AChatComposer);
     app.component('ACoverPicker', ACoverPicker);
+    app.component('AImageCropper', AImageCropper);
     app.component('AFilePicker', AFilePicker);
     app.component('AImagePicker', AImagePicker);
     app.component('AFileUploader', AFileUploader);

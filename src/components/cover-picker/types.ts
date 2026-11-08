@@ -1,4 +1,5 @@
 import type { Size } from '@arco-design/web-vue';
+import type { ImageCropOptions } from '../image-cropper/types';
 import type { FileBeforeSelect, FileBeforeUpload, FileItem, FilePickerAdapter } from '../../services/types';
 
 export type CoverMode = 'single' | 'triple' | 'none';
@@ -21,6 +22,12 @@ export interface ACoverPickerProps {
   aspectRatio?: number | string;
   disabled?: boolean;
   readonly?: boolean;
+  /** Native crop workflow; mutually exclusive with beforeUpload/beforeSelect. */
+  crop?: ImageCropOptions;
   beforeUpload?: FileBeforeUpload;
   beforeSelect?: FileBeforeSelect;
+}
+
+export interface ACoverPickerExposed {
+  cancel(): void;
 }

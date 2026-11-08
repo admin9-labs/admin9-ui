@@ -4,6 +4,7 @@
     AChatMessageList,
     AChatComposer,
     ACoverPicker,
+    AImageCropper,
     type AChatMessageListExposed,
     type AChatComposerExposed,
     type ChatComposerSize,
@@ -27,7 +28,7 @@
     type TiptapDocument,
   } from '@admin9-labs/admin9-ui';
 
-  import { beforeSelect, beforeUpload } from './audit-types';
+  import { beforeSelect, beforeUpload, nativeCrop } from './audit-types';
 
   defineProps<{
     service: FilePickerAdapter;
@@ -69,6 +70,7 @@
 </script>
 
 <template>
+  <AImageCropper :aspect-ratio="4 / 3" :crop="nativeCrop" />
   <section data-testid="host-baseline-sfc">
     <AImagePicker
       ref="imagePicker"

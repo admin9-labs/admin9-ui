@@ -1,4 +1,28 @@
 export default {
+  imageCropper: {
+    title: '裁剪图片',
+    hint: '拖动裁剪框调整位置，拖动四角调整大小',
+    image: '待裁剪图片',
+    move: '移动裁剪框，可使用方向键',
+    resize: '调整裁剪框大小，可使用方向键',
+    loading: '正在读取图片…',
+    cancel: '取消',
+    retry: '重试',
+    confirm: '确认裁剪',
+    uploading: '正在上传裁剪结果…',
+    retryUpload: '重新上传',
+    errors: {
+      format: '仅支持静态 JPEG、PNG 图片，请更换图片',
+      animated: '暂不支持动画图片，请更换图片',
+      sourceSize: '原图片为空或超过大小限制，请更换图片',
+      pixels: '图片尺寸超过处理范围，请更换图片',
+      decode: '图片处理失败，请重试或更换图片',
+      outputSize: '处理后的图片超过大小限制，请调整裁剪范围或更换图片',
+      configuration: '裁剪配置不完整或存在冲突，请联系管理员',
+      read: '原图片读取失败，请重试',
+      upload: '裁剪结果上传失败，请重试',
+    },
+  },
   modal: {
     close: '关闭弹窗',
   },
