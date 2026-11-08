@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-11-08
+
 ### Added
 
 - AFileUploader 新增 `beforeUpload`，支持上传前异步转换文件或取消任务；AFilePicker、AImagePicker 和 ACoverPicker 透传此能力，并新增 `beforeSelect`，支持确认写回前转换所选文件或取消替换。公开导出 `FileBeforeUpload`、`FileBeforeSelect` 类型，`FileItem` 增加可选图片宽高信息。
