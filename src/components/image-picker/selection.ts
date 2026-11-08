@@ -12,6 +12,8 @@ const itemFields: (keyof FileItem)[] = [
   'mime',
   'extension',
   'thumbnail',
+  'width',
+  'height',
   'duration',
   'createdAt',
   'status',

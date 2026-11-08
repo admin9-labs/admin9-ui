@@ -47,6 +47,9 @@
 | pageSize     | number                                              | `20`             | 默认每页 20 项；正整数可覆盖每页请求数量                |
 | defaultView  | `grid \| list`                                      | grid             | 已弃用，内部弹窗固定为网格                                                  |
 
+| beforeUpload | FileBeforeUpload | undefined | 透传内部上传器，上传前转换本地文件或取消上传 |
+| beforeSelect | FileBeforeSelect | undefined | 透传内部文件选择器，确认前处理所选图片 |
+
 class/style、ARIA 及原生属性落在组件根节点，不透传到 Upload 或弹窗。缩略图加载失败回退原图，再失败显示占位；大图预览始终完整展示原图，不继承 fit，也不会裁剪或改写文件。安全 URL 规则与 AFilePicker 相同，只允许 HTTP(S)、相对地址和 blob。
 
 内部选图弹窗与通用文件选择弹窗统一使用 720px 高度，实际高度不超过 `100dvh - 32px`；分页数量不改变高度，末行之后允许保留自然余量。固定使用网格，与通用文件选择器共用同一套卡片，展示缩略图、单行文件名、格式和大小；预览入口位于元信息右侧，异常状态使用既有信息行，不覆盖缩略图。卡片尺寸、间距与每页请求数量规则一致。隐藏列表切换；`defaultView` 仅为兼容已有调用保留，传入 `list` 也使用网格。批量操作使用独立管理勾选，不受外层单选／数量上限限制，管理期间暂停确认选图，退出后恢复有效选图草稿。布局与管理规则同 AFilePicker。
@@ -81,6 +84,8 @@ class/style、ARIA 及原生属性落在组件根节点，不透传到 Upload �
 外层卡片始终由父模型派生，父级未接收更新时不做乐观替换。
 
 ## 确认、更换和上传
+
+`beforeSelect` 的异步转换与取消规则同 [AFilePicker](./file-picker.md#确认前处理)，返回图片仍需通过图片资格与去重校验。`beforeUpload` 规则同 [AFileUploader](./file-uploader.md#上传前处理)。裁剪比例、输出尺寸和处理结果的保存由应用负责；`displayMode` 和 `fit` 仅影响外观。
 
 打开时建立会话快照，弹窗草稿不影响外层卡片。取消、关闭或 Escape 不写回。确认后先发 update:modelValue，再发 change；同值确认只发 confirm。若父模型尚需归一化，即使显示相同也会提交规范值。比较包含顺序及 FileItem 元数据，不只比较 URL。
 

@@ -51,7 +51,15 @@
 | `disabled`    | `boolean`                       | `false`            | 显式禁用文件选择入口；上传中仍可继续选择并追加文件               |
 | `size`        | `Size`                          | 继承               | 默认上传按钮尺寸                                                 |
 
+| `beforeUpload` | `FileBeforeUpload` | `undefined` | adapter 上传前异步转换文件；返回 `null` 取消该任务 |
+
 `limit`、`maxFileSize` 和 `accept` 只提供前端交互约束。adapter/后端仍必须校验文件内容、真实 MIME、扩展名、大小、恶意文件、身份、资源归属、具体类型和分组授权。
+
+## 上传前处理
+
+`beforeUpload: (file: File) => Promise<File | null>` 在原文件通过队列与大小限制后、调用 adapter 前执行。返回的 `File` 替代本次上传内容，并再次检查 `maxFileSize`；返回 `null` 将任务记为取消，不调用 adapter；抛错进入既有上传失败流程。取消、切换上传上下文或卸载后，迟到结果不会启动上传。重试会再次执行该回调，输入为任务当前保存的文件。
+
+回调适合接入应用的裁剪、压缩等处理。组件不提供内置裁剪器或业务输出尺寸；多个上传任务可并行调用回调，交互式处理应由应用安排任务顺序。
 
 ## Events
 

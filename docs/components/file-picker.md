@@ -58,7 +58,16 @@
 | `size`           | `Size`                                | 继承               | 默认触发按钮尺寸                                                     |
 | `allowClear`     | `boolean`                             | `true`             | 显示外层清空按钮                                                     |
 
+| `beforeUpload` | `FileBeforeUpload` | `undefined` | 透传上传器，上传前转换本地文件或取消上传 |
+| `beforeSelect` | `FileBeforeSelect` | `undefined` | 确认前处理每个选中项，全部成功后写回 |
+
 `fileTypes` 的运行时非法值会被忽略，重复值会去重；`all` 不是 `FileType`。显式空数组表示不允许任何业务类型，组件不调用 `list/listGroups`，禁止选择、确认和上传，并以空选择显示；不回写父模型。`accept` 不能改变这些业务约束。
+
+## 确认前处理
+
+`beforeSelect: (item: FileItem) => Promise<FileItem | null>` 在确认时对所选项并行执行。所有返回项通过类型、状态、URL 和去重校验后才一起写回；任一项返回 `null`、抛错或无效结果时，本次确认中止，保留原字段和弹窗草稿。等待期间不能修改勾选或重复确认；关闭、清空或切换选择上下文后，迟到结果失效。空选择不会调用回调，显式确认清空的语义不变。
+
+回调可接入应用自己的裁剪或文件处理流程，组件不保存转换后的文件。`FileItem` 可携带可选的 `width?: number | null` 和 `height?: number | null` 记录图片像素尺寸。`beforeUpload` 的转换、取消和大小检查规则见 [AFileUploader](./file-uploader.md#上传前处理)。
 
 ## Events
 

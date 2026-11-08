@@ -75,6 +75,14 @@ const service = (): FilePickerAdapter => ({
   list: vi.fn().mockResolvedValue(result(images)),
 });
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 async function flush() {
   await Promise.resolve();
   await nextTick();
@@ -200,6 +208,8 @@ function installStubs(app: App) {
 interface MountOptions {
   value?: CoverPickerValue;
   pickerService?: FilePickerAdapter;
+  beforeSelect?: (item: FileItem) => Promise<FileItem | null>;
+  aspectRatio?: number | string;
   disabled?: Ref<boolean>;
   formDisabled?: Ref<boolean>;
   size?: Ref<CoverPickerSize | undefined>;
@@ -208,6 +218,8 @@ interface MountOptions {
 function mountCoverPicker({
   value = { mode: 'single', images: [null] },
   pickerService = service(),
+  beforeSelect,
+  aspectRatio,
   disabled = ref(false),
   formDisabled,
   size = ref<CoverPickerSize>(),
@@ -226,6 +238,8 @@ function mountCoverPicker({
         h(ACoverPicker, {
           'modelValue': model.value,
           'service': serviceRef.value,
+          'beforeSelect': beforeSelect,
+          'aspectRatio': aspectRatio,
           'disabled': disabled.value,
           'size': size.value,
           'onUpdate:modelValue': (next: CoverPickerValue) => {
@@ -300,6 +314,15 @@ describe('ACoverPicker', () => {
     ]);
   });
 
+  it('applies the configured aspect ratio to every cover slot', async () => {
+    mountCoverPicker({ value: { mode: 'triple', images: [null, null, null] }, aspectRatio: 3 / 4 });
+    await flush();
+
+    expect(
+      document.querySelector<HTMLElement>('.a9-cover-picker')?.style.getPropertyValue('--a9-cover-picker-slot-ratio')
+    ).toBe('0.75');
+  });
+
   it('preserves fixed triple positions while selecting and removing images', async () => {
     const { emitted, model, pickerService } = mountCoverPicker({
       value: { mode: 'triple', images: [images[0], null, null] },
@@ -372,6 +395,46 @@ describe('ACoverPicker', () => {
     await flush();
     expect(emitted.change).toBeUndefined();
     expect(document.activeElement).toBe(document.querySelector('[data-testid="cover-picker-slot-0"]'));
+  });
+
+  it('keeps an existing cover when beforeSelect cancels a replacement', async () => {
+    const beforeSelect = vi.fn(async () => null);
+    const { model, emitted } = mountCoverPicker({ value: { mode: 'single', images: [images[0]] }, beforeSelect });
+    await flush();
+
+    click('[data-testid="cover-picker-slot-0"]');
+    await flush();
+    selectFile('image-2');
+    await confirmFilePicker();
+    await flush();
+
+    expect(beforeSelect).toHaveBeenCalledWith(images[1]);
+    expect(model.value).toEqual({ mode: 'single', images: [images[0]] });
+    expect(emitted.change).toBeUndefined();
+  });
+
+  it('keeps a cover unchanged when asynchronous selection is cancelled or arrives late', async () => {
+    const pending = deferred<FileItem | null>();
+    const beforeSelect = vi.fn(() => pending.promise);
+    const disabled = ref(false);
+    const { model, emitted } = mountCoverPicker({ value: { mode: 'single', images: [images[0]] }, beforeSelect, disabled });
+    await flush();
+
+    click('[data-testid="cover-picker-slot-0"]');
+    await flush();
+    selectFile('image-2');
+    await confirmFilePicker();
+    expect(model.value).toEqual({ mode: 'single', images: [images[0]] });
+    expect(document.querySelector<HTMLButtonElement>('[data-testid="cover-picker-slot-0"]')?.disabled).toBe(true);
+
+    disabled.value = true;
+    await flush();
+    pending.resolve(images[1]);
+    await flush();
+
+    expect(model.value).toEqual({ mode: 'single', images: [images[0]] });
+    expect(emitted.change).toBeUndefined();
+    expect(beforeSelect).toHaveBeenCalledWith(images[1]);
   });
 
   it('clears the active position when the picker confirms no eligible item', async () => {

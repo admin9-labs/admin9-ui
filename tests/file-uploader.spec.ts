@@ -167,6 +167,39 @@ describe('AFileUploader', () => {
     expect(document.querySelector('.a9-file-uploader__result')?.textContent).toContain('Uploaded 1 file');
   });
 
+  it('runs asynchronous beforeUpload before the adapter and treats null as cancellation', async () => {
+    const source = new File(['source'], 'source.png', { type: 'image/png' });
+    const prepared = new File(['prepared'], 'prepared.png', { type: 'image/png' });
+    const beforeUpload = vi.fn(async (file: File) => (file.name === source.name ? prepared : null));
+    const service: FileUploadCapability = { upload: vi.fn(async (options) => validItem('prepared', options.file.name)) };
+    const uploader = mountUploader(service, { beforeUpload });
+
+    const first = await uploader.upload([source]);
+    const second = await uploader.upload([new File(['cancel'], 'cancel.png', { type: 'image/png' })]);
+
+    expect(beforeUpload).toHaveBeenCalledTimes(2);
+    expect(service.upload).toHaveBeenCalledWith(expect.objectContaining({ file: prepared }));
+    expect(first.succeeded.map((item) => item.name)).toEqual(['prepared.png']);
+    expect(second.succeeded).toEqual([]);
+    expect(second.cancelled).toHaveLength(1);
+  });
+
+  it('rechecks maxFileSize after beforeUpload transforms the file', async () => {
+    const source = new File(['a'], 'source.png', { type: 'image/png' });
+    const prepared = new File(['too-large'], 'prepared.png', { type: 'image/png' });
+    const service: FileUploadCapability = { upload: vi.fn(async (options) => validItem('prepared', options.file.name)) };
+    const uploader = mountUploader(service, {
+      maxFileSize: source.size,
+      beforeUpload: async () => prepared,
+    });
+
+    const result = await uploader.upload([source]);
+
+    expect(service.upload).not.toHaveBeenCalled();
+    expect(result.succeeded).toEqual([]);
+    expect(result.failed.map((failure) => failure.reason)).toEqual(['file-size']);
+  });
+
   it('rejects wrong-type, pending, empty-url and duplicate successful results', async () => {
     const responses = [
       validItem('wrong', 'wrong.png', { type: 'video' }),

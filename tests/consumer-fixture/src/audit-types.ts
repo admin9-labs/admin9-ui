@@ -1,6 +1,10 @@
 /* eslint-disable import/no-duplicates, @typescript-eslint/no-unused-vars -- Independent negative imports verify removed public types. */
 import type {
   FileListParams,
+  FileItem,
+  FileBeforeSelect,
+  FileBeforeUpload,
+  ACoverPickerProps,
   FileGroup,
   FileUploadRejection,
   FileUploadFailureReason,
@@ -168,3 +172,11 @@ export const nestedGroups: FileGroup[] = [
   { id: 'campaign', name: 'Campaign' },
   { id: 'event', name: 'Event assets', parentId: 'campaign' },
 ];
+
+export const beforeUpload: FileBeforeUpload = async (file) => (file.size ? file : null);
+export const beforeSelect: FileBeforeSelect = async (item) => (item.type === 'image' ? item : null);
+export const imageDimensions: Pick<FileItem, 'width' | 'height'> = { width: 480, height: 640 };
+export const croppedFiles: AFilePickerProps = { beforeUpload, beforeSelect };
+export const croppedImages: AImagePickerProps = { beforeUpload, beforeSelect };
+export const croppedCover: ACoverPickerProps = { aspectRatio: '3 / 4', beforeUpload, beforeSelect };
+export const croppedUploader: AFileUploaderProps = { beforeUpload };

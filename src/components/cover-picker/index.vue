@@ -18,8 +18,11 @@
     canDeleteFiles: false,
     canMoveFiles: false,
     accept: 'image/*',
+    aspectRatio: 4 / 3,
     disabled: false,
     readonly: false,
+    beforeUpload: undefined,
+    beforeSelect: undefined,
   });
 
   const emit = defineEmits<{
@@ -37,6 +40,7 @@
   });
   const interactionDisabled = computed(() => mergedDisabled.value || props.readonly);
   const resolvedSize = computed(() => mergedSize.value ?? 'medium');
+  const slotStyle = computed(() => ({ '--a9-cover-picker-slot-ratio': String(props.aspectRatio) }));
   const picker = ref<{ open: () => void; close: () => void; clear: () => void }>();
   const pickerValue = ref<FileItem>();
   const currentValue = ref<CoverPickerValue>({ mode: 'single', images: [null] });
@@ -44,6 +48,9 @@
   const slotButtons: Array<HTMLButtonElement | undefined> = [];
   const activeIndex = ref<number>();
   const pickerVisible = ref(false);
+  const selectionPending = ref(false);
+  let selectionGeneration = 0;
+  let selectionTarget: number | undefined;
   let operationGeneration = 0;
   let suppressFocusRestore = false;
   let lastEmittedSignature = '';
@@ -60,6 +67,8 @@
     'mime',
     'extension',
     'thumbnail',
+    'width',
+    'height',
     'duration',
     'createdAt',
     'status',
@@ -141,6 +150,9 @@
 
   const closePicker = (restoreFocus: boolean) => {
     operationGeneration += 1;
+    selectionGeneration += 1;
+    selectionPending.value = false;
+    selectionTarget = undefined;
     suppressFocusRestore = !restoreFocus;
     picker.value?.close();
     if (!pickerVisible.value) {
@@ -162,7 +174,7 @@
     return true;
   };
   const changeMode = (value: string | number | boolean) => {
-    if (interactionDisabled.value || !['single', 'triple', 'none'].includes(String(value))) return;
+    if (interactionDisabled.value || selectionPending.value || !['single', 'triple', 'none'].includes(String(value))) return;
     const mode = String(value) as CoverMode;
     if (mode === currentValue.value.mode) return;
     closePicker(false);
@@ -175,7 +187,7 @@
     else publish({ mode: 'triple', images: [firstImage, null, null] });
   };
   const openPicker = async (index: number) => {
-    if (interactionDisabled.value || index < 0 || index >= currentValue.value.images.length) return;
+    if (interactionDisabled.value || selectionPending.value || index < 0 || index >= currentValue.value.images.length) return;
     closePicker(false);
     const generation = operationGeneration;
     activeIndex.value = index;
@@ -185,7 +197,7 @@
     picker.value?.open();
   };
   const removeImage = (index: number) => {
-    if (interactionDisabled.value || currentValue.value.mode === 'none') return;
+    if (interactionDisabled.value || selectionPending.value || currentValue.value.mode === 'none') return;
     closePicker(false);
     if (currentValue.value.mode === 'single') {
       publish({ mode: 'single', images: [null] });
@@ -195,23 +207,61 @@
     images[index] = null;
     publish({ mode: 'triple', images });
   };
-  const onPickerChange = (items: FileItem[]) => {
+  const onPickerChange = async (items: FileItem[]) => {
     const index = activeIndex.value;
-    const item = items[0] ?? null;
-    if (index === undefined || interactionDisabled.value || (item !== null && !isEligibleImage(item))) return;
-    if (currentValue.value.mode === 'single' && index === 0) {
-      publish({ mode: 'single', images: [item] });
-      return;
+    if (index === undefined || interactionDisabled.value || selectionPending.value) return;
+    selectionGeneration += 1;
+    const generation = selectionGeneration;
+    selectionTarget = index;
+    selectionPending.value = true;
+    try {
+      let item: FileItem | null = items[0] ?? null;
+      if (item !== null && props.beforeSelect) {
+        try {
+          const transformed = await props.beforeSelect(item);
+          if (transformed === null) return;
+          item = transformed;
+        } catch {
+          return;
+        }
+      }
+      if (
+        generation !== selectionGeneration ||
+        selectionTarget !== index ||
+        interactionDisabled.value ||
+        (item !== null && !isEligibleImage(item))
+      )
+        return;
+      if (currentValue.value.mode === 'single' && index === 0) {
+        publish({ mode: 'single', images: [item] });
+        return;
+      }
+      if (currentValue.value.mode !== 'triple' || index >= 3) return;
+      const images: [FileItem | null, FileItem | null, FileItem | null] = [...currentValue.value.images];
+      images[index] = item;
+      publish({ mode: 'triple', images });
+    } finally {
+      if (generation === selectionGeneration) {
+        selectionPending.value = false;
+        selectionTarget = undefined;
+        const focusIndex = activeIndex.value;
+        activeIndex.value = undefined;
+        pickerValue.value = undefined;
+        operationGeneration += 1;
+        if (!suppressFocusRestore && focusIndex !== undefined) nextTick(() => slotButtons[focusIndex]?.focus());
+        suppressFocusRestore = false;
+      }
     }
-    if (currentValue.value.mode !== 'triple' || index >= 3) return;
-    const images: [FileItem | null, FileItem | null, FileItem | null] = [...currentValue.value.images];
-    images[index] = item;
-    publish({ mode: 'triple', images });
   };
   const onPickerVisibleChange = (visible: boolean) => {
     pickerVisible.value = visible;
     emit('visibleChange', visible);
     if (visible) return;
+    if (selectionPending.value) {
+      picker.value?.clear();
+      pickerValue.value = undefined;
+      return;
+    }
     const focusIndex = activeIndex.value;
     activeIndex.value = undefined;
     picker.value?.clear();
@@ -229,7 +279,8 @@
       modelNeedsNormalization = !modelMatches(value, normalized);
       const signature = valueSignature(normalized);
       const isOwnEcho = signature === lastEmittedSignature;
-      if (pickerVisible.value && !isOwnEcho && !sameValue(currentValue.value, normalized)) closePicker(false);
+      if ((pickerVisible.value || selectionPending.value) && !isOwnEcho && !sameValue(currentValue.value, normalized))
+        closePicker(false);
       currentValue.value = normalized;
       resetPreviews();
       if (isOwnEcho) lastEmittedSignature = '';
@@ -239,13 +290,13 @@
   watch(
     () => props.service,
     (service, previous) => {
-      if (service !== previous && pickerVisible.value) closePicker(false);
+      if (service !== previous && (pickerVisible.value || selectionPending.value)) closePicker(false);
     }
   );
   watch(
     () => interactionDisabled.value,
     (disabled) => {
-      if (disabled && pickerVisible.value) closePicker(false);
+      if (disabled && (pickerVisible.value || selectionPending.value)) closePicker(false);
     }
   );
   onBeforeUnmount(() => closePicker(false));
@@ -254,7 +305,12 @@
 <template>
   <div
     class="a9-cover-picker"
-    :class="[`a9-cover-picker--${resolvedSize}`, { 'is-disabled': interactionDisabled, 'is-error': mergedError }]"
+    :class="[
+      `a9-cover-picker--${resolvedSize}`,
+      slotCountClass,
+      { 'is-disabled': interactionDisabled, 'is-error': mergedError },
+    ]"
+    :style="slotStyle"
   >
     <FormItem no-style :validate-trigger="[]">
       <a-radio-group
@@ -263,13 +319,13 @@
         :aria-label="t('admin9Ui.coverPicker.modeLabel')"
         @update:model-value="changeMode"
       >
-        <a-radio value="single" :disabled="interactionDisabled" data-testid="cover-picker-mode-single">
+        <a-radio value="single" :disabled="interactionDisabled || selectionPending" data-testid="cover-picker-mode-single">
           {{ t('admin9Ui.coverPicker.single') }}
         </a-radio>
-        <a-radio value="triple" :disabled="interactionDisabled" data-testid="cover-picker-mode-triple">
+        <a-radio value="triple" :disabled="interactionDisabled || selectionPending" data-testid="cover-picker-mode-triple">
           {{ t('admin9Ui.coverPicker.triple') }}
         </a-radio>
-        <a-radio value="none" :disabled="interactionDisabled" data-testid="cover-picker-mode-none">
+        <a-radio value="none" :disabled="interactionDisabled || selectionPending" data-testid="cover-picker-mode-none">
           {{ t('admin9Ui.coverPicker.none') }}
         </a-radio>
       </a-radio-group>
@@ -281,7 +337,7 @@
             type="button"
             class="a9-cover-picker__slot"
             :class="{ 'has-image': item }"
-            :disabled="interactionDisabled"
+            :disabled="interactionDisabled || selectionPending"
             :aria-label="slotLabel(item, index)"
             :data-testid="`cover-picker-slot-${index}`"
             @click="openPicker(index)"
@@ -316,7 +372,7 @@
               :size="resolvedSize === 'large' ? 'small' : 'mini'"
               shape="circle"
               status="danger"
-              :disabled="interactionDisabled"
+              :disabled="interactionDisabled || selectionPending"
               :aria-label="t('admin9Ui.coverPicker.removePosition', { index: index + 1 })"
               :data-testid="`cover-picker-remove-${index}`"
               @click.stop="removeImage(index)"
@@ -339,6 +395,7 @@
           :can-move-files="canMoveFiles"
           :accept="accept"
           :multiple="false"
+          :before-upload="beforeUpload"
           @confirm="onPickerChange"
           @visible-change="onPickerVisibleChange"
           @upload-success="emit('uploadSuccess', $event)"
@@ -354,7 +411,13 @@
 <style lang="less" scoped>
   .a9-cover-picker {
     position: relative;
+    width: max-content;
     min-width: 0;
+    max-width: 100%;
+
+    &.is-triple {
+      width: min(calc(var(--a9-cover-picker-slot-width) * 3 + 24px), 100%);
+    }
 
     &.is-error {
       outline: 1px solid rgb(var(--danger-6));
@@ -412,7 +475,7 @@
     &__slot-wrap {
       position: relative;
       min-width: 0;
-      aspect-ratio: 4 / 3;
+      aspect-ratio: var(--a9-cover-picker-slot-ratio, 4 / 3);
     }
 
     &__slot {

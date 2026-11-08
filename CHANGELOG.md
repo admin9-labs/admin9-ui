@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- AFileUploader 新增 `beforeUpload`，支持上传前异步转换文件或取消任务；AFilePicker、AImagePicker 和 ACoverPicker 透传此能力，并新增 `beforeSelect`，支持确认写回前转换所选文件或取消替换。公开导出 `FileBeforeUpload`、`FileBeforeSelect` 类型，`FileItem` 增加可选图片宽高信息。
+- ACoverPicker 新增 `aspectRatio`，统一单图与三图预览比例，保留 `size` 对应的格子宽度；裁剪流程、业务比例和输出尺寸由消费应用配置。
+
+### Fixed
+
+- 异步选图处理取消时保留原值；等待期间锁定勾选，关闭、清空或切换上下文后忽略迟到结果，避免旧选择覆盖新操作。
+- 上传前转换文件后再次校验大小限制，避免转换结果超限仍被提交给 adapter。
+
 ## [0.28.5] - 2026-10-16
 
 ### Changed

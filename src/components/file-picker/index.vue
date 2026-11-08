@@ -190,6 +190,8 @@
   const uploadTaskIds = new Set<string>();
   const completedUploadTaskIds = new Set<string>();
   let uploadCycleSettled = false;
+  let selectionGeneration = 0;
+  const selecting = ref(false);
   const clearUploadTracking = () => {
     uploadTaskIds.clear();
     completedUploadTaskIds.clear();
@@ -321,7 +323,8 @@
       !interactionDisabled.value &&
       !fileActionBusy.value &&
       !managing.value &&
-      (draftCount.value > 0 || needsEmptyCommit.value)
+      (draftCount.value > 0 || needsEmptyCommit.value) &&
+      !selecting.value
   );
   const modalTitle = computed(() =>
     managing.value ? contextLabel('manageTitle', 'manageImagesTitle') : contextLabel('title', 'imageTitle')
@@ -446,6 +449,8 @@
     'mime',
     'extension',
     'thumbnail',
+    'width',
+    'height',
     'duration',
     'createdAt',
     'status',
@@ -460,6 +465,10 @@
     });
     const next = items.filter((item) => hasStableId(item) && idCounts.get(item.id) === 1);
     if (sameItems(draftItems.value, next)) return false;
+    if (selecting.value) {
+      selectionGeneration += 1;
+      selecting.value = false;
+    }
     clearLimitNotice();
     draftMap.value = new Map(next.map((item) => [item.id, item]));
     if (notify) emit('selectionChange', next);
@@ -512,6 +521,8 @@
     if (visible.value) replaceDraft(next, false);
   };
   const invalidateRequests = () => {
+    selectionGeneration += 1;
+    selecting.value = false;
     clearMessages();
     clearUploadTracking();
     viewGeneration += 1;
@@ -938,6 +949,8 @@
   };
   const close = () => {
     if (!visible.value) return;
+    selectionGeneration += 1;
+    selecting.value = false;
     clearLimitNotice();
     activePreview.value = undefined;
     invalidateRequests();
@@ -960,15 +973,38 @@
     replaceDraft([], visible.value);
     if (emitCommittedValue([])) emit('clear');
   };
-  const confirm = () => {
+  const confirm = async () => {
     const next = sanitizeItems(draftItems.value);
     if (!visible.value || !canConfirm.value) return;
+    if (props.beforeSelect) {
+      selectionGeneration += 1;
+      const generation = selectionGeneration;
+      selecting.value = true;
+      try {
+        let transformed: Array<FileItem | null>;
+        try {
+          transformed = await Promise.all(next.map((item) => props.beforeSelect?.(item) ?? Promise.resolve(item)));
+        } catch {
+          return;
+        }
+        if (generation !== selectionGeneration || !visible.value || transformed.some((item) => item === null)) return;
+        if (!sameItems(sanitizeItems(draftItems.value), next)) return;
+        const selected = sanitizeItems(transformed.filter((item): item is FileItem => item !== null));
+        if (selected.length !== transformed.length) return;
+        emitCommittedValue(selected);
+        emit('confirm', selected);
+        close();
+      } finally {
+        if (generation === selectionGeneration) selecting.value = false;
+      }
+      return;
+    }
     emitCommittedValue(next);
     emit('confirm', next);
     close();
   };
   const toggleItem = (item: FileItem) => {
-    if (interactionDisabled.value || fileActionBusy.value || !isAvailable(item)) return;
+    if (interactionDisabled.value || fileActionBusy.value || selecting.value || !isAvailable(item)) return;
     if (managing.value) {
       const next = new Map(managementMap.value);
       if (next.has(item.id)) next.delete(item.id);
@@ -1472,6 +1508,7 @@
                       :file-types="allowedFileTypes"
                       :group-id="uploadGroupId"
                       :accept="accept"
+                      :before-upload="beforeUpload"
                       :button-text="t('admin9Ui.filePicker.upload')"
                       @success="onUploadResponse"
                       @error="onUploadError"
@@ -1573,7 +1610,7 @@
                         :card="view === 'grid'"
                         :managing="managing"
                         :selected="activeSelection.has(item.id)"
-                        :disabled="fileActionBusy || !isAvailable(item)"
+                        :disabled="selecting || fileActionBusy || !isAvailable(item)"
                         :name="item.name"
                         @toggle="toggleItem(item)"
                       />
@@ -1598,7 +1635,7 @@
                               :card="view === 'grid'"
                               :managing="managing"
                               :selected="activeSelection.has(item.id)"
-                              :disabled="fileActionBusy || !isAvailable(item)"
+                              :disabled="selecting || fileActionBusy || !isAvailable(item)"
                               :name="item.name"
                               @toggle="toggleItem(item)"
                             />

@@ -1,5 +1,5 @@
 import type { Size } from '@arco-design/web-vue';
-import type { FileItem, FileType, FileUploadCapability } from '../../services/types';
+import type { FileBeforeUpload, FileItem, FileType, FileUploadCapability } from '../../services/types';
 
 export type FileUploadTaskStatus = 'pending' | 'uploading' | 'succeeded' | 'failed' | 'cancelled';
 
@@ -46,6 +46,7 @@ export interface AFileUploaderProps {
   buttonText?: string;
   disabled?: boolean;
   size?: Size;
+  beforeUpload?: FileBeforeUpload;
 }
 
 export interface AFileUploaderExposed {

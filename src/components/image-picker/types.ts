@@ -1,5 +1,5 @@
 import type { Size } from '@arco-design/web-vue';
-import type { FileItem, FilePickerAdapter } from '../../services/types';
+import type { FileBeforeSelect, FileBeforeUpload, FileItem, FilePickerAdapter } from '../../services/types';
 import type { FilePickerView } from '../file-picker/types';
 
 export type ImagePickerValue = FileItem | FileItem[] | undefined;
@@ -27,6 +27,8 @@ export interface AImagePickerProps {
   pageSize?: number;
   /** @deprecated 图片弹窗固定为网格；仅为兼容已有调用保留。 */
   defaultView?: FilePickerView;
+  beforeUpload?: FileBeforeUpload;
+  beforeSelect?: FileBeforeSelect;
 }
 
 export interface AImagePickerEmits {

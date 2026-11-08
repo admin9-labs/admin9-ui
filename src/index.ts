@@ -39,6 +39,8 @@ export type {
   FileType,
   FileGroup,
   FileItem,
+  FileBeforeUpload,
+  FileBeforeSelect,
   FileListParams,
   FilePagination,
   FileListResult,

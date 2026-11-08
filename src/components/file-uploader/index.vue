@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, toRef, watch } from 'vue';
+  import { computed, inject, markRaw, nextTick, onBeforeUnmount, onMounted, reactive, ref, toRaw, toRef, watch } from 'vue';
   import { useFormItem, type RequestOption, type UploadRequest } from '@arco-design/web-vue';
   import { useI18n } from 'vue-i18n';
   import safeFileUrl from '../../internal/file-url';
@@ -39,6 +39,7 @@
     maxFileSize: 0,
     buttonText: '',
     disabled: false,
+    beforeUpload: undefined,
   });
 
   const emit = defineEmits<{
@@ -222,7 +223,7 @@
     return false;
   };
 
-  const runTask = (task: InternalTask) => {
+  const runTask = async (task: InternalTask) => {
     if (!validateTask(task)) return;
     const service = resolvedService.value;
     if (!service || typeof service.upload !== 'function') {
@@ -233,6 +234,29 @@
     const { run } = task;
     const controller = new AbortController();
     task.controller = controller;
+    if (props.beforeUpload) {
+      let prepared: File | null;
+      try {
+        prepared = await props.beforeUpload(toRaw(task.file));
+      } catch (error) {
+        if (!mounted.value || task.run !== run || controller.signal.aborted) return;
+        failUpload(task, error);
+        return;
+      }
+      if (!mounted.value || task.run !== run || controller.signal.aborted) return;
+      if (prepared === null) {
+        task.status = 'cancelled';
+        task.controller = undefined;
+        notifyTasks();
+        finishBatchIfSettled();
+        return;
+      }
+      task.file = markRaw(prepared);
+      if (props.maxFileSize > 0 && task.file.size > props.maxFileSize) {
+        failTask(task, 'file-size', createError(`accepts files no larger than ${props.maxFileSize} bytes.`));
+        return;
+      }
+    }
     task.status = 'uploading';
     task.progress = undefined;
     task.error = undefined;
@@ -293,7 +317,7 @@
     }
     const task = reactive<InternalTask>({
       id: `a9-upload-${Date.now()}-${(taskSequence += 1)}`,
-      file,
+      file: markRaw(file),
       fileTypes,
       groupId: props.groupId ?? null,
       status: 'pending',

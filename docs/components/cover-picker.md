@@ -2,7 +2,7 @@
 
 `ACoverPicker` 是后端无关的封面选择组件，提供单图、三图和无封面模式。三图使用三个固定位置，每个位置通过同一个 `AFilePicker` 单独选择图片。
 
-内部选图弹窗沿用 [AFilePicker 的稳定高度与响应式分页](./file-picker.md#布局与分页)，默认按可用空间展示完整的一页图片，分组列表独立滚动。弹窗图片卡片隐藏单独的后缀和大小行，保留文件名、预览与异常状态。弹窗图片框采用 4:3 与 `contain`，不改变下方说明的封面字段卡片展示方式。
+内部选图弹窗沿用 [AFilePicker 的布局与分页](./file-picker.md#布局与分页)，使用受视口限制的 720px 高度，默认每页 20 项，分组和文件结果区独立滚动。弹窗卡片展示缩略图、文件名、格式和大小。弹窗图片框采用 4:3 与 `contain`，与下方封面字段的 `aspectRatio` 独立。
 
 普通单图／多图字段使用 [AImagePicker](./image-picker.md)。ACoverPicker 保留封面模式、固定位置及允许重复图片的独立契约。
 
@@ -73,6 +73,10 @@ export type CoverPickerValue =
 | `disabled`   | `boolean`           | `false`                              | 禁用模式切换、选择、替换和移除；同时继承外层 Arco 表单的禁用状态 |
 | `readonly`   | `boolean`           | `false`                              | 禁止模式切换、选择和移除                                         |
 
+| `aspectRatio` | `number \| string` | `4 / 3` | 单图及三图封面格的宽高比，接受正数或 CSS 比例字符串，如 `16 / 9` |
+| `beforeUpload` | `FileBeforeUpload` | `undefined` | 透传内部上传器，上传前转换本地文件或取消上传 |
+| `beforeSelect` | `FileBeforeSelect` | `undefined` | 写回当前封面位置前转换图片或取消本次替换 |
+
 ## 尺寸
 
 ```vue
@@ -81,13 +85,13 @@ export type CoverPickerValue =
 
 | 项目               | small      | medium（默认） | large       |
 | ------------------ | ---------- | -------------- | ----------- |
-| 单格最大尺寸       | 120 × 90px | 160 × 120px    | 200 × 150px |
+| 默认比例单格最大尺寸 | 120 × 90px | 160 × 120px    | 200 × 150px |
 | 三图最大宽度       | 384px      | 504px          | 624px       |
 | 加号／失败占位图标 | 26px       | 34px           | 42px        |
 | 替换图标背景直径   | 24px       | 28px           | 32px        |
 | 移除按钮 Arco size | mini       | mini           | small       |
 
-图片间距始终为 `12px`，窄容器内按 `4:3` 等比例缩小。模式选项和文件弹窗保持原有尺寸。动态切换 `size` 不会关闭弹窗、清空选择或触发值变更事件。
+图片间距始终为 `12px`，单格最大宽度由 `size` 决定，调整 `aspectRatio` 只改变高度；窄容器内按当前比例等比缩小。模式选项和文件弹窗保持原有尺寸。动态切换 `size` 不会关闭弹窗、清空选择或触发值变更事件。
 
 ## Events
 
@@ -111,11 +115,19 @@ TypeScript 声明使用 `visibleChange`、`uploadSuccess`、`uploadError`；Vue 
 
 点击空位置选择图片，点击已有图片进行替换。取消文件弹窗不会写回，确认相同图片不会重复触发值事件。移除只解除当前位置的引用，不调用后端删除接口。
 
+## 裁剪与处理接入
+
+`beforeSelect: (item: FileItem) => Promise<FileItem | null>` 在内部文件弹窗确认后、写回封面位置前执行。返回有效图片用于替换；返回 `null` 或抛错时保留原封面。处理期间禁止模式切换、替换及移除；外部值、禁用状态或组件生命周期使任务失效后，迟到结果不会写回。显式确认空选择仍会清空当前位置。
+
+`beforeUpload` 规则同 [AFileUploader](./file-uploader.md#上传前处理)，只影响本地文件上传，不会自动选中上传结果。
+
+裁剪弹窗、业务比例、输出像素尺寸和生成文件的保存由消费应用实现。应用可以使用同一业务规格配置 `aspectRatio` 和自己的裁剪器；已有图片是否需要重新裁剪也由应用判断。组件不内置四种比例或 640px 输出限制。返回的 `FileItem.width` / `height` 可记录处理后尺寸；使用临时 blob URL 时，由创建方在不再引用后释放。
+
 ## 图片与安全边界
 
 组件只接受具有稳定非空 ID、`type: 'image'`、非空 URL，并且状态为 `ready` 或未提供的 `FileItem`。非法外部图片按原位置校正为 `null`，不会移动其他位置。
 
-预览优先使用 `thumbnail`，加载失败后回退 `url`，再次失败则显示占位。预览框固定为 `4:3` 并使用 `object-fit: cover`，不会限制、裁剪或改写原文件。
+预览优先使用 `thumbnail`，加载失败后回退 `url`，再次失败则显示占位。预览框默认 `4:3`，可通过 `aspectRatio` 调整，并使用 `object-fit: cover`。比例变化只改变展示，不会裁剪或改写原文件，也不会触发值变更。
 
 `canUpload` 只是界面能力开关。adapter 和后端仍需校验文件内容、MIME、扩展名、大小、身份、资源归属和权限。
 

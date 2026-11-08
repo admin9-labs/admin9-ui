@@ -37,10 +37,15 @@ export interface FileItem {
   mime?: string;
   extension?: string;
   thumbnail?: string;
+  width?: number | null;
+  height?: number | null;
   duration?: number;
   createdAt?: string;
   status?: 'pending' | 'ready' | 'failed';
 }
+
+export type FileBeforeUpload = (file: File) => Promise<File | null>;
+export type FileBeforeSelect = (item: FileItem) => Promise<FileItem | null>;
 
 interface FileListParamsBase {
   page: number;

@@ -332,6 +332,7 @@ function mountPicker({
     ...props,
     'onUpdate:modelValue': capture('update:modelValue'),
     'onChange': capture('change'),
+    'onConfirm': capture('confirm'),
     'onSelectionChange': capture('selectionChange'),
     'onVisibleChange': capture('visibleChange'),
     'onUploadSuccess': capture('uploadSuccess'),
@@ -564,6 +565,82 @@ describe('AFilePicker', () => {
 
     expect(emitted['update:modelValue']).toEqual([[[image]]]);
     expect(emitted.change).toEqual([[[image]]]);
+  });
+
+  it('locks selection while beforeSelect is pending', async () => {
+    const pending = deferred<FileItem>();
+    const beforeSelect = vi.fn(() => pending.promise);
+    const { emitted } = mountPicker({
+      service: makeService(),
+      props: { multiple: true, beforeSelect },
+    });
+    click('[data-testid="file-picker-trigger"]');
+    await flush();
+    selectItem('image-1');
+    await nextTick();
+
+    const confirmButton = document.querySelector<HTMLButtonElement>('.a9-file-picker__footer-actions button:last-child');
+    confirmButton?.click();
+    await nextTick();
+
+    selectItem('document-1');
+    pending.resolve(image);
+    await flush();
+
+    expect(beforeSelect).toHaveBeenCalledWith(image);
+    expect(emitted['update:modelValue']).toEqual([[[image]]]);
+    expect(emitted.change).toEqual([[[image]]]);
+  });
+
+  it('discards an asynchronous selection when the exposed clear command changes its draft', async () => {
+    const pending = deferred<FileItem>();
+    const { emitted, vm } = mountPicker({
+      service: makeService(),
+      props: { beforeSelect: () => pending.promise },
+    });
+    click('[data-testid="file-picker-trigger"]');
+    await flush();
+    selectItem('image-1');
+    await nextTick();
+    click('.a9-file-picker__footer-actions button:last-child');
+    await nextTick();
+    (vm as unknown as { clear(): void }).clear();
+    pending.resolve(image);
+    await flush();
+    expect(emitted.confirm).toBeUndefined();
+    expect(emitted['update:modelValue']).toBeUndefined();
+    expect(document.querySelector('.a9-file-picker__footer-actions')).toBeTruthy();
+  });
+
+  it('ignores an earlier result after closing and starting a new selection', async () => {
+    const first = deferred<FileItem>();
+    const second = deferred<FileItem>();
+    const beforeSelect = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const { emitted, vm } = mountPicker({ service: makeService(), props: { beforeSelect } });
+    const commands = vm as unknown as { open(): void; close(): void };
+    commands.open();
+    await flush();
+    selectItem('image-1');
+    await nextTick();
+    click('.a9-file-picker__footer-actions button:last-child');
+    await nextTick();
+    commands.close();
+    commands.open();
+    await flush();
+    selectItem('document-1');
+    await nextTick();
+    click('.a9-file-picker__footer-actions button:last-child');
+    await nextTick();
+    expect(beforeSelect).toHaveBeenCalledTimes(2);
+    expect(beforeSelect).toHaveBeenLastCalledWith(implicitReady);
+    first.resolve(image);
+    await flush();
+    expect(emitted.confirm).toBeUndefined();
+    expect(document.querySelector<HTMLButtonElement>('.a9-file-picker__footer-actions button:last-child')?.disabled).toBe(true);
+    second.resolve(implicitReady);
+    await flush();
+    expect(emitted.confirm).toEqual([[[implicitReady]]]);
+    expect(emitted['update:modelValue']).toEqual([[implicitReady]]);
   });
 
   it('disables wrong-type, pending, failed, empty-url, empty-id and every duplicate-id row', async () => {

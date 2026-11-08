@@ -27,6 +27,8 @@
     type TiptapDocument,
   } from '@admin9-labs/admin9-ui';
 
+  import { beforeSelect, beforeUpload } from './audit-types';
+
   defineProps<{
     service: FilePickerAdapter;
     filePickerService: FilePickerAdapter;
@@ -72,6 +74,8 @@
       ref="imagePicker"
       v-model="image"
       :service="filePickerService"
+      :before-select="beforeSelect"
+      :before-upload="beforeUpload"
       display-mode="landscape"
       fit="cover"
       can-create-group
@@ -107,6 +111,9 @@
     <ACoverPicker
       v-model="cover"
       :size="coverSize"
+      :aspect-ratio="3 / 4"
+      :before-select="beforeSelect"
+      :before-upload="beforeUpload"
       :service="filePickerService"
       can-create-group
       can-delete-files
@@ -167,6 +174,8 @@
       :can-upload-audio="false"
     />
     <AFilePicker
+      :before-select="beforeSelect"
+      :before-upload="beforeUpload"
       v-model="attachments"
       :service="filePickerService"
       :file-types="['image', 'document']"
@@ -177,6 +186,12 @@
       can-move-files
     />
     <AFilePicker :service="filePickerService" :page-size="24" default-view="list" button-text="Fixed page size" />
-    <AFileUploader :service="fileUploaderService" :file-types="['image']" group-id="fixture-images" accept="image/*" />
+    <AFileUploader
+      :before-upload="beforeUpload"
+      :service="fileUploaderService"
+      :file-types="['image']"
+      group-id="fixture-images"
+      accept="image/*"
+    />
   </section>
 </template>

@@ -39,6 +39,8 @@
     buttonText: '',
     pageSize: undefined,
     defaultView: 'grid',
+    beforeUpload: undefined,
+    beforeSelect: undefined,
   });
   const emit = defineEmits<AImagePickerEmits>();
   defineSlots<AImagePickerSlots>();
@@ -221,6 +223,8 @@
         :readonly="readonly"
         :size="mergedSize"
         :accept="accept"
+        :before-upload="beforeUpload"
+        :before-select="beforeSelect"
         :can-upload="canUpload"
         :can-create-group="canCreateGroup"
         :can-delete-files="canDeleteFiles"

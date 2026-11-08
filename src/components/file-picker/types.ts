@@ -1,5 +1,5 @@
 import type { Size } from '@arco-design/web-vue';
-import type { FileItem, FilePickerAdapter, FileType } from '../../services/types';
+import type { FileBeforeSelect, FileBeforeUpload, FileItem, FilePickerAdapter, FileType } from '../../services/types';
 
 export type FilePickerValue = FileItem | FileItem[] | undefined;
 export type FilePickerView = 'grid' | 'list';
@@ -23,6 +23,8 @@ export interface AFilePickerProps {
   readonly?: boolean;
   size?: Size;
   allowClear?: boolean;
+  beforeUpload?: FileBeforeUpload;
+  beforeSelect?: FileBeforeSelect;
 }
 export interface AFilePickerExposed {
   open(): void;

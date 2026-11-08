@@ -1,5 +1,5 @@
 import type { Size } from '@arco-design/web-vue';
-import type { FileItem, FilePickerAdapter } from '../../services/types';
+import type { FileBeforeSelect, FileBeforeUpload, FileItem, FilePickerAdapter } from '../../services/types';
 
 export type CoverMode = 'single' | 'triple' | 'none';
 export type CoverPickerSize = Size;
@@ -18,6 +18,9 @@ export interface ACoverPickerProps {
   canDeleteFiles?: boolean;
   canMoveFiles?: boolean;
   accept?: string;
+  aspectRatio?: number | string;
   disabled?: boolean;
   readonly?: boolean;
+  beforeUpload?: FileBeforeUpload;
+  beforeSelect?: FileBeforeSelect;
 }
