@@ -66,6 +66,7 @@ export function parseTiptapDocument(value: unknown, editor: Editor): ProseMirror
     const attrs = { ...node.attrs };
     if (['blockImage', 'inlineImage', 'video', 'audio'].includes(name)) {
       if (!isSafeMediaUrl(attrs.src)) return null;
+      if (name === 'video') attrs.poster = isSafeMediaUrl(attrs.poster) ? attrs.poster : null;
       attrs.title = typeof attrs.title === 'string' ? attrs.title : null;
       if (name === 'blockImage' || name === 'inlineImage') attrs.alt = typeof attrs.alt === 'string' ? attrs.alt : '';
       if (name === 'inlineImage') attrs.size = normalizeInlineSize(attrs.size);

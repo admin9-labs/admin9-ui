@@ -3,7 +3,7 @@
   import type { NodeViewProps } from '@tiptap/core';
   import { NodeViewWrapper } from '@tiptap/vue-3';
   import { useI18n } from 'vue-i18n';
-  import { normalizeAudioWidth, normalizeBlockWidth, normalizeMediaAlign } from './media-attributes';
+  import { isSafeMediaUrl, normalizeAudioWidth, normalizeBlockWidth, normalizeMediaAlign } from './media-attributes';
 
   const props = defineProps<NodeViewProps>();
   const { t } = useI18n();
@@ -99,6 +99,7 @@
     <video
       v-else-if="nodeName === 'video'"
       :src="node.attrs.src"
+      :poster="isSafeMediaUrl(node.attrs.poster) ? node.attrs.poster : undefined"
       :title="node.attrs.title"
       controls
       preload="metadata"

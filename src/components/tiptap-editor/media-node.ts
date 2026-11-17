@@ -177,6 +177,19 @@ const createPlaybackNode = (name: 'video' | 'audio') =>
     addAttributes() {
       return {
         ...commonAttributes,
+        ...(name === 'video'
+          ? {
+              poster: {
+                default: null,
+                parseHTML: (element: HTMLElement) => {
+                  const poster = element.getAttribute('poster');
+                  return isSafeMediaUrl(poster) ? poster : null;
+                },
+                renderHTML: (attributes: Record<string, unknown>) =>
+                  isSafeMediaUrl(attributes.poster) ? { poster: attributes.poster } : {},
+              },
+            }
+          : {}),
         width: { default: name === 'video' ? '100%' : 'standard' },
         align: { default: 'left' },
       };
@@ -215,6 +228,7 @@ const createPlaybackNode = (name: 'video' | 'audio') =>
       };
       if (name === 'video') {
         const width = normalizeBlockWidth(HTMLAttributes.width, '100%');
+        if (isSafeMediaUrl(HTMLAttributes.poster)) attributes.poster = HTMLAttributes.poster;
         attributes['data-width'] = width;
         attributes['data-align'] = normalizeMediaAlign(HTMLAttributes.align);
         if (width !== 'natural') attributes.width = width;

@@ -89,9 +89,9 @@ h(ATiptapEditor<'html'>, {
   'onScrollViewportChange': (viewport: HTMLElement | null) => viewport,
   'onImageCropError': (error: TiptapImageCropError) => error.phase,
 });
-// @ts-expect-error JSON owns its root attributes inside modelValue.
 export const duplicatedJSONAttributes: ATiptapEditorProps<'json'> = {
   valueFormat: 'json',
   modelValue: document,
+  // @ts-expect-error JSON owns its root attributes inside modelValue.
   documentAttributes: {},
 };

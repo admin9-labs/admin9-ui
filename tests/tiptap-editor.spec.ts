@@ -2729,4 +2729,26 @@ describe('ATiptapEditor public contract', () => {
     expect(instance.getJSON().attrs?.meta).toEqual({ title: 'Old' });
     expect(editor.state.doc).toBe(before);
   });
+  it.each(['tbody', 'thead', 'tfoot'])(
+    'strictly inserts imported table %s sections without losing content',
+    async (section) => {
+      const instance = mountEditor({ modelValue: '<p>Before</p>' });
+      await flush();
+      const editor = getInternalEditor(instance);
+      const error = vi.fn();
+      editor.on('contentError', error);
+      const html = `<h2>Imported</h2><table><colgroup><col style="width:120px"></colgroup><${section}><tr><td><p>Cell A</p></td><td><p>Cell B</p></td></tr></${section}></table><p>After</p>`;
+      expect(editor.commands.insertContentAt(editor.state.doc.content.size, html, { errorOnInvalidContent: true })).toBe(true);
+      expect(error).not.toHaveBeenCalled();
+      expect(instance.getHTML()).toContain('Cell A');
+      expect(instance.getHTML()).toContain('Cell B');
+      expect(instance.getHTML()).toContain('After');
+      expect(instance.getJSON().content.some((node) => node.type === 'table')).toBe(true);
+      const before = editor.state.doc;
+      expect(() =>
+        editor.commands.insertContentAt(1, '<unsupported-widget>Bad</unsupported-widget>', { errorOnInvalidContent: true })
+      ).toThrow('Invalid HTML content');
+      expect(editor.state.doc).toBe(before);
+    }
+  );
 });

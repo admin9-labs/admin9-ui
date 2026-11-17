@@ -14,6 +14,7 @@
 
 ### Fixed
 
+- ATiptapEditor 保留安全的视频 poster，并允许严格内容校验识别导入表格的标准 HTML section 和列分组。
 - AImageCropper 在打开事件中同步取消或改开另一张图片时，正确结束原请求并避免重复解码。
 
 ## [0.30.0] - 2026-11-09

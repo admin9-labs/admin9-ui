@@ -346,6 +346,15 @@
   // Keep resizing registered across readonly/disabled transitions. Its handlers
   // already guard view.editable before changing the document.
   const DynamicEditableTable = Table.extend({
+    parseHTML() {
+      return [
+        { tag: 'table' },
+        { tag: 'tbody', skip: true },
+        { tag: 'thead', skip: true },
+        { tag: 'tfoot', skip: true },
+        { tag: 'colgroup', ignore: true },
+      ];
+    },
     addProseMirrorPlugins() {
       return [
         columnResizing({
