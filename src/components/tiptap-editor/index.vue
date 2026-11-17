@@ -202,6 +202,7 @@
   const bubbleMenuReady = ref(false);
   const isFocused = ref(false);
   const mediaPickerVisible = ref(false);
+  const imageCropVisible = ref(false);
   const imagePickerValue = ref<FileItem>();
   const videoPickerValue = ref<FileItem>();
   const audioPickerValue = ref<FileItem>();
@@ -629,12 +630,12 @@
   const updateMediaBubbleVisibility = () => {
     const bubbleElement = mediaToolbarRef.value?.parentElement;
     if (bubbleElement) {
-      const pickerOpen = mediaPickerVisible.value;
-      bubbleElement.style.visibility = !pickerOpen && getSelectedMediaVisibleRect() ? 'visible' : 'hidden';
-      bubbleElement.style.pointerEvents = pickerOpen ? 'none' : '';
-      if (pickerOpen) bubbleElement.setAttribute('aria-hidden', 'true');
+      const dialogOpen = mediaPickerVisible.value || imageCropVisible.value;
+      bubbleElement.style.visibility = !dialogOpen && getSelectedMediaVisibleRect() ? 'visible' : 'hidden';
+      bubbleElement.style.pointerEvents = dialogOpen ? 'none' : '';
+      if (dialogOpen) bubbleElement.setAttribute('aria-hidden', 'true');
       else bubbleElement.removeAttribute('aria-hidden');
-      bubbleElement.inert = pickerOpen;
+      bubbleElement.inert = dialogOpen;
     }
   };
 
@@ -651,11 +652,17 @@
     updateMediaBubbleVisibility();
   };
 
+  const onImageCropVisibleChange = (visible: boolean) => {
+    imageCropVisible.value = visible;
+    updateMediaBubbleVisibility();
+  };
+
   const shouldShowMediaBubble = ({ editor: currentEditor }: { editor: Editor }) => {
     const { selection } = currentEditor.state;
     return (
       currentEditor.isEditable &&
       !mediaPickerVisible.value &&
+      !imageCropVisible.value &&
       selection instanceof NodeSelection &&
       mediaNodeNames.includes(selection.node.type.name as TiptapMediaNodeName)
     );
@@ -1706,6 +1713,7 @@
         ref="cropper"
         :crop="props.imageCrop"
         :aspect-ratio-mode="props.imageCrop.aspectRatioMode"
+        @visible-change="onImageCropVisibleChange"
         @commit-pending-change="onCropCommitPending"
         @error="emit('imageCropError', { phase: 'crop', cause: $event })"
       />

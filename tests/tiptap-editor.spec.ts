@@ -1530,6 +1530,45 @@ describe('ATiptapEditor public contract', () => {
     expect(window.scrollY).toBe(pageScrollY);
   });
 
+  it('hides and disables the media bubble throughout the crop dialog and restores it on cancel', async () => {
+    const { instance, editor } = await mountReactiveEditor({
+      modelValue: '<p>Before</p><img src="/image.png" data-display="block">',
+      imageCrop: {
+        source: { maxBytes: 1000, maxPixels: 1000 },
+        output: { format: 'image/png', maxBytes: 1000, resize: { mode: 'max', longEdge: 100 } },
+        readSource: vi.fn(),
+      },
+    });
+    const content = document.querySelector<HTMLElement>('.a9-tiptap-editor__content');
+    const media = document.querySelector<HTMLElement>('[data-media-node="blockImage"]');
+    if (!content || !media) throw new Error('Media did not mount');
+    content.getBoundingClientRect = () => new DOMRect(0, 0, 600, 400);
+    media.getBoundingClientRect = () => new DOMRect(10, 20, 300, 200);
+    editor.commands.setNodeSelection(findNodePosition(editor, 'blockImage'));
+    await flush();
+    const bubble = document.querySelector<HTMLElement>('.a9-tiptap-editor__media-bubble');
+    expect(bubble?.style.visibility).toBe('visible');
+    const { cropper } = instance.$.setupState as { cropper: { open(file: File): Promise<File | null>; cancel(): void } };
+    const pending = cropper.open(new File(['GIF89a'], 'unsupported.gif', { type: 'image/gif' }));
+    await flush();
+    expect(bubble?.style.visibility).toBe('hidden');
+    expect(bubble?.style.pointerEvents).toBe('none');
+    expect(bubble?.getAttribute('aria-hidden')).toBe('true');
+    expect(bubble?.inert).toBe(true);
+    content.dispatchEvent(new Event('scroll'));
+    editor.view.dispatch(editor.state.tr.setMeta('a9TiptapMediaBubbleMenu', 'updatePosition'));
+    await flush();
+    expect(bubble?.style.visibility).toBe('hidden');
+    cropper.cancel();
+    await pending;
+    await flush();
+    expect(bubble?.style.visibility).toBe('visible');
+    expect(bubble?.style.pointerEvents).toBe('');
+    expect(bubble?.hasAttribute('aria-hidden')).toBe(false);
+    expect(bubble?.inert).toBe(false);
+    expect(editor.state.selection).toBeInstanceOf(NodeSelection);
+  });
+
   it('syncs controlled model changes without emitting a duplicate update', async () => {
     const value = ref('<p>First</p>');
     const onUpdate = vi.fn((nextValue: string) => {

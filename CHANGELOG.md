@@ -14,6 +14,7 @@
 
 ### Fixed
 
+- ATiptapEditor 打开图片裁剪弹窗时隐藏并禁用正文媒体悬浮操作栏，取消后恢复，避免遮挡裁剪画布。
 - ATiptapEditor 保留安全的视频 poster，并允许严格内容校验识别导入表格的标准 HTML section 和列分组。
 - AImageCropper 在打开事件中同步取消或改开另一张图片时，正确结束原请求并避免重复解码。
 
