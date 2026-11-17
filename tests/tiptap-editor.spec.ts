@@ -253,6 +253,13 @@ async function waitForEditorStateRender() {
   await nextTick();
 }
 
+async function openMediaMenu(label: string) {
+  const trigger = document.querySelector<HTMLButtonElement>(`.a9-tiptap-editor__media-toolbar button[aria-label="${label}"]`);
+  if (!trigger) throw new Error(`Missing media menu: ${label}`);
+  if (trigger.getAttribute('aria-expanded') !== 'true') trigger.click();
+  await flush();
+}
+
 function installStubs(app: App) {
   app.component(
     'AModal',
@@ -367,6 +374,133 @@ function dispatchEditorKey(key: 'ArrowLeft' | 'Backspace') {
 }
 
 describe('ATiptapEditor public contract', () => {
+  it('cancels a format menu when the parent replaces the body instead of applying its old selection to the new document', async () => {
+    const { props, editor, instance } = await mountReactiveEditor({ modelValue: '<p>ABC</p><p>DEF</p>' });
+    editor.commands.setTextSelection({ from: 1, to: 3 });
+    await waitForEditorStateRender();
+    document
+      .querySelector<HTMLButtonElement>('[data-format-control="firstLineIndent"]')
+      ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    await flush();
+    const staleOption = document.querySelector<HTMLButtonElement>('[data-format-option="firstLineIndent:2em"]');
+    expect(staleOption).not.toBeNull();
+    props.value = { ...props.value, modelValue: '<p>NEW DOCUMENT</p>' };
+    await flush();
+    expect(document.querySelector('[data-format-option="firstLineIndent:2em"]')).toBeNull();
+    staleOption?.click();
+    expect(instance.getHTML()).toBe('<p>NEW DOCUMENT</p>');
+  });
+
+  it('shows source-reading feedback without blocking save and clears an invalid retry target', async () => {
+    let rejectRead!: (error: Error) => void;
+    const readSource = vi.fn(
+      () =>
+        new Promise<File>((_resolve, reject) => {
+          rejectRead = reject;
+        })
+    );
+    const instance = mountEditor({
+      modelValue: '<p>Draft</p><img src="/original.png" data-display="block">',
+      canUploadImage: true,
+      service: { upload: vi.fn() },
+      imageCrop: { readSource, output: { maxWidth: 1000, maxHeight: 1000 } },
+    });
+    await flush();
+    const editor = getInternalEditor(instance);
+    const controller = (instance.$.setupState as { imageCrop: { start(pos: number): Promise<void>; retry(): void } }).imageCrop;
+    const position = findNodePosition(editor, 'blockImage');
+    const pending = controller.start(position);
+    await flush();
+    expect(document.querySelector('.a9-tiptap-editor__crop-status')?.textContent).toContain('Reading image');
+    expect(instance.getImageUploadState().canSave).toBe(true);
+    await controller.start(position);
+    expect(readSource).toHaveBeenCalledOnce();
+    rejectRead(new Error('offline'));
+    await pending;
+    await flush();
+    expect(document.querySelector('.a9-tiptap-editor__crop-status [role="alert"]')?.textContent).toContain('could not be read');
+    expect(document.querySelector('.a9-tiptap-editor__crop-status')?.textContent).toContain('Try again');
+    const target = editor.state.doc.nodeAt(position);
+    if (!target) throw new Error('Crop target is missing');
+    editor.commands.deleteRange({ from: position, to: position + target.nodeSize });
+    await flush();
+    expect(document.querySelector('.a9-tiptap-editor__crop-status')).toBeNull();
+    controller.retry();
+    expect(readSource).toHaveBeenCalledOnce();
+  });
+
+  it('keeps applying feedback until the cropped image replaces only its target and supports undo/redo', async () => {
+    let completeUpload!: (value: unknown) => void;
+    const upload = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          completeUpload = resolve;
+        })
+    );
+    const instance = mountEditor({
+      modelValue:
+        '<img src="/first.png" data-display="block"><p>Text</p><img src="/second.png" alt="Keep" data-display="block">',
+      canUploadImage: true,
+      service: { upload },
+      imageCrop: { readSource: async () => new File(['source'], 'image.png', { type: 'image/png' }) },
+    });
+    await flush();
+    const editor = getInternalEditor(instance);
+    const internal = instance.$.setupState as {
+      cropper: { open(file: File): Promise<File | null> };
+      imageCrop: { start(pos: number): Promise<void> };
+    };
+    vi.spyOn(internal.cropper, 'open').mockResolvedValue(new File(['cropped'], 'crop.png', { type: 'image/png' }));
+    let target = 0;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.attrs.src === '/second.png') target = pos;
+    });
+    const pending = internal.imageCrop.start(target);
+    await flush();
+    expect(document.querySelector('.a9-tiptap-editor__crop-status')?.textContent).toContain('Applying crop');
+    expect(instance.getImageUploadState().canSave).toBe(false);
+    expect(editor.isEditable).toBe(true);
+    expect(instance.getHTML()).toContain('/second.png');
+    completeUpload({ id: 'new', name: 'crop.png', type: 'image', groupId: null, url: '/cropped.png' });
+    await pending;
+    await flush();
+    expect(document.querySelector('.a9-tiptap-editor__crop-status')).toBeNull();
+    expect(instance.getImageUploadState().canSave).toBe(true);
+    expect(instance.getHTML()).toContain('/first.png');
+    expect(instance.getHTML()).toContain('/cropped.png');
+    expect(instance.getHTML()).toContain('alt="Keep"');
+    editor.commands.undo();
+    expect(instance.getHTML()).toContain('/second.png');
+    editor.commands.redo();
+    expect(instance.getHTML()).toContain('/cropped.png');
+    expect(upload).toHaveBeenCalledOnce();
+  });
+
+  it('opens the media width menu by keyboard and restores focus on Escape without changing the selection', async () => {
+    const instance = mountEditor({
+      modelValue: '<img src="/first.png" data-display="block"><img src="/second.png" data-display="block" data-width="50%">',
+    });
+    await flush();
+    const editor = getInternalEditor(instance);
+    editor.commands.setNodeSelection(editor.state.doc.child(0).nodeSize);
+    await flush();
+    const before = instance.getHTML();
+    const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="Display width"]');
+    if (!trigger) throw new Error('Width menu is missing');
+    trigger.focus();
+    trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    await flush();
+    expect(document.activeElement?.getAttribute('data-media-width')).toBe('50%');
+    document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(document.activeElement?.getAttribute('data-media-width')).toBe('75%');
+    document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await flush();
+    expect(document.activeElement).toBe(trigger);
+    expect(instance.getHTML()).toBe(before);
+    expect(editor.state.selection.from).toBe(editor.state.doc.child(0).nodeSize);
+    expect(editor.can().undo()).toBe(false);
+  });
+
   it('updates a linked inline image URL without replacing the image with text', async () => {
     const instance = mountEditor({ modelValue: '<p><a href="/old"><img src="/image.png" data-display="inline"></a></p>' });
     await flush();
@@ -568,16 +702,17 @@ describe('ATiptapEditor public contract', () => {
     expect(document.querySelector('.a9-tiptap-editor__painter [role="status"]')?.textContent).toBe(
       'Format copied. Select the target text.'
     );
-    const help = document.querySelector<HTMLDetailsElement>('.a9-tiptap-editor__painter-help');
-    const summary = help?.querySelector('summary');
-    summary?.focus();
-    expect(document.activeElement).toBe(summary);
-    help?.setAttribute('open', '');
+    const helpTrigger = document.querySelector<HTMLButtonElement>('button[aria-label="Format painter help"]');
+    helpTrigger?.focus();
+    expect(document.activeElement).toBe(helpTrigger);
+    helpTrigger?.click();
+    await flush();
+    const help = document.querySelector('.a9-tiptap-editor__painter-help');
     expect(help?.textContent).toContain('Mouse selection applies automatically');
     expect(help?.textContent).toContain('Enter after keyboard selection');
     expect(help?.textContent).toContain('Apply format after touch selection');
     expect(help?.textContent).toContain('Esc to cancel');
-    summary?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    helpTrigger?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await flush();
     expect(document.querySelector('.a9-tiptap-editor__painter')).toBeNull();
     expect(document.activeElement).toBe(editor.view.dom);
@@ -727,8 +862,9 @@ describe('ATiptapEditor public contract', () => {
     vi.spyOn(Message, 'warning').mockImplementation(() => ({} as ReturnType<typeof Message.warning>));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     mountedApps.splice(0).forEach((app) => app.unmount());
+    await flush();
     vi.restoreAllMocks();
   });
 
@@ -1502,6 +1638,7 @@ describe('ATiptapEditor public contract', () => {
     expect(internalEditor.state.selection).toBeInstanceOf(NodeSelection);
 
     mediaToolbar?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    await openMediaMenu('Display width');
     document.querySelector<HTMLButtonElement>('button[data-media-width="50%"]')?.click();
     await flush();
     expect(internalEditor.state.selection).toBeInstanceOf(NodeSelection);
@@ -2071,8 +2208,10 @@ describe('ATiptapEditor public contract', () => {
     const internalEditor = getInternalEditor(instance);
     internalEditor.commands.setNodeSelection(findNodePosition(internalEditor, 'inlineImage'));
     await flush();
+    await openMediaMenu('Image-with-text size');
     expect(document.querySelector('button[data-media-size="1.5em"]')?.getAttribute('aria-label')).toBe('Large icon');
-    expect(document.querySelector('button[data-media-size="1.5em"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('button[data-media-size="1.5em"]')?.getAttribute('aria-checked')).toBe('true');
+    await openMediaMenu('Image layout');
     document.querySelector<HTMLButtonElement>('button[aria-label="Place image on its own line"]')?.click();
     await flush();
 
@@ -2084,6 +2223,7 @@ describe('ATiptapEditor public contract', () => {
     expect(parsedDocument.body.innerHTML).toContain('<p>Before</p>');
     expect(parsedDocument.body.innerHTML).toContain('<p>After</p>');
 
+    await openMediaMenu('Image layout');
     document.querySelector<HTMLButtonElement>('button[aria-label="Place image with text"]')?.click();
     await flush();
     parsedDocument = new DOMParser().parseFromString(instance.getHTML(), 'text/html');
@@ -2103,23 +2243,20 @@ describe('ATiptapEditor public contract', () => {
     internalEditor.commands.setNodeSelection(findNodePosition(internalEditor, 'blockImage'));
     await flush();
 
+    await openMediaMenu('Display width');
     const smallButton = document.querySelector('button[data-media-width="25%"]');
     const mediumButton = document.querySelector('button[data-media-width="50%"]');
     const resetSizeButton = document.querySelector<HTMLButtonElement>('button[data-media-reset-size]');
     expect(document.querySelector('button[data-media-width="natural"]')).toBeNull();
     expect(document.querySelectorAll('[data-selected-media="blockImage"] button[data-media-width]')).toHaveLength(4);
-    expect(smallButton?.getAttribute('aria-label')).toBe('Small');
-    expect(smallButton?.getAttribute('aria-pressed')).toBe('true');
-    expect(smallButton?.getAttribute('data-button-type')).toBe('primary');
-    expect(mediumButton?.getAttribute('aria-label')).toBe('Medium');
-    expect(mediumButton?.getAttribute('aria-pressed')).toBe('false');
+    expect(smallButton?.getAttribute('aria-label')).toBe('25%');
+    expect(smallButton?.getAttribute('aria-checked')).toBe('true');
+    expect(smallButton?.getAttribute('role')).toBe('menuitemradio');
+    expect(mediumButton?.getAttribute('aria-label')).toBe('50%');
+    expect(mediumButton?.getAttribute('aria-checked')).toBe('false');
     expect(mediumButton?.getAttribute('data-button-type')).toBe('text');
-    expect(document.querySelector('[data-selected-media="blockImage"]')?.textContent).not.toMatch(
-      /original|natural|auto size|25%|50%|75%|100%|\bem\b|\bpx\b/i
-    );
-    expect(resetSizeButton?.getAttribute('aria-label')).toBe('Reset size');
-    expect(resetSizeButton?.getAttribute('data-button-type')).toBe('text');
-    expect(resetSizeButton?.closest('[data-tooltip-content]')?.getAttribute('data-tooltip-content')).toBe('Reset size');
+    expect(document.querySelector('button[aria-label="Display width"]')?.textContent).toContain('25%');
+    expect(resetSizeButton?.getAttribute('aria-label')).toBe('Reset display size');
     resetSizeButton?.click();
     await flush();
     let image = new DOMParser().parseFromString(instance.getHTML(), 'text/html').querySelector('img');
@@ -2130,30 +2267,31 @@ describe('ATiptapEditor public contract', () => {
     ).toBe('fit-content');
     expect(document.querySelector('button[data-media-reset-size]')).toBeNull();
 
+    await openMediaMenu('Display width');
     document.querySelector<HTMLButtonElement>('button[data-media-width="50%"]')?.click();
     document.querySelector<HTMLButtonElement>('button[data-media-align="right"]')?.click();
     await flush();
-    expect(mediumButton?.getAttribute('aria-pressed')).toBe('true');
-    expect(mediumButton?.getAttribute('data-button-type')).toBe('primary');
+    await openMediaMenu('Display width');
+    expect(document.querySelector('button[data-media-width="50%"]')?.getAttribute('aria-checked')).toBe('true');
     const alignRightButton = document.querySelector('button[data-media-align="right"]');
     expect(alignRightButton?.getAttribute('aria-pressed')).toBe('true');
     expect(alignRightButton?.getAttribute('data-button-type')).toBe('primary');
     expect(alignRightButton?.closest('[data-tooltip-content]')?.getAttribute('data-tooltip-content')).toBe('Align right');
     const replaceImageButton = document.querySelector('button[aria-label="Replace image"]');
+    await openMediaMenu('More actions');
     const deleteImageButton = document.querySelector('button[aria-label="Delete image"]');
     expect(replaceImageButton?.getAttribute('data-button-type')).toBe('text');
     expect(deleteImageButton?.getAttribute('data-button-type')).toBe('text');
     expect(deleteImageButton?.getAttribute('status')).toBe('danger');
     expect(replaceImageButton?.closest('[data-tooltip-content]')?.getAttribute('data-tooltip-content')).toBe('Replace image');
-    expect(deleteImageButton?.closest('[data-tooltip-content]')?.getAttribute('data-tooltip-content')).toBe('Delete image');
-    expect(document.querySelector('button[aria-label="Image description"]')?.closest('[data-tooltip-content]')).not.toBeNull();
+    expect(document.querySelector('button[aria-label="Image description"]')?.getAttribute('role')).toBe('menuitem');
     document.querySelector<HTMLButtonElement>('button[aria-label="Image description"]')?.click();
     await flush();
     const altInput = document.querySelector<HTMLInputElement>('input[aria-label="Image description"]');
     if (!altInput) throw new Error('Image description input did not mount');
     altInput.value = 'Updated alt';
     altInput.dispatchEvent(new Event('input', { bubbles: true }));
-    document.querySelector<HTMLButtonElement>('button[aria-label="Save image description"]')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="confirm-table-text"]')?.click();
     await flush();
 
     const wrapper = document.querySelector<HTMLElement>('[data-media-node="blockImage"]');
@@ -2189,6 +2327,7 @@ describe('ATiptapEditor public contract', () => {
     expect(image?.getAttribute('data-width')).toBe('100%');
     expect(image?.getAttribute('width')).toBe('100%');
 
+    await openMediaMenu('More actions');
     document.querySelector<HTMLButtonElement>('button[aria-label="Delete image"]')?.click();
     await flush();
     expect(instance.getHTML()).toBe('');
@@ -2367,20 +2506,24 @@ describe('ATiptapEditor public contract', () => {
     expect(internalEditor.state.selection).toBeInstanceOf(NodeSelection);
     expect(internalEditor.state.selection.from).toBe(findNodePosition(internalEditor, 'audio'));
     expect(document.querySelector('[data-selected-media="audio"]')).not.toBeNull();
+    await openMediaMenu('Player size');
     expect(document.querySelector('button[data-media-width="compact"]')?.getAttribute('aria-label')).toBe('Small player');
-    expect(document.querySelector('button[data-media-width="standard"]')?.getAttribute('aria-pressed')).toBe('true');
-    expect(document.querySelector('button[data-media-width="standard"]')?.getAttribute('data-button-type')).toBe('primary');
+    expect(document.querySelector('button[data-media-width="standard"]')?.getAttribute('aria-checked')).toBe('true');
+    expect(document.querySelector('button[data-media-width="standard"]')?.getAttribute('role')).toBe('menuitemradio');
     expect(document.querySelector('button[data-media-width="compact"]')?.getAttribute('data-button-type')).toBe('text');
     expect(document.querySelector('[data-selected-media="audio"]')?.textContent).not.toMatch(/320px|480px|compact|full width/i);
     expect(document.querySelector('button[aria-label="Replace audio"]')).not.toBeNull();
+    await openMediaMenu('More actions');
     expect(document.querySelector('button[aria-label="Delete audio"]')).not.toBeNull();
     expect(document.querySelector('button[aria-label="Replace audio"]')?.getAttribute('data-button-type')).toBe('text');
     expect(document.querySelector('button[aria-label="Delete audio"]')?.getAttribute('status')).toBe('danger');
     expect(document.querySelector('.a9-tiptap-editor__resize-handle')).toBeNull();
+    await openMediaMenu('Player size');
     document.querySelector<HTMLButtonElement>('button[data-media-width="compact"]')?.click();
     document.querySelector<HTMLButtonElement>('button[data-media-align="right"]')?.click();
     await flush();
-    expect(document.querySelector('button[data-media-width="compact"]')?.getAttribute('aria-pressed')).toBe('true');
+    await openMediaMenu('Player size');
+    expect(document.querySelector('button[data-media-width="compact"]')?.getAttribute('aria-checked')).toBe('true');
     expect(document.querySelector('button[data-media-align="right"]')?.getAttribute('aria-pressed')).toBe('true');
 
     document.querySelector('[data-media-replace]')?.querySelector<HTMLButtonElement>('.media-picker-confirm')?.click();
@@ -2403,6 +2546,7 @@ describe('ATiptapEditor public contract', () => {
     document.querySelector<HTMLAudioElement>('audio')?.click();
     await flush();
     expect(document.querySelector('[data-selected-media="audio"]')).not.toBeNull();
+    await openMediaMenu('Player size');
     document.querySelector<HTMLButtonElement>('button[data-media-width="full"]')?.click();
     document.querySelector<HTMLButtonElement>('button[data-media-align="center"]')?.click();
     await flush();
@@ -2413,6 +2557,7 @@ describe('ATiptapEditor public contract', () => {
       '100%'
     );
 
+    await openMediaMenu('More actions');
     document.querySelector<HTMLButtonElement>('button[aria-label="Delete audio"]')?.click();
     await flush();
     expect(reloadedInstance.getHTML()).toBe('<p>Before audio</p>');
@@ -2462,9 +2607,11 @@ describe('ATiptapEditor public contract', () => {
     expect(document.querySelector('button[data-media-width="natural"]')).toBeNull();
     expect(document.querySelector('button[data-media-reset-size]')).toBeNull();
 
+    await openMediaMenu('Display width');
     document.querySelector<HTMLButtonElement>('button[data-media-width="50%"]')?.click();
     await flush();
-    expect(document.querySelector('button[data-media-reset-size]')?.getAttribute('aria-label')).toBe('Reset size');
+    await openMediaMenu('Display width');
+    expect(document.querySelector('button[data-media-reset-size]')?.getAttribute('aria-label')).toBe('Reset display size');
     document.querySelector<HTMLButtonElement>('button[data-media-reset-size]')?.click();
     await flush();
     video = new DOMParser().parseFromString(instance.getHTML(), 'text/html').querySelector('video');

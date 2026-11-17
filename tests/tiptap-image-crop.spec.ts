@@ -41,6 +41,10 @@ function mount() {
     return upload.promise;
   });
   const onState = vi.fn();
+  const onPhase = vi.fn();
+  const onRetryChange = vi.fn();
+  const openCrop = vi.fn();
+  let cropResult = crop.promise;
   const onError = vi.fn();
   let editable = true;
   const config: EditorImageCropConfig = {
@@ -53,7 +57,12 @@ function mount() {
     editable: () => editable,
     config: () => config,
     service: () => ({ list: vi.fn(), upload: uploadFile }),
-    crop: () => crop.promise,
+    crop: (input) => {
+      openCrop(input);
+      return cropResult;
+    },
+    onPhase,
+    onRetryChange,
     onState,
     onError,
   });
@@ -75,6 +84,12 @@ function mount() {
     readSource,
     uploadFile,
     onState,
+    onPhase,
+    onRetryChange,
+    openCrop,
+    setCropResult: (result: Promise<File | null>) => {
+      cropResult = result;
+    },
     onError,
     pos,
     disable: () => {
@@ -266,4 +281,148 @@ describe('editor image crop controller', () => {
       expect(onError.mock.invocationCallOrder[0]).toBeLessThan(onState.mock.invocationCallOrder[1]);
     }
   );
+});
+
+describe('crop phases and recovery', () => {
+  it('reports read synchronously, ignores duplicate starts and keeps preview outside save busy', async () => {
+    const { controller, pos, read, crop, upload, readSource, onPhase, onState } = mount();
+    const result = controller.start(pos);
+    expect(onPhase.mock.calls).toEqual([['read']]);
+    await controller.start(pos);
+    expect(readSource).toHaveBeenCalledTimes(1);
+    expect(readSource.mock.calls[0][0].signal.aborted).toBe(false);
+    expect(onState).not.toHaveBeenCalled();
+    read.resolve(file);
+    await flush();
+    expect(onPhase).toHaveBeenLastCalledWith('preview');
+    expect(onState).not.toHaveBeenCalled();
+    controller.setCommitPending(true);
+    expect(onPhase).toHaveBeenLastCalledWith('commit');
+    crop.resolve(file);
+    controller.setCommitPending(false);
+    await flush();
+    await controller.start(pos);
+    controller.retry();
+    expect(readSource).toHaveBeenCalledTimes(1);
+    expect(onState.mock.calls).toEqual([[true]]);
+    upload.resolve(item);
+    await result;
+    expect(onPhase.mock.calls).toEqual([['read'], ['preview'], ['commit'], ['idle']]);
+    expect(onState.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('returns to preview after encoding fails without ending the session', async () => {
+    const { controller, pos, read, crop, onPhase, readSource } = mount();
+    const result = controller.start(pos);
+    read.resolve(file);
+    await flush();
+    controller.setCommitPending(true);
+    controller.setCommitPending(false);
+    await flush();
+    expect(onPhase).toHaveBeenLastCalledWith('preview');
+    await controller.start(pos);
+    expect(readSource).toHaveBeenCalledTimes(1);
+    crop.resolve(null);
+    await result;
+    expect(onPhase).toHaveBeenLastCalledWith('idle');
+  });
+
+  it.each(['read', 'upload'] as const)(
+    'retries a %s failure at its mapped target by reading and cropping again',
+    async (phase) => {
+      const {
+        controller,
+        editor,
+        pos,
+        read,
+        crop,
+        upload,
+        readSource,
+        openCrop,
+        uploadFile,
+        onPhase,
+        onState,
+        setCropResult,
+        onRetryChange,
+      } = mount();
+      const result = controller.start(pos);
+      if (phase === 'read') read.reject(new Error('read failed'));
+      else {
+        read.resolve(file);
+        await flush();
+        crop.resolve(file);
+        await flush();
+        upload.reject(new Error('upload failed'));
+      }
+      await result;
+      expect(onPhase).toHaveBeenLastCalledWith('idle');
+      expect(editor.getHTML()).toContain('/original.png');
+      expect(onRetryChange.mock.calls).toEqual([[true]]);
+      editor.commands.insertContentAt(1, 'shift ');
+      expect(onRetryChange.mock.calls).toEqual([[true]]);
+      readSource.mockImplementationOnce(async () => file);
+      const retriedFile = new File(['new crop'], 'retry.png', { type: 'image/png' });
+      setCropResult(Promise.resolve(retriedFile));
+      uploadFile.mockImplementationOnce(async () => item);
+      controller.retry();
+      expect(onRetryChange.mock.calls).toEqual([[true], [false]]);
+      expect(onPhase).toHaveBeenLastCalledWith('read');
+      await flush();
+      expect(readSource).toHaveBeenCalledTimes(2);
+      expect(openCrop).toHaveBeenCalledTimes(phase === 'read' ? 1 : 2);
+      expect(uploadFile.mock.calls.at(-1)?.[0].file).toBe(retriedFile);
+      expect(editor.state.doc.nodeAt(pos + 6)?.attrs.src).toBe('/crop.png');
+      expect(onPhase).toHaveBeenLastCalledWith('idle');
+      expect(onState).toHaveBeenLastCalledWith(false);
+      controller.retry();
+      expect(readSource).toHaveBeenCalledTimes(2);
+    }
+  );
+
+  it.each(['delete', 'replace', 'reinsert', 'external', 'cancel', 'disabled'] as const)(
+    'invalidates a failed recovery target after %s',
+    async (action) => {
+      const { controller, editor, pos, read, readSource, disable, onRetryChange, onPhase } = mount();
+      const result = controller.start(pos);
+      read.reject(new Error('read failed'));
+      await result;
+      expect(onRetryChange.mock.calls).toEqual([[true]]);
+      const phaseCalls = onPhase.mock.calls.length;
+      const original = editor.state.doc.nodeAt(pos);
+      if (!original) throw new Error('missing image');
+      if (action === 'delete') editor.commands.deleteRange({ from: pos, to: pos + 1 });
+      if (action === 'replace')
+        editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...original.attrs, alt: 'changed' }));
+      if (action === 'reinsert') editor.view.dispatch(editor.state.tr.replaceWith(pos, pos + original.nodeSize, original));
+      if (action === 'external') editor.commands.setContent(editor.getJSON());
+      if (action === 'cancel') controller.cancel();
+      if (action === 'disabled') disable();
+      else expect(onRetryChange.mock.calls).toEqual([[true], [false]]);
+      controller.retry();
+      expect(readSource).toHaveBeenCalledTimes(1);
+      expect(readSource.mock.calls[0][0].signal.aborted).toBe(true);
+      expect(onRetryChange.mock.calls).toEqual([[true], [false]]);
+      expect(onPhase.mock.calls).toHaveLength(phaseCalls);
+      controller.cancel();
+      expect(onRetryChange.mock.calls).toEqual([[true], [false]]);
+    }
+  );
+
+  it('notifies each retry availability transition without redundant initial or cancel events', async () => {
+    const { controller, pos, read, onRetryChange } = mount();
+    controller.cancel();
+    expect(onRetryChange).not.toHaveBeenCalled();
+    const result = controller.start(pos);
+    expect(onRetryChange).not.toHaveBeenCalled();
+    read.reject(new Error('read failed'));
+    await result;
+    expect(onRetryChange.mock.calls).toEqual([[true]]);
+    controller.retry();
+    expect(onRetryChange.mock.calls).toEqual([[true], [false]]);
+    await flush();
+    expect(onRetryChange.mock.calls).toEqual([[true], [false], [true]]);
+    controller.cancel();
+    controller.cancel();
+    expect(onRetryChange.mock.calls).toEqual([[true], [false], [true], [false]]);
+  });
 });

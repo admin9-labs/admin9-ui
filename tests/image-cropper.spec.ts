@@ -183,13 +183,18 @@ describe('AImageCropper ratios and commit state', () => {
     vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue({ width: 400, height: 200 } as DOMRect);
     const handle = box.querySelector<HTMLElement>('[data-crop-handle="bottom-right"]');
     if (!handle) throw new Error('Resize handle did not render');
-    handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
     await nextTick();
-    expect(box.style.width).toBe(expected === 1 ? '50%' : '81%');
+    const expectedWidth = new Map([
+      [undefined, '99%'],
+      [2, '79%'],
+      [1, '49%'],
+    ]).get(expected);
+    expect(box.style.width).toBe(expectedWidth);
     const expectedHeight = new Map([
-      [undefined, '80%'],
-      [2, '81%'],
-      [1, '100%'],
+      [undefined, '100%'],
+      [2, '79%'],
+      [1, '98%'],
     ]).get(expected);
     expect(box.style.height).toBe(expectedHeight);
     confirm();
@@ -230,5 +235,83 @@ describe('AImageCropper ratios and commit state', () => {
     confirm();
     expect(engine.encode).not.toHaveBeenCalled();
     expect(await result).toBeNull();
+  });
+});
+
+describe('AImageCropper viewport adaptation', () => {
+  it.each([180, 360])('preserves the source crop in a %spx tall viewport', async (viewportHeight) => {
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    engine.decode.mockResolvedValue({ width: 200, height: 2000, close: vi.fn() });
+    engine.encode.mockResolvedValue(new File(['crop'], 'crop.png'));
+    const api = mount(undefined, { aspectRatio: 0.1 });
+    const result = api.open(source);
+    await tick();
+    const viewport = document.querySelector<HTMLElement>('.a9-image-cropper__viewport');
+    const stage = document.querySelector<HTMLElement>('.a9-image-cropper-stage');
+    const box = document.querySelector<HTMLElement>('.a9-image-cropper-stage__box');
+    if (!viewport || !stage || !box) throw new Error('Crop preview did not render');
+    vi.spyOn(viewport, 'clientHeight', 'get').mockReturnValue(viewportHeight);
+    vi.spyOn(stage, 'clientHeight', 'get').mockReturnValue(2000);
+    vi.spyOn(box, 'offsetHeight', 'get').mockReturnValue(1600);
+    frames.splice(0).forEach((callback) => callback(0));
+    await nextTick();
+    expect(box.style.width).toBe('80%');
+    expect(box.style.height).toBe('80%');
+    [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Confirm'))?.click();
+    await tick();
+    expect(engine.encode.mock.calls[0][1]).toEqual({ x: 20, y: 200, width: 160, height: 1600 });
+    expect(await result).toBeInstanceOf(File);
+  });
+});
+
+describe('AImageCropper scaled preview coordinates', () => {
+  it.each([
+    [200, 2000],
+    [2000, 200],
+  ])('starts free cropping with the entire %s × %s source', async (width, height) => {
+    engine.decode.mockResolvedValue({ width, height, close: vi.fn() });
+    engine.encode.mockResolvedValue(new File(['crop'], 'crop.png'));
+    const api = mount(undefined, { aspectRatio: undefined });
+    const result = api.open(source);
+    await tick();
+    const box = document.querySelector<HTMLElement>('.a9-image-cropper-stage__box');
+    if (!box) throw new Error('Crop box did not render');
+    expect([box.style.left, box.style.top, box.style.width, box.style.height]).toEqual(['0%', '0%', '100%', '100%']);
+    [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Confirm'))?.click();
+    await tick();
+    expect(engine.encode.mock.calls[0][1]).toEqual({ x: 0, y: 0, width, height });
+    expect(await result).toBeInstanceOf(File);
+  });
+  it.each([undefined, 0.1])('maps dragging on a scaled preview back to source pixels with ratio %s', async (aspectRatio) => {
+    engine.decode.mockResolvedValue({ width: 200, height: 2000, close: vi.fn() });
+    engine.encode.mockResolvedValue(new File(['crop'], 'crop.png'));
+    const api = mount(undefined, { aspectRatio });
+    const result = api.open(source);
+    await tick();
+    const box = document.querySelector<HTMLElement>('.a9-image-cropper-stage__box');
+    if (!box?.parentElement) throw new Error('Crop box did not render');
+    vi.spyOn(box.parentElement, 'getBoundingClientRect').mockReturnValue({ width: 40, height: 400 } as DOMRect);
+    const handle = box.querySelector<HTMLElement>('[data-crop-handle="bottom-right"]');
+    if (!handle) throw new Error('Resize handle did not render');
+    handle.dispatchEvent(new MouseEvent('pointerdown', { clientX: 40, clientY: 400, bubbles: true }));
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 36, clientY: 400 }));
+    window.dispatchEvent(new MouseEvent('pointerup'));
+    await nextTick();
+    expect(box.style.width).toBe(aspectRatio === undefined ? '90%' : '70%');
+    expect(box.style.height).toBe(aspectRatio === undefined ? '100%' : '70%');
+    box.dispatchEvent(new MouseEvent('pointerdown', { clientX: 0, clientY: 0, bubbles: true }));
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 4, clientY: 40 }));
+    window.dispatchEvent(new MouseEvent('pointerup'));
+    await nextTick();
+    [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Confirm'))?.click();
+    await tick();
+    expect(engine.encode.mock.calls[0][1]).toEqual(
+      aspectRatio === undefined ? { x: 20, y: 0, width: 180, height: 2000 } : { x: 40, y: 400, width: 140, height: 1400 }
+    );
+    expect(await result).toBeInstanceOf(File);
   });
 });

@@ -27,7 +27,7 @@ async function process(file: File) {
 
 | 属性 | 类型 | 说明 |
 | --- | --- | --- |
-| `aspectRatio` | `number` | 必填，有限正数；裁剪框锁定此比例 |
+| `aspectRatio` | `number` | 可选，有限正数；传入时裁剪框锁定此比例 |
 | `crop.source` | `ImageCropSourceOptions` | 必填，原文件 `maxBytes` 与解码像素数 `maxPixels`，均为有限正数 |
 | `crop.output.resize` | `{ mode: 'exact' \| 'max'; longEdge: number }` | 必填，目标长边正整数；exact允许放大，max只缩小 |
 | `crop.output.maxBytes` | `number` | 必填，成品最大字节数 |
@@ -43,8 +43,8 @@ async function process(file: File) {
 
 ## 交互与生命周期
 
-- 拖动裁剪框移动，拖动四角缩放；比例始终锁定。框和手柄支持方向键操作。
-- 长图仅在图片区域内滚动，确认/取消按钮保持在弹窗底部。首次定位到裁剪框并留出手柄空间，用户滚动、拖动后不自动跳回。
+- 拖动裁剪框移动，拖动四角缩放；配置固定或原图比例时保持比例。框和手柄支持方向键操作。
+- 自由裁剪初始选择全图；预览按可用宽高等比适配，窗口变化不会改变源图选区。确认/取消按钮保持在弹窗底部，尺寸信息显示实际输出像素。
 - `open(file): Promise<File | null>`：打开另一个文件会取消上一个请求。
 - `cancel(): void`：取消当前请求、释放解码资源，并忽略迟到的解码或编码结果。
 - `visible-change(visible: boolean)`：弹窗显示状态变化。

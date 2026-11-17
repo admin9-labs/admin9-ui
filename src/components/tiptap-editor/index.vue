@@ -13,6 +13,7 @@
     type Ref,
   } from 'vue';
   import { FormItem, Message, useFormItem } from '@arco-design/web-vue';
+  import { IconMore, IconQuestionCircle, IconLoading } from '@arco-design/web-vue/es/icon';
   import { Extension, isNodeEmpty, type Editor, type Extensions } from '@tiptap/core';
   import CharacterCount from '@tiptap/extension-character-count';
   import Placeholder from '@tiptap/extension-placeholder';
@@ -38,6 +39,7 @@
   import { cleanPastedHTML, parseTableText, tableTextContent } from './paste';
   import { SafeColor, SafeFontSize, SafeHighlight, TextFormat, TextStyle } from './text-format';
   import TextFormatToolbar from './text-format-toolbar.vue';
+  import MediaActionMenu from './media-action-menu.vue';
   import Modal from '../../internal/modal.vue';
   import { createFormatPainter } from './format-painter';
   import { Audio, BlockImage, InlineImage, isSafeMediaUrl, type TiptapMediaNodeName, Video } from './media-node';
@@ -166,6 +168,7 @@
   );
   const { active: painterActive, failure: painterFailure } = painter;
   const painterRoot = ref<HTMLElement>();
+  const painterHelpVisible = ref(false);
   const editorAttributes = computed(() => ({
     'class': 'a9-tiptap-editor__prose',
     'role': 'textbox',
@@ -185,6 +188,11 @@
     t('admin9Ui.tiptapEditor.tableSize', { rows: tableRows.value, columns: tableColumns.value })
   );
   const altPopupVisible = ref(false);
+  const mediaMenus = ref({ layout: false, width: false, align: false, more: false });
+  const mediaToolbarWidth = ref(1000);
+  const closeMediaMenus = () => {
+    mediaMenus.value = { layout: false, width: false, align: false, more: false };
+  };
   const imagePickerTooltipVisible = ref(false);
   const videoPickerTooltipVisible = ref(false);
   const audioPickerTooltipVisible = ref(false);
@@ -220,12 +228,6 @@
   const mediaAlignments: TiptapMediaAlign[] = ['left', 'center', 'right'];
   const blockMediaNodeNames: TiptapMediaNodeName[] = ['blockImage', 'video', 'audio'];
   const mediaNodeNames: TiptapMediaNodeName[] = ['blockImage', 'inlineImage', 'video', 'audio'];
-  const blockWidthLocaleKeys: Record<TiptapBlockPresetWidth, string> = {
-    '25%': 'sizeSmall',
-    '50%': 'sizeMedium',
-    '75%': 'sizeLarge',
-    '100%': 'sizeFill',
-  };
   const audioWidthLocaleKeys: Record<TiptapAudioWidth, string> = {
     compact: 'audioCompact',
     standard: 'audioStandard',
@@ -376,6 +378,9 @@
   let uploadEditor: Editor | undefined;
   const cropper = ref<AImageCropperExposed>();
   const cropCommitPending = ref(false);
+  const cropPhase = ref<'idle' | 'read' | 'preview' | 'commit'>('idle');
+  const cropFailure = ref<TiptapImageCropError>();
+  const cropCanRetry = ref(false);
   const withCropState = (state: TiptapImageUploadState): TiptapImageUploadState => ({
     ...state,
     cropCommitPending: cropCommitPending.value,
@@ -413,10 +418,22 @@
       cropCommitPending.value = pending;
       emit('imageUploadStateChange', withCropState(uploads.state()));
     },
-    onError: (error) => emit('imageCropError', error),
+    onPhase: (phase) => {
+      cropPhase.value = phase;
+      if (phase !== 'idle') cropFailure.value = undefined;
+    },
+    onRetryChange: (available) => {
+      cropCanRetry.value = available;
+      if (!available) cropFailure.value = undefined;
+    },
+    onError: (error) => {
+      cropFailure.value = error;
+      emit('imageCropError', error);
+    },
   });
   const cancelImageCrop = () => {
     imageCrop.cancel();
+    cropFailure.value = undefined;
     cropper.value?.cancel();
   };
   const onCropCommitPending = (pending: boolean) => imageCrop.setCommitPending(pending);
@@ -565,7 +582,6 @@
     const kind = selectedMediaKind.value;
     return kind ? t(`admin9Ui.tiptapEditor.delete${kind.charAt(0).toUpperCase()}${kind.slice(1)}`) : '';
   });
-  const blockWidthLabel = (width: TiptapBlockPresetWidth) => t(`admin9Ui.tiptapEditor.${blockWidthLocaleKeys[width]}`);
   const audioWidthLabel = (width: TiptapAudioWidth) => t(`admin9Ui.tiptapEditor.${audioWidthLocaleKeys[width]}`);
   const inlineSizeLabel = (size: TiptapInlineImageSize) => t(`admin9Ui.tiptapEditor.${inlineSizeLocaleKeys[size]}`);
   const blockLabel = computed(() => {
@@ -630,7 +646,7 @@
   const updateMediaBubbleVisibility = () => {
     const bubbleElement = mediaToolbarRef.value?.parentElement;
     if (bubbleElement) {
-      const dialogOpen = mediaPickerVisible.value || imageCropVisible.value;
+      const dialogOpen = mediaPickerVisible.value || imageCropVisible.value || altPopupVisible.value;
       bubbleElement.style.visibility = !dialogOpen && getSelectedMediaVisibleRect() ? 'visible' : 'hidden';
       bubbleElement.style.pointerEvents = dialogOpen ? 'none' : '';
       if (dialogOpen) bubbleElement.setAttribute('aria-hidden', 'true');
@@ -642,6 +658,7 @@
   const onMediaPickerVisibleChange = (visible: boolean) => {
     mediaPickerVisible.value = visible;
     if (visible) {
+      closeMediaMenus();
       linkPopupVisible.value = false;
       altPopupVisible.value = false;
       imagePickerTooltipVisible.value = false;
@@ -654,6 +671,7 @@
 
   const onImageCropVisibleChange = (visible: boolean) => {
     imageCropVisible.value = visible;
+    if (visible) closeMediaMenus();
     updateMediaBubbleVisibility();
   };
 
@@ -663,6 +681,7 @@
       currentEditor.isEditable &&
       !mediaPickerVisible.value &&
       !imageCropVisible.value &&
+      !altPopupVisible.value &&
       selection instanceof NodeSelection &&
       mediaNodeNames.includes(selection.node.type.name as TiptapMediaNodeName)
     );
@@ -1036,17 +1055,27 @@
     if (replaceSelectedMedia(items)) clearPickerValueAfterUpdate(replacementPickerValue);
   };
 
+  const openAltText = () => {
+    closeMediaMenus();
+    altPopupVisible.value = true;
+  };
+  const restoreMediaFocus = () => {
+    const currentEditor = editor.value;
+    if (isEditable.value && currentEditor && !currentEditor.isDestroyed) currentEditor.view.focus();
+  };
   const applyAltText = () => {
     updateSelectedMedia({ alt: altDraft.value.trim() });
     altPopupVisible.value = false;
   };
 
   const deleteSelectedMedia = () => {
+    closeMediaMenus();
     const current = getSelectedNode();
     if (!editor.value || !current || !isEditable.value) return;
     const transaction = editor.value.state.tr.delete(current.pos, current.pos + current.node.nodeSize);
     transaction.setSelection(Selection.near(transaction.doc.resolve(Math.min(current.pos, transaction.doc.content.size))));
     editor.value.view.dispatch(transaction);
+    restoreMediaFocus();
   };
 
   const convertSelectedImage = () => {
@@ -1081,6 +1110,49 @@
     editor.value.view.dispatch(transaction);
   };
 
+  const mediaSizeLabel = computed(() => {
+    if (selectedMedia.value?.type === 'inlineImage') return t('admin9Ui.tiptapEditor.inlineImageSize');
+    if (selectedMedia.value?.type === 'audio') return t('admin9Ui.tiptapEditor.audioWidth');
+    return t('admin9Ui.tiptapEditor.mediaWidth');
+  });
+  const selectedMediaSize = computed(() => {
+    const media = selectedMedia.value;
+    if (!media) return '';
+    if (media.type === 'inlineImage') return inlineSizeLabel(media.attrs.size as TiptapInlineImageSize);
+    if (media.type === 'audio') return audioWidthLabel(media.attrs.width as TiptapAudioWidth);
+    return media.attrs.width === 'natural' ? t('admin9Ui.tiptapEditor.naturalWidth') : String(media.attrs.width);
+  });
+  const mediaAlignLabel = (align: string) => t(`admin9Ui.tiptapEditor.align${align.charAt(0).toUpperCase()}${align.slice(1)}`);
+  const changeMediaLayout = (type: string) => {
+    closeMediaMenus();
+    if (selectedMedia.value?.type !== type) convertSelectedImage();
+    editor.value?.commands.focus(undefined, { scrollIntoView: false });
+  };
+  const changeMediaSize = (attrs: Record<string, unknown>) => {
+    updateSelectedMedia(attrs);
+    closeMediaMenus();
+    editor.value?.commands.focus(undefined, { scrollIntoView: false });
+  };
+  const resetMediaSize = () => {
+    resetSelectedMediaSize();
+    closeMediaMenus();
+    editor.value?.commands.focus(undefined, { scrollIntoView: false });
+  };
+  const changeMediaAlignment = (align: TiptapMediaAlign) => {
+    changeMediaSize({ align });
+  };
+  watch(altPopupVisible, () => nextTick(updateMediaBubbleVisibility));
+  watch(contentRef, (viewport, _previous, cleanup) => {
+    if (!viewport || typeof ResizeObserver === 'undefined') return;
+    const measure = () => {
+      if (!viewport.clientWidth) return;
+      mediaToolbarWidth.value = Math.max(240, Math.min(viewport.clientWidth, window.innerWidth - 16));
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    measure();
+    cleanup(() => observer.disconnect());
+  });
   const focus = () => editor.value?.commands.focus();
   const clear = () => {
     cancelImageCrop();
@@ -1108,10 +1180,12 @@
         if (bodyChanged) {
           cancelImageCrop();
           uploads.pause();
+          closeMediaMenus();
+          altPopupVisible.value = false;
         }
         editor.value.commands.command(({ tr, dispatch }) => {
           if (dispatch) {
-            if (bodyChanged) tr.replaceWith(0, tr.doc.content.size, content.content);
+            if (bodyChanged) tr.replaceWith(0, tr.doc.content.size, content.content).setMeta('a9ReplaceDocument', true);
             Object.keys(content.attrs).forEach((name) => tr.setDocAttribute(name, content.attrs[name]));
             tr.setMeta('addToHistory', false).setMeta('preventUpdate', true);
           }
@@ -1146,6 +1220,7 @@
   });
   watch([() => selectedMedia.value?.pos, () => selectedMedia.value?.type], () => {
     altPopupVisible.value = false;
+    closeMediaMenus();
     nextTick(() => {
       const currentEditor = editor.value;
       if (!selectedMedia.value || !currentEditor || currentEditor.isDestroyed) return;
@@ -1178,12 +1253,13 @@
       'is-error': mergedError,
       'is-readonly': props.readonly,
       'is-focused': isFocused,
+      'is-compact': mediaToolbarWidth < 560,
     }"
     :style="editorStyle"
   >
     <FormItem no-style :disabled="interactionDisabled" :validate-trigger="[]">
       <div v-if="!readonly" class="a9-tiptap-editor__toolbar" role="toolbar" :aria-label="t('admin9Ui.tiptapEditor.toolbar')">
-        <div class="a9-tiptap-editor__tool-group" role="group" :aria-label="t('admin9Ui.tiptapEditor.blockTools')">
+        <div class="a9-tiptap-editor__tool-group" role="group" :aria-label="t('admin9Ui.tiptapEditor.textTools')">
           <a-dropdown trigger="click" @select="setBlock">
             <a-button class="a9-tiptap-editor__block-menu" size="small" :disabled="interactionDisabled">
               {{ blockLabel }}
@@ -1196,10 +1272,12 @@
               <a-doption value="heading-3">{{ t('admin9Ui.tiptapEditor.heading3') }}</a-doption>
             </template>
           </a-dropdown>
-        </div>
-        <span class="a9-tiptap-editor__divider" aria-hidden="true" />
-        <div class="a9-tiptap-editor__tool-group" role="group" :aria-label="t('admin9Ui.tiptapEditor.textTools')">
-          <TextFormatToolbar :editor="editor" :disabled="interactionDisabled" :show-highlight="props.showHighlight" />
+          <TextFormatToolbar
+            section="text"
+            :editor="editor"
+            :disabled="interactionDisabled"
+            :show-highlight="props.showHighlight"
+          />
           <a-tooltip :content="t('admin9Ui.tiptapEditor.bold')">
             <a-button
               size="small"
@@ -1250,7 +1328,60 @@
           </a-tooltip>
         </div>
         <span class="a9-tiptap-editor__divider" aria-hidden="true" />
-        <div class="a9-tiptap-editor__tool-group" role="group" :aria-label="t('admin9Ui.tiptapEditor.insertTools')">
+        <div class="a9-tiptap-editor__tool-group" role="group" :aria-label="t('admin9Ui.tiptapEditor.paragraphTools')">
+          <TextFormatToolbar section="paragraph" :editor="editor" :disabled="interactionDisabled" />
+          <a-tooltip :content="t('admin9Ui.tiptapEditor.alignLeft')">
+            <a-button
+              size="small"
+              :type="editor?.isActive({ textAlign: 'left' }) ? 'primary' : 'text'"
+              :disabled="interactionDisabled"
+              :aria-label="t('admin9Ui.tiptapEditor.alignLeft')"
+              :aria-pressed="editor?.isActive({ textAlign: 'left' })"
+              @click="editor?.chain().focus().setTextAlign('left').run()"
+            >
+              <template #icon><icon-align-left /></template>
+            </a-button>
+          </a-tooltip>
+          <a-tooltip :content="t('admin9Ui.tiptapEditor.alignCenter')">
+            <a-button
+              size="small"
+              :type="editor?.isActive({ textAlign: 'center' }) ? 'primary' : 'text'"
+              :disabled="interactionDisabled"
+              :aria-label="t('admin9Ui.tiptapEditor.alignCenter')"
+              :aria-pressed="editor?.isActive({ textAlign: 'center' })"
+              @click="editor?.chain().focus().setTextAlign('center').run()"
+            >
+              <template #icon><icon-align-center /></template>
+            </a-button>
+          </a-tooltip>
+          <a-tooltip :content="t('admin9Ui.tiptapEditor.alignRight')">
+            <a-button
+              size="small"
+              :type="editor?.isActive({ textAlign: 'right' }) ? 'primary' : 'text'"
+              :disabled="interactionDisabled"
+              :aria-label="t('admin9Ui.tiptapEditor.alignRight')"
+              :aria-pressed="editor?.isActive({ textAlign: 'right' })"
+              @click="editor?.chain().focus().setTextAlign('right').run()"
+            >
+              <template #icon><icon-align-right /></template>
+            </a-button>
+          </a-tooltip>
+          <a-tooltip :content="t('admin9Ui.tiptapEditor.alignJustify')">
+            <a-button
+              size="small"
+              :type="editor?.isActive({ textAlign: 'justify' }) ? 'primary' : 'text'"
+              :disabled="interactionDisabled"
+              :aria-label="t('admin9Ui.tiptapEditor.alignJustify')"
+              :aria-pressed="editor?.isActive({ textAlign: 'justify' })"
+              @click="editor?.chain().focus().setTextAlign('justify').run()"
+            >
+              <template #icon>
+                <svg viewBox="0 0 48 48" fill="none" aria-hidden="true" width="1em" height="1em">
+                  <path d="M7 10h34M7 19h34M7 28h34M7 37h34" stroke="currentColor" stroke-width="4" />
+                </svg>
+              </template>
+            </a-button>
+          </a-tooltip>
           <a-tooltip :content="t('admin9Ui.tiptapEditor.bulletList')">
             <a-button
               size="small"
@@ -1287,6 +1418,9 @@
               <template #icon><icon-quote /></template>
             </a-button>
           </a-tooltip>
+        </div>
+        <span class="a9-tiptap-editor__divider" aria-hidden="true" />
+        <div class="a9-tiptap-editor__tool-group" role="group" :aria-label="t('admin9Ui.tiptapEditor.mediaTools')">
           <a-tooltip :content="t('admin9Ui.tiptapEditor.horizontalRule')">
             <a-button
               size="small"
@@ -1339,34 +1473,6 @@
             </template>
           </a-popover>
 
-          <a-tooltip :content="t('admin9Ui.tiptapEditor.clearFormat')">
-            <a-button
-              size="small"
-              type="text"
-              :disabled="interactionDisabled"
-              :aria-label="t('admin9Ui.tiptapEditor.clearFormat')"
-              @mousedown.prevent
-              @click="clearTextFormat"
-            >
-              <template #icon><icon-eraser /></template>
-            </a-button>
-          </a-tooltip>
-          <a-tooltip :content="t('admin9Ui.tiptapEditor.formatPainter')">
-            <a-button
-              data-format-painter
-              size="small"
-              :type="painterActive ? 'primary' : 'text'"
-              :disabled="interactionDisabled"
-              :aria-label="t('admin9Ui.tiptapEditor.formatPainter')"
-              :aria-pressed="painterActive"
-              @mousedown.prevent
-              @click="painter.toggle"
-            >
-              <template #icon><icon-brush /></template>
-            </a-button>
-          </a-tooltip>
-        </div>
-        <div class="a9-tiptap-editor__tool-group" role="group" :aria-label="t('admin9Ui.tiptapEditor.mediaTools')">
           <AFilePicker
             v-if="resolvedFileService && props.showAttachment"
             v-model="attachmentValue"
@@ -1587,58 +1693,36 @@
           </a-dropdown>
         </div>
         <span class="a9-tiptap-editor__divider" aria-hidden="true" />
-        <div class="a9-tiptap-editor__tool-group" role="group" :aria-label="t('admin9Ui.tiptapEditor.alignmentTools')">
-          <a-tooltip :content="t('admin9Ui.tiptapEditor.alignLeft')">
-            <a-button
-              size="small"
-              :type="editor?.isActive({ textAlign: 'left' }) ? 'primary' : 'text'"
-              :disabled="interactionDisabled"
-              :aria-label="t('admin9Ui.tiptapEditor.alignLeft')"
-              :aria-pressed="editor?.isActive({ textAlign: 'left' })"
-              @click="editor?.chain().focus().setTextAlign('left').run()"
-            >
-              <template #icon><icon-align-left /></template>
-            </a-button>
-          </a-tooltip>
-          <a-tooltip :content="t('admin9Ui.tiptapEditor.alignCenter')">
-            <a-button
-              size="small"
-              :type="editor?.isActive({ textAlign: 'center' }) ? 'primary' : 'text'"
-              :disabled="interactionDisabled"
-              :aria-label="t('admin9Ui.tiptapEditor.alignCenter')"
-              :aria-pressed="editor?.isActive({ textAlign: 'center' })"
-              @click="editor?.chain().focus().setTextAlign('center').run()"
-            >
-              <template #icon><icon-align-center /></template>
-            </a-button>
-          </a-tooltip>
-          <a-tooltip :content="t('admin9Ui.tiptapEditor.alignRight')">
-            <a-button
-              size="small"
-              :type="editor?.isActive({ textAlign: 'right' }) ? 'primary' : 'text'"
-              :disabled="interactionDisabled"
-              :aria-label="t('admin9Ui.tiptapEditor.alignRight')"
-              :aria-pressed="editor?.isActive({ textAlign: 'right' })"
-              @click="editor?.chain().focus().setTextAlign('right').run()"
-            >
-              <template #icon><icon-align-right /></template>
-            </a-button>
-          </a-tooltip>
-          <a-tooltip :content="t('admin9Ui.tiptapEditor.alignJustify')">
-            <a-button
-              size="small"
-              :type="editor?.isActive({ textAlign: 'justify' }) ? 'primary' : 'text'"
-              :disabled="interactionDisabled"
-              :aria-label="t('admin9Ui.tiptapEditor.alignJustify')"
-              :aria-pressed="editor?.isActive({ textAlign: 'justify' })"
-              @click="editor?.chain().focus().setTextAlign('justify').run()"
-              >≡</a-button
-            >
-          </a-tooltip>
-        </div>
         <slot name="toolbar-extra" :disabled="interactionDisabled" :readonly="props.readonly" />
         <span class="a9-tiptap-editor__toolbar-spacer" />
         <div class="a9-tiptap-editor__tool-group" role="group" :aria-label="t('admin9Ui.tiptapEditor.historyTools')">
+          <a-tooltip :content="t('admin9Ui.tiptapEditor.clearFormat')">
+            <a-button
+              size="small"
+              type="text"
+              :disabled="interactionDisabled"
+              :aria-label="t('admin9Ui.tiptapEditor.clearFormat')"
+              @mousedown.prevent
+              @click="clearTextFormat"
+            >
+              <template #icon><icon-eraser /></template>
+            </a-button>
+          </a-tooltip>
+          <a-tooltip :content="t('admin9Ui.tiptapEditor.formatPainter')">
+            <a-button
+              data-format-painter
+              size="small"
+              :type="painterActive ? 'primary' : 'text'"
+              :disabled="interactionDisabled"
+              :aria-label="t('admin9Ui.tiptapEditor.formatPainter')"
+              :aria-pressed="painterActive"
+              @mousedown.prevent
+              @click="painter.toggle"
+            >
+              <template #icon><icon-brush /></template>
+            </a-button>
+          </a-tooltip>
+
           <a-tooltip :content="t('admin9Ui.tiptapEditor.undo')">
             <a-button
               size="small"
@@ -1673,11 +1757,38 @@
           <a-button size="small" @mousedown.prevent @click="painter.toggle">
             {{ t('admin9Ui.tiptapEditor.painterCancel') }}
           </a-button>
-          <details class="a9-tiptap-editor__painter-help" @mousedown.prevent>
-            <summary>{{ t('admin9Ui.tiptapEditor.painterHelp') }}</summary>
-            <p>{{ t('admin9Ui.tiptapEditor.painterInstructions') }}</p>
-          </details>
+          <a-popover v-model:popup-visible="painterHelpVisible" trigger="click" position="bottom">
+            <a-button size="small" type="text" :aria-label="t('admin9Ui.tiptapEditor.painterHelp')" data-format-painter>
+              <template #icon><IconQuestionCircle /></template>
+            </a-button>
+            <template #content>
+              <p class="a9-tiptap-editor__painter-help" data-format-painter>{{
+                t('admin9Ui.tiptapEditor.painterInstructions')
+              }}</p>
+            </template>
+          </a-popover>
         </template>
+      </div>
+
+      <div
+        v-if="!readonly && (cropPhase === 'read' || cropPhase === 'commit' || cropFailure)"
+        class="a9-tiptap-editor__crop-status"
+        :class="{ 'is-failed': cropFailure }"
+      >
+        <span :role="cropFailure ? 'alert' : 'status'" aria-live="polite">
+          <IconLoading v-if="!cropFailure" class="a9-tiptap-editor__loading-icon" />
+          {{
+            cropFailure
+              ? t(`admin9Ui.tiptapEditor.${cropFailure.phase === 'read' ? 'cropReadFailed' : 'cropApplyFailed'}`)
+              : t(`admin9Ui.tiptapEditor.${cropPhase === 'read' ? 'cropReading' : 'cropApplying'}`)
+          }}
+        </span>
+        <a-button v-if="cropFailure && cropCanRetry" size="small" type="text" @click="imageCrop.retry()">
+          {{ t(`admin9Ui.tiptapEditor.${cropFailure.phase === 'read' ? 'cropRetryRead' : 'cropRetryEdit'}`) }}
+        </a-button>
+        <a-button v-if="cropFailure || cropPhase === 'read'" size="small" type="text" @click="cancelImageCrop">
+          {{ t(`admin9Ui.tiptapEditor.${cropFailure ? 'dismiss' : 'cancel'}`) }}
+        </a-button>
       </div>
 
       <Modal
@@ -1722,6 +1833,7 @@
         :editor="editor"
         plugin-key="a9TiptapMediaBubbleMenu"
         class="a9-tiptap-editor__media-bubble"
+        :style="{ maxWidth: `${mediaToolbarWidth}px` }"
         :options="mediaBubbleOptions"
         :append-to="appendMediaBubbleToBody"
         :should-show="shouldShowMediaBubble"
@@ -1730,7 +1842,7 @@
         :resize-delay="0"
       >
         <div
-          v-if="selectedMedia"
+          v-if="selectedMedia && isEditable"
           ref="mediaToolbarRef"
           class="a9-tiptap-editor__media-toolbar"
           role="toolbar"
@@ -1738,178 +1850,107 @@
           :data-selected-media="selectedMedia.type"
           @mousedown.prevent
         >
-          <span class="a9-tiptap-editor__media-toolbar-label">
-            {{ selectedMediaLabel }}
-          </span>
-
-          <a-button
-            v-if="cropEnabled && (selectedMedia.type === 'blockImage' || selectedMedia.type === 'inlineImage')"
-            size="small"
-            type="text"
-            :disabled="cropCommitPending"
-            :aria-label="t('admin9Ui.imageCropper.title')"
-            @click="imageCrop.start(selectedMedia.pos)"
-            >{{ t('admin9Ui.imageCropper.title') }}</a-button
+          <MediaActionMenu
+            v-if="selectedMediaKind === 'image'"
+            v-model:visible="mediaMenus.layout"
+            :label="t('admin9Ui.tiptapEditor.mediaLayout')"
           >
-          <template v-if="selectedMedia.type === 'blockImage' || selectedMedia.type === 'video'">
-            <span class="a9-tiptap-editor__media-toolbar-group" :aria-label="t('admin9Ui.tiptapEditor.mediaWidth')">
+            <template #trigger>{{ selectedMediaLabel }}</template>
+            <a-button
+              v-for="type in ['blockImage', 'inlineImage']"
+              :key="type"
+              type="text"
+              role="menuitemradio"
+              :aria-checked="selectedMedia.type === type"
+              :aria-label="t(`admin9Ui.tiptapEditor.${type === 'blockImage' ? 'convertBlock' : 'convertInline'}`)"
+              @click="changeMediaLayout(type)"
+            >
+              <icon-check v-if="selectedMedia.type === type" />
+              {{ t(`admin9Ui.tiptapEditor.${type}`) }}
+            </a-button>
+          </MediaActionMenu>
+          <span v-else class="a9-tiptap-editor__media-toolbar-label">{{ selectedMediaLabel }}</span>
+
+          <MediaActionMenu v-model:visible="mediaMenus.width" :label="mediaSizeLabel">
+            <template #trigger>{{ selectedMediaSize }}</template>
+            <template v-if="selectedMedia.type === 'blockImage' || selectedMedia.type === 'video'">
               <a-button
                 v-for="width in blockWidths"
                 :key="width"
-                size="mini"
-                :type="selectedMedia.attrs.width === width ? 'primary' : 'text'"
-                :aria-label="blockWidthLabel(width)"
-                :aria-pressed="selectedMedia.attrs.width === width"
+                type="text"
+                role="menuitemradio"
+                :aria-checked="selectedMedia.attrs.width === width"
+                :aria-label="width"
                 :data-media-width="width"
-                @mousedown.prevent
-                @click="updateSelectedMedia({ width })"
+                @click="changeMediaSize({ width })"
               >
-                {{ blockWidthLabel(width) }}
+                <icon-check v-if="selectedMedia.attrs.width === width" />{{ width }}
               </a-button>
-            </span>
-
-            <a-tooltip v-if="canResetSelectedMediaSize" :content="t('admin9Ui.tiptapEditor.resetSize')">
-              <a-button
-                size="mini"
-                type="text"
-                :aria-label="t('admin9Ui.tiptapEditor.resetSize')"
-                data-media-reset-size
-                @mousedown.prevent
-                @click="resetSelectedMediaSize"
-              >
-                <template #icon><icon-original-size /></template>
-              </a-button>
-            </a-tooltip>
-          </template>
-
-          <span
-            v-if="selectedMedia.type === 'audio'"
-            class="a9-tiptap-editor__media-toolbar-group"
-            :aria-label="t('admin9Ui.tiptapEditor.audioWidth')"
-          >
-            <a-button
-              v-for="width in audioWidths"
-              :key="width"
-              size="mini"
-              :type="selectedMedia.attrs.width === width ? 'primary' : 'text'"
-              :aria-label="audioWidthLabel(width)"
-              :aria-pressed="selectedMedia.attrs.width === width"
-              :data-media-width="width"
-              @mousedown.prevent
-              @click="updateSelectedMedia({ width })"
-            >
-              {{ audioWidthLabel(width) }}
-            </a-button>
-          </span>
-
-          <span
-            v-if="selectedMedia.type === 'blockImage' || selectedMedia.type === 'video' || selectedMedia.type === 'audio'"
-            class="a9-tiptap-editor__media-toolbar-group"
-            :aria-label="t('admin9Ui.tiptapEditor.mediaAlign')"
-          >
-            <a-tooltip
-              v-for="align in mediaAlignments"
-              :key="align"
-              :content="t(`admin9Ui.tiptapEditor.align${align.charAt(0).toUpperCase()}${align.slice(1)}`)"
-            >
-              <a-button
-                size="mini"
-                :type="selectedMedia.attrs.align === align ? 'primary' : 'text'"
-                :aria-label="t(`admin9Ui.tiptapEditor.align${align.charAt(0).toUpperCase()}${align.slice(1)}`)"
-                :aria-pressed="selectedMedia.attrs.align === align"
-                :data-media-align="align"
-                @mousedown.prevent
-                @click="updateSelectedMedia({ align })"
-              >
-                <template #icon>
-                  <icon-align-left v-if="align === 'left'" />
-                  <icon-align-center v-else-if="align === 'center'" />
-                  <icon-align-right v-else />
-                </template>
-              </a-button>
-            </a-tooltip>
-          </span>
-
-          <span
-            v-if="selectedMedia.type === 'inlineImage'"
-            class="a9-tiptap-editor__media-toolbar-group"
-            :aria-label="t('admin9Ui.tiptapEditor.inlineImageSize')"
-          >
-            <a-button
-              v-for="size in inlineSizes"
-              :key="size"
-              size="mini"
-              :type="selectedMedia.attrs.size === size ? 'primary' : 'text'"
-              :aria-label="inlineSizeLabel(size)"
-              :aria-pressed="selectedMedia.attrs.size === size"
-              :data-media-size="size"
-              @mousedown.prevent
-              @click="updateSelectedMedia({ size })"
-            >
-              {{ inlineSizeLabel(size) }}
-            </a-button>
-          </span>
-
-          <template v-if="selectedMedia.type === 'blockImage' || selectedMedia.type === 'inlineImage'">
-            <a-popover v-model:popup-visible="altPopupVisible" trigger="click" position="bottom">
-              <a-tooltip :content="t('admin9Ui.tiptapEditor.altText')">
+              <template v-if="canResetSelectedMediaSize">
+                <div role="separator" />
                 <a-button
-                  size="mini"
                   type="text"
-                  :aria-label="t('admin9Ui.tiptapEditor.altText')"
-                  @mousedown.prevent
-                  @click="altPopupVisible = true"
+                  role="menuitem"
+                  :aria-label="t('admin9Ui.tiptapEditor.resetSize')"
+                  data-media-reset-size
+                  @click="resetMediaSize"
                 >
-                  <template #icon><icon-edit /></template>
+                  {{ t('admin9Ui.tiptapEditor.resetSize') }}
                 </a-button>
-              </a-tooltip>
-              <template #content>
-                <div class="a9-tiptap-editor__alt-popover" @mousedown.stop>
-                  <strong class="a9-tiptap-editor__alt-popover-title">{{ t('admin9Ui.tiptapEditor.altText') }}</strong>
-                  <div class="a9-tiptap-editor__alt-popover-fields">
-                    <a-input
-                      v-model="altDraft"
-                      size="small"
-                      :placeholder="t('admin9Ui.tiptapEditor.altPlaceholder')"
-                      :aria-label="t('admin9Ui.tiptapEditor.altText')"
-                      @press-enter="applyAltText"
-                    />
-                    <a-button
-                      size="small"
-                      type="primary"
-                      :aria-label="t('admin9Ui.tiptapEditor.applyAlt')"
-                      @mousedown.prevent
-                      @click="applyAltText"
-                    >
-                      {{ t('admin9Ui.tiptapEditor.apply') }}
-                    </a-button>
-                  </div>
-                </div>
               </template>
-            </a-popover>
-            <a-tooltip
-              :content="
-                selectedMedia.type === 'blockImage'
-                  ? t('admin9Ui.tiptapEditor.convertInline')
-                  : t('admin9Ui.tiptapEditor.convertBlock')
-              "
-            >
+            </template>
+            <template v-else-if="selectedMedia.type === 'inlineImage'">
               <a-button
-                size="mini"
+                v-for="size in inlineSizes"
+                :key="size"
                 type="text"
-                :aria-label="
-                  selectedMedia.type === 'blockImage'
-                    ? t('admin9Ui.tiptapEditor.convertInline')
-                    : t('admin9Ui.tiptapEditor.convertBlock')
-                "
-                @mousedown.prevent
-                @click="convertSelectedImage"
+                role="menuitemradio"
+                :aria-checked="selectedMedia.attrs.size === size"
+                :aria-label="inlineSizeLabel(size)"
+                :data-media-size="size"
+                @click="changeMediaSize({ size })"
               >
-                <template #icon><icon-swap /></template>
+                <icon-check v-if="selectedMedia.attrs.size === size" />{{ inlineSizeLabel(size) }}
               </a-button>
-            </a-tooltip>
-          </template>
+            </template>
+            <template v-else>
+              <a-button
+                v-for="width in audioWidths"
+                :key="width"
+                type="text"
+                role="menuitemradio"
+                :aria-checked="selectedMedia.attrs.width === width"
+                :aria-label="audioWidthLabel(width)"
+                :data-media-width="width"
+                @click="changeMediaSize({ width })"
+              >
+                <icon-check v-if="selectedMedia.attrs.width === width" />{{ audioWidthLabel(width) }}
+              </a-button>
+            </template>
+          </MediaActionMenu>
 
+          <a-tooltip v-if="cropEnabled && selectedMediaKind === 'image'" :content="t('admin9Ui.imageCropper.title')">
+            <a-button
+              size="small"
+              type="text"
+              :loading="cropPhase === 'read'"
+              :disabled="cropPhase !== 'idle'"
+              :aria-label="t('admin9Ui.imageCropper.title')"
+              @click="imageCrop.start(selectedMedia.pos)"
+            >
+              <template #icon>
+                <svg viewBox="0 0 48 48" fill="none" aria-hidden="true" width="1em" height="1em">
+                  <path
+                    d="M12 5v27a4 4 0 0 0 4 4h27M5 12h27a4 4 0 0 1 4 4v27"
+                    stroke="currentColor"
+                    stroke-width="4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </template>
+            </a-button>
+          </a-tooltip>
           <AFilePicker
             v-if="resolvedFileService"
             v-model="replacementPickerValue"
@@ -1935,33 +1976,94 @@
             <template #trigger="{ open, disabled: pickerDisabled }">
               <a-tooltip v-model:popup-visible="replacePickerTooltipVisible" :content="replaceMediaLabel">
                 <a-button
-                  size="mini"
+                  size="small"
                   type="text"
                   :disabled="interactionDisabled || pickerDisabled"
                   :aria-label="replaceMediaLabel"
                   @mousedown.prevent
                   @click="open"
                 >
-                  <template #icon><icon-refresh /></template>
+                  <template #icon><icon-swap /></template>
                 </a-button>
               </a-tooltip>
             </template>
           </AFilePicker>
 
-          <a-tooltip :content="deleteMediaLabel">
-            <a-button
-              size="mini"
-              type="text"
-              status="danger"
-              :aria-label="deleteMediaLabel"
-              @mousedown.prevent
-              @click="deleteSelectedMedia"
+          <template v-if="selectedMedia.type !== 'inlineImage'">
+            <span
+              v-if="mediaToolbarWidth >= 560"
+              class="a9-tiptap-editor__media-toolbar-group"
+              :aria-label="t('admin9Ui.tiptapEditor.mediaAlign')"
             >
-              <template #icon><icon-delete /></template>
+              <a-tooltip v-for="align in mediaAlignments" :key="align" :content="mediaAlignLabel(align)">
+                <a-button
+                  size="small"
+                  :type="selectedMedia.attrs.align === align ? 'primary' : 'text'"
+                  :aria-label="mediaAlignLabel(align)"
+                  :aria-pressed="selectedMedia.attrs.align === align"
+                  :data-media-align="align"
+                  @click="updateSelectedMedia({ align })"
+                >
+                  <template #icon>
+                    <icon-align-left v-if="align === 'left'" />
+                    <icon-align-center v-else-if="align === 'center'" />
+                    <icon-align-right v-else />
+                  </template>
+                </a-button>
+              </a-tooltip>
+            </span>
+            <MediaActionMenu v-else v-model:visible="mediaMenus.align" :label="t('admin9Ui.tiptapEditor.mediaAlign')">
+              <template #trigger>
+                <icon-align-center v-if="selectedMedia.attrs.align === 'center'" />
+                <icon-align-right v-else-if="selectedMedia.attrs.align === 'right'" />
+                <icon-align-left v-else />
+              </template>
+              <a-button
+                v-for="align in mediaAlignments"
+                :key="align"
+                type="text"
+                role="menuitemradio"
+                :aria-checked="selectedMedia.attrs.align === align"
+                :data-media-align="align"
+                @click="changeMediaAlignment(align)"
+              >
+                <icon-check v-if="selectedMedia.attrs.align === align" />{{ mediaAlignLabel(align) }}
+              </a-button>
+            </MediaActionMenu>
+          </template>
+          <MediaActionMenu v-model:visible="mediaMenus.more" :label="t('admin9Ui.tiptapEditor.moreActions')" icon-only>
+            <template #trigger><IconMore /></template>
+            <a-button
+              v-if="selectedMediaKind === 'image'"
+              type="text"
+              role="menuitem"
+              :aria-label="t('admin9Ui.tiptapEditor.altText')"
+              @click="openAltText"
+            >
+              <icon-edit />{{ t('admin9Ui.tiptapEditor.altText') }}
             </a-button>
-          </a-tooltip>
+            <div v-if="selectedMediaKind === 'image'" role="separator" />
+            <a-button type="text" status="danger" role="menuitem" :aria-label="deleteMediaLabel" @click="deleteSelectedMedia">
+              <icon-delete />{{ deleteMediaLabel }}
+            </a-button>
+          </MediaActionMenu>
         </div>
       </MediaBubbleMenu>
+
+      <Modal
+        v-model:visible="altPopupVisible"
+        :title="t('admin9Ui.tiptapEditor.altText')"
+        :ok-text="t('admin9Ui.tiptapEditor.applyAlt')"
+        :on-before-ok="applyAltText"
+        @close="restoreMediaFocus"
+      >
+        <a-input
+          v-model="altDraft"
+          :placeholder="t('admin9Ui.tiptapEditor.altPlaceholder')"
+          :aria-label="t('admin9Ui.tiptapEditor.altText')"
+          @press-enter="applyAltText"
+        />
+      </Modal>
 
       <div v-if="showWordCount" class="a9-tiptap-editor__footer">
         <span>
@@ -2043,17 +2145,46 @@
   }
 
   .a9-tiptap-editor__painter-help {
-    flex: 1 0 100%;
-    min-width: 0;
-    overflow-wrap: anywhere;
+    max-width: min(320px, calc(100vw - 48px));
+    margin: 0;
+    line-height: 1.6;
+  }
 
-    summary {
-      width: fit-content;
-      cursor: pointer;
+  .a9-tiptap-editor__crop-status {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    padding: 8px 16px;
+    color: var(--color-text-2);
+    font-size: 13px;
+    background: var(--color-fill-1);
+    border-bottom: 1px solid var(--color-border-2);
+
+    > span {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
     }
 
-    p {
-      margin: 8px 0 0;
+    &.is-failed {
+      color: rgb(var(--danger-6));
+    }
+  }
+
+  .a9-tiptap-editor__loading-icon {
+    animation: a9-editor-loading 1s linear infinite;
+  }
+
+  @keyframes a9-editor-loading {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .a9-tiptap-editor__loading-icon {
+      animation: none;
     }
   }
 
@@ -2068,9 +2199,9 @@
     border-bottom: 1px solid var(--color-border-2);
 
     :deep(.arco-btn-size-small) {
-      width: 30px;
-      min-width: 30px;
-      height: 30px;
+      width: 32px;
+      min-width: 32px;
+      height: 32px;
       padding: 0;
     }
   }
@@ -2079,7 +2210,7 @@
   .a9-tiptap-editor__toolbar :deep(.a9-text-format-spacing.arco-btn-size-small),
   .a9-tiptap-editor__block-menu.arco-btn-size-small {
     width: auto;
-    min-width: 86px;
+    min-width: 64px;
     padding: 0 8px;
   }
 
@@ -2104,6 +2235,17 @@
     min-width: 8px;
   }
 
+  .a9-tiptap-editor.is-compact {
+    .a9-tiptap-editor__divider,
+    .a9-tiptap-editor__toolbar-spacer {
+      display: none;
+    }
+
+    .a9-tiptap-editor__tool-group {
+      flex-basis: 100%;
+    }
+  }
+
   .a9-tiptap-editor__media-picker {
     :deep(.arco-upload-list) {
       display: none;
@@ -2118,24 +2260,21 @@
 
   .a9-tiptap-editor__media-toolbar {
     display: flex;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 4px;
     align-items: center;
     max-width: 100%;
     min-height: 36px;
     padding: 5px 6px;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
     background: var(--color-bg-2);
     border: 1px solid var(--color-border-2);
     border-radius: 4px;
     box-shadow: 0 4px 16px rgb(0 0 0 / 14%);
-    scrollbar-width: thin;
 
-    :deep(.arco-btn-size-mini) {
+    :deep(.arco-btn-size-small) {
       flex: 0 0 auto;
-      min-width: 24px;
-      height: 24px;
+      min-width: 32px;
+      height: 32px;
       padding: 0 6px;
     }
   }
@@ -2176,29 +2315,6 @@
     flex: 0 0 auto;
     gap: 2px;
     align-items: center;
-  }
-
-  .a9-tiptap-editor__alt-popover {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    width: min(360px, calc(100vw - 48px));
-  }
-
-  .a9-tiptap-editor__alt-popover-title {
-    color: var(--color-text-1);
-    font-weight: 500;
-    font-size: 13px;
-  }
-
-  .a9-tiptap-editor__alt-popover-fields {
-    display: flex;
-    gap: 8px;
-
-    :deep(.arco-input-wrapper) {
-      flex: 1;
-      min-width: 0;
-    }
   }
 
   .a9-tiptap-editor__link-panel {

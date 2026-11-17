@@ -23,7 +23,6 @@
   const cropLoading = ref(false);
   const cropSaving = ref(false);
   const cropImage = ref<HTMLCanvasElement>();
-  const cropViewport = ref<HTMLElement>();
   const cropNatural = reactive({ width: 0, height: 0 });
   const cropBox = reactive({ x: 10, y: 10, width: 80, height: 80 });
   const error = ref('');
@@ -35,9 +34,6 @@
   let source: File | undefined;
   let bitmap: ImageBitmap | undefined;
   let generation = 0;
-  let frame = 0;
-  let interacted = false;
-  let cropAutoPositioned = false;
   let resolve: ((file: File | null) => void) | undefined;
   type CropHandle = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   let cropDrag:
@@ -59,9 +55,15 @@
     }
   });
   const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-  const cropStageStyle = computed(() =>
-    cropNatural.width && cropNatural.height ? { aspectRatio: `${cropNatural.width} / ${cropNatural.height}` } : undefined
-  );
+  const cropStageStyle = computed(() => {
+    if (!cropNatural.width || !cropNatural.height) return undefined;
+    return {
+      aspectRatio: `${cropNatural.width} / ${cropNatural.height}`,
+      width: `min(calc(100% - 16px), calc((var(--a9-image-cropper-viewport-height) - 16px) * ${
+        cropNatural.width / cropNatural.height
+      }))`,
+    };
+  });
   const fitCropBoxToRatio = (ratio: number) => {
     const naturalWidth = cropNatural.width || 1;
     const naturalHeight = cropNatural.height || 1;
@@ -79,37 +81,8 @@
     cropBox.x = clamp(centerX - width / 2, 0, 100 - width);
     cropBox.y = clamp(centerY - height / 2, 0, 100 - height);
   };
-  const revealCropBox = () => {
-    if (cropAutoPositioned || !cropVisible.value || interacted) return;
-    const viewport = cropViewport.value;
-    const stage = cropImage.value?.parentElement;
-    const box = stage?.querySelector<HTMLElement>('.a9-image-cropper-stage__box');
-    if (!viewport || !stage || !box) return;
-    if (!viewport.clientHeight || !stage.clientHeight) {
-      frame = requestAnimationFrame(revealCropBox);
-      return;
-    }
-    const minimumMargin = 12;
-    const boxHeight = box.offsetHeight;
-    const maxVisibleHeight = viewport.clientHeight - minimumMargin * 2;
-    if (boxHeight > maxVisibleHeight && maxVisibleHeight > 0) {
-      const scale = maxVisibleHeight / boxHeight;
-      const centerX = cropBox.x + cropBox.width / 2;
-      const centerY = cropBox.y + cropBox.height / 2;
-      cropBox.width *= scale;
-      cropBox.height *= scale;
-      cropBox.x = clamp(centerX - cropBox.width / 2, 0, 100 - cropBox.width);
-      cropBox.y = clamp(centerY - cropBox.height / 2, 0, 100 - cropBox.height);
-    }
-    const boxTop = (cropBox.y / 100) * stage.clientHeight;
-    const renderedBoxHeight = (cropBox.height / 100) * stage.clientHeight;
-    const targetScrollTop = boxTop + renderedBoxHeight / 2 - viewport.clientHeight / 2;
-    viewport.scrollTop = clamp(targetScrollTop, 0, viewport.scrollHeight - viewport.clientHeight);
-    cropAutoPositioned = true;
-  };
   const onCropPointerDown = (event: PointerEvent) => {
     if (cropSaving.value || cropLoading.value) return;
-    interacted = true;
     const target = event.currentTarget as HTMLElement;
     const handle = (event.target as HTMLElement).dataset.cropHandle as CropHandle | undefined;
     target.setPointerCapture?.(event.pointerId);
@@ -176,7 +149,6 @@
   };
 
   const release = () => {
-    cancelAnimationFrame(frame);
     bitmap?.close();
     bitmap = undefined;
     if (cropImage.value) {
@@ -210,7 +182,6 @@
       return;
     }
     context.drawImage(bitmap, 0, 0, cropImage.value.width, cropImage.value.height);
-    frame = requestAnimationFrame(revealCropBox);
   };
   const prepare = async () => {
     if (!source) return;
@@ -227,6 +198,7 @@
       cropNatural.width = decoded.width;
       cropNatural.height = decoded.height;
       if (aspectRatio.value !== undefined) fitCropBoxToRatio(aspectRatio.value);
+      else Object.assign(cropBox, { x: 0, y: 0, width: 100, height: 100 });
       cropLoading.value = false;
       await nextTick();
       if (current === generation) drawPreview();
@@ -245,8 +217,6 @@
     cropNatural.width = 0;
     cropNatural.height = 0;
     Object.assign(cropBox, { x: 10, y: 10, width: 80, height: 80 });
-    cropAutoPositioned = false;
-    interacted = false;
     const result = new Promise<File | null>((done) => {
       resolve = done;
     });
@@ -288,7 +258,6 @@
     if (cropLoading.value || cropSaving.value || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key))
       return;
     event.preventDefault();
-    interacted = true;
     const dx = Number(event.key === 'ArrowRight') - Number(event.key === 'ArrowLeft');
     const dy = Number(event.key === 'ArrowDown') - Number(event.key === 'ArrowUp');
     const handle = (event.target as HTMLElement).dataset.cropHandle as CropHandle | undefined;
@@ -329,14 +298,11 @@
     <div class="a9-image-cropper__ratio">
       <span>{{ t('admin9Ui.imageCropper.hint') }}</span>
       <span v-if="cropNatural.width && !outputSize" role="alert">{{ t('admin9Ui.imageCropper.errors.pixels') }}</span>
-      <span v-if="outputSize" class="a9-image-cropper__size">{{ outputSize.width }} × {{ outputSize.height }}</span>
+      <span v-if="outputSize" class="a9-image-cropper__size">{{
+        t('admin9Ui.imageCropper.outputSize', { width: outputSize.width, height: outputSize.height })
+      }}</span>
     </div>
-    <div
-      ref="cropViewport"
-      class="a9-image-cropper__viewport"
-      @wheel.passive="interacted = true"
-      @touchstart.passive="interacted = true"
-    >
+    <div class="a9-image-cropper__viewport">
       <div
         class="a9-image-cropper-stage"
         :class="{ 'is-natural': cropNatural.width && cropNatural.height }"
@@ -394,9 +360,11 @@
   }
 
   .a9-image-cropper__viewport {
+    --a9-image-cropper-viewport-height: max(80px, min(60dvh, calc(100dvh - 260px)));
+
     flex-shrink: 1;
     min-height: 0;
-    max-height: min(60dvh, calc(100dvh - 260px));
+    max-height: var(--a9-image-cropper-viewport-height);
     overflow: auto;
   }
 
@@ -410,6 +378,7 @@
 
   .a9-image-cropper-stage.is-natural {
     min-height: 0;
+    margin: 8px auto;
   }
 
   .a9-image-cropper-stage__image {

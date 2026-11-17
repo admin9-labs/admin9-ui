@@ -126,7 +126,24 @@
   const editorMode = ref<'normal' | 'readonly' | 'disabled'>('normal');
   const chatFocused = new URLSearchParams(window.location.search).get('component') === 'chat';
   const tiptapFocused = new URLSearchParams(window.location.search).get('component') === 'tiptap-editor';
-  const tiptapValue = ref(
+  const editorScenario = ref<'article' | 'acceptance'>('article');
+  const articleValue = ref(
+    [
+      '<h1>把活动照片整理成一篇清晰的图文记录</h1>',
+      '<p>一场活动结束后，照片往往散落在不同人的手机和文件夹里。与其把所有图片依次放进正文，不如先确定一个主题，再用文字和画面还原当天最值得记住的片段。</p>',
+      '<h2>先理清内容，再挑选照片</h2>',
+      '<p>从活动的起因、现场的变化和参与者的感受入手，写下三个最想告诉读者的要点。每个要点配一到两张照片，让读者既能看见全貌，也能注意到人物与细节。</p>',
+      '<img src="/media-board.png" alt="按主题归类的素材面板示意" data-display="block" data-width="75%" data-align="center">',
+      '<p>整理素材时，可以按内容分组，并为选中的照片补充简短说明。相似的画面只保留最能表达主题的一张，避免重复占用阅读空间。</p>',
+      '<h2>让每张图片都有作用</h2>',
+      '<ul><li><p><strong>交代环境：</strong>用一张全景照片说明活动在哪里发生。</p></li><li><p><strong>呈现过程：</strong>选择能看清动作和人物关系的画面。</p></li><li><p><strong>留下细节：</strong>用作品、手部动作或现场表情补充故事。</p></li></ul>',
+      '<p>裁剪时先确定画面的重点，再去掉与主题无关的边缘。横图适合交代场景，竖图适合突出人物；同一组照片保持接近的显示宽度，阅读节奏会更稳定。</p>',
+      '<h2>完成前，通读一次</h2>',
+      '<p>检查标题是否准确，段落之间是否衔接自然，图片是否与相邻文字呼应。把过长的段落拆开，为不同内容加上小标题，让读者能快速找到感兴趣的部分。</p>',
+      '<p>好的活动记录不必面面俱到。保留清楚的线索和具体的细节，就能让没有到场的人也理解这一天发生了什么。</p>',
+    ].join('')
+  );
+  const acceptanceValue = ref(
     [
       '<h1>活动公告示例</h1>',
       '<p><span style="color:#f53f3f;font-size:20px">格式刷来源：红色大字</span></p>',
@@ -150,6 +167,13 @@
       '<p>媒体之后仍可通过 Gap Cursor 继续输入，连续媒体不会生成空段落。</p>',
     ].join('')
   );
+  const tiptapValue = computed({
+    get: () => (editorScenario.value === 'article' ? articleValue.value : acceptanceValue.value),
+    set: (value: string) => {
+      if (editorScenario.value === 'article') articleValue.value = value;
+      else acceptanceValue.value = value;
+    },
+  });
   const filePickerState = ref<AcceptanceState>('normal');
   const editorImageCrop: TiptapImageCropOptions = {
     source: { maxBytes: 20_000_000, maxPixels: 40_000_000 },
@@ -165,11 +189,17 @@
   const jsonEditor = ref<InstanceType<typeof ATiptapEditor>>();
   const htmlUploadState = ref<TiptapImageUploadState>({ pending: 0, uploading: 0, failed: 0, canSave: true });
   const jsonUploadState = ref<TiptapImageUploadState>({ pending: 0, uploading: 0, failed: 0, canSave: true });
-  const savedHTML = ref('');
+  const savedHTML = ref<string | null>(null);
   const saveHTML = () => {
     if (!htmlEditor.value?.getImageUploadState().canSave) return;
     savedHTML.value = htmlEditor.value.getHTML();
   };
+  watch(tiptapValue, () => {
+    savedHTML.value = null;
+  });
+  watch(editorScenario, () => {
+    htmlUploadState.value = { pending: 0, uploading: 0, failed: 0, canSave: true };
+  });
   const jsonEditorKey = ref(0);
   const tiptapJSON = ref<TiptapDocument>({
     type: 'doc',
@@ -207,7 +237,7 @@
           },
         ],
       },
-      { type: 'blockImage', attrs: { src: '/media-board.svg', alt: 'JSON 图片', width: '50%', align: 'left' } },
+      { type: 'blockImage', attrs: { src: '/media-board.png', alt: 'JSON 图片', width: '50%', align: 'left' } },
       { type: 'video', attrs: { src: '/media-motion.mp4', width: '50%', align: 'center' } },
       { type: 'audio', attrs: { src: '/media-tone.wav', width: 'compact', align: 'right' } },
     ],
@@ -645,7 +675,18 @@
         </div>
 
         <div class="tiptap-workspace component-frame">
+          <a-radio-group
+            v-model="editorScenario"
+            type="button"
+            size="small"
+            aria-label="编辑器演示场景"
+            data-testid="editor-scenario-control"
+          >
+            <a-radio value="article">文章示例</a-radio>
+            <a-radio value="acceptance">验收场景</a-radio>
+          </a-radio-group>
           <ATiptapEditor
+            :key="editorScenario"
             ref="htmlEditor"
             v-model="tiptapValue"
             :service="filePickerService"
@@ -660,45 +701,66 @@
             :can-move-files="filePickerShowGroups"
             :can-upload-video="true"
             :can-upload-audio="true"
-            placeholder="请输入公告正文"
+            placeholder="请输入正文"
             data-testid="tiptap-editor"
             @image-upload-state-change="htmlUploadState = $event"
           />
-          <a-button data-testid="tiptap-after-editor-focus-target">编辑器后的操作</a-button>
-          <a-button :disabled="!htmlUploadState.canSave" @click="saveHTML">保存 HTML</a-button>
-          <span v-if="!htmlUploadState.canSave">请等待图片上传，或重试、删除失败图片后保存。</span>
-          <span v-else-if="savedHTML">HTML 已保存</span>
-          <div class="tiptap-readout" aria-live="polite">
-            <span>HTML 输出</span>
-            <code>{{ tiptapValue || '（空）' }}</code>
-          </div>
-          <h3>JSON 模型</h3>
-          <ATiptapEditor
-            :key="jsonEditorKey"
-            ref="jsonEditor"
-            v-model="tiptapJSON"
-            value-format="json"
-            :can-upload-image="true"
-            :service="filePickerService"
-            :image-crop="editorImageCrop"
-            :readonly="editorMode === 'readonly'"
-            :disabled="editorMode === 'disabled'"
-            :max-length="2000"
-            data-testid="tiptap-json-editor"
-            @image-upload-state-change="jsonUploadState = $event"
-          />
           <a-space wrap>
-            <a-button data-testid="save-json" :disabled="!jsonUploadState.canSave" @click="saveJSON">保存 JSON</a-button>
-            <a-button data-testid="reload-json" :disabled="!savedJSON" @click="reloadJSON">回填已保存内容</a-button>
-            <a-button data-testid="clear-json" :disabled="editorMode !== 'normal'" @click="jsonEditor?.clear()"
-              >清空 JSON 内容</a-button
+            <a-button v-if="editorScenario === 'acceptance'" data-testid="tiptap-after-editor-focus-target"
+              >编辑器后的操作</a-button
             >
+            <a-button :disabled="editorMode !== 'normal' || !htmlUploadState.canSave" @click="saveHTML">模拟保存</a-button>
+            <span role="status">
+              <template v-if="htmlUploadState.cropCommitPending">正在应用裁剪，请稍候。</template>
+              <template v-else-if="htmlUploadState.failed">有图片上传失败，请重试或删除失败图片后保存。</template>
+              <template v-else-if="!htmlUploadState.canSave">图片上传中，请稍候。</template>
+              <template v-else-if="savedHTML !== null">已模拟保存到当前页面，刷新后不保留。</template>
+              <template v-else>仅演示保存效果，刷新后不保留。</template>
+            </span>
           </a-space>
-          <span v-if="!jsonUploadState.canSave">请等待图片上传，或重试、删除失败图片后保存。</span>
-          <div class="tiptap-readout" aria-live="polite">
-            <span>JSON 输出</span>
-            <code data-testid="tiptap-json-output">{{ JSON.stringify(tiptapJSON, null, 2) }}</code>
-          </div>
+          <template v-if="editorScenario === 'acceptance'">
+            <h3>JSON 模型</h3>
+            <ATiptapEditor
+              :key="jsonEditorKey"
+              ref="jsonEditor"
+              v-model="tiptapJSON"
+              value-format="json"
+              :can-upload-image="true"
+              :service="filePickerService"
+              :image-crop="editorImageCrop"
+              :readonly="editorMode === 'readonly'"
+              :disabled="editorMode === 'disabled'"
+              :max-length="2000"
+              data-testid="tiptap-json-editor"
+              @image-upload-state-change="jsonUploadState = $event"
+            />
+            <a-space wrap>
+              <a-button
+                data-testid="save-json"
+                :disabled="editorMode !== 'normal' || !jsonUploadState.canSave"
+                @click="saveJSON"
+                >模拟保存 JSON</a-button
+              >
+              <a-button data-testid="reload-json" :disabled="!savedJSON" @click="reloadJSON">回填已保存内容</a-button>
+              <a-button data-testid="clear-json" :disabled="editorMode !== 'normal'" @click="jsonEditor?.clear()"
+                >清空 JSON 内容</a-button
+              >
+            </a-space>
+            <span v-if="jsonUploadState.cropCommitPending" role="status">正在应用裁剪，请稍候。</span>
+            <span v-else-if="jsonUploadState.failed" role="status">有图片上传失败，请重试或删除失败图片后保存。</span>
+            <span v-else-if="!jsonUploadState.canSave" role="status">图片上传中，请稍候。</span>
+          </template>
+          <details>
+            <summary>开发调试</summary>
+            <div class="tiptap-readout">
+              <span>HTML 输出</span>
+              <code>{{ tiptapValue || '（空）' }}</code>
+            </div>
+            <div v-if="editorScenario === 'acceptance'" class="tiptap-readout">
+              <span>JSON 输出</span>
+              <code data-testid="tiptap-json-output">{{ JSON.stringify(tiptapJSON, null, 2) }}</code>
+            </div>
+          </details>
         </div>
       </section>
 

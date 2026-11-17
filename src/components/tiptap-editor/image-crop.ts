@@ -23,6 +23,8 @@ interface EditorImageCropOptions {
   config(): EditorImageCropConfig | undefined;
   service(): FilePickerAdapter | undefined;
   crop(file: File): Promise<File | null>;
+  onPhase?(phase: 'idle' | 'read' | 'preview' | 'commit'): void;
+  onRetryChange?(available: boolean): void;
   onState(pending: boolean): void;
   onError(error: EditorImageCropError): void;
 }
@@ -30,6 +32,19 @@ interface EditorImageCropOptions {
 /** One image target and one abortable read/upload generation per editor. */
 export function createEditorImageCrop(options: EditorImageCropOptions) {
   let generation = 0;
+  let active = false;
+  let retryTarget: (() => number | undefined) | undefined;
+  const setRetryTarget = (target: typeof retryTarget) => {
+    const changed = Boolean(retryTarget) !== Boolean(target);
+    retryTarget = target;
+    if (changed) options.onRetryChange?.(Boolean(target));
+  };
+  let currentPhase: 'idle' | 'read' | 'preview' | 'commit' = 'idle';
+  const setPhase = (phase: typeof currentPhase) => {
+    if (currentPhase === phase) return;
+    currentPhase = phase;
+    options.onPhase?.(phase);
+  };
   let pending = false;
   let cropPending = false;
   let controller: AbortController | undefined;
@@ -41,26 +56,35 @@ export function createEditorImageCrop(options: EditorImageCropOptions) {
   };
   const cancel = () => {
     generation += 1;
+    active = false;
     controller?.abort();
     controller = undefined;
     detach?.();
     detach = undefined;
     cropPending = false;
+    setRetryTarget(undefined);
     notify(false);
+    setPhase('idle');
   };
   const setCommitPending = (value: boolean) => {
-    if (!controller) return;
-    if (value) notify(true);
-    else if (cropPending) {
+    if (!active || !cropPending) return;
+    if (value) {
+      setPhase('commit');
+      notify(true);
+    } else if (cropPending) {
       const current = generation;
       // Cropper resolves open() and emits false in the same stack. Let the
       // promise continuation claim the upload before releasing an encode error.
       queueMicrotask(() => {
-        if (current === generation && cropPending) notify(false);
+        if (current === generation && cropPending) {
+          notify(false);
+          setPhase('preview');
+        }
       });
     }
   };
   const start = async (position: number): Promise<void> => {
+    if (active) return;
     cancel();
     const editor = options.getEditor();
     const config = options.config();
@@ -71,6 +95,7 @@ export function createEditorImageCrop(options: EditorImageCropOptions) {
     const current = generation;
     const abort = new AbortController();
     controller = abort;
+    active = true;
     let target = position;
     let committing = false;
     const valid = () => {
@@ -97,12 +122,17 @@ export function createEditorImageCrop(options: EditorImageCropOptions) {
     };
     editor.on('transaction', onTransaction);
     detach = () => editor.off('transaction', onTransaction);
+    let failed = false;
     let phase: EditorImageCropError['phase'] = 'read';
     try {
+      setPhase('read');
+      if (!valid()) return;
       const file = await config.readSource({ src: original.attrs.src, signal: abort.signal });
       if (!valid()) return;
       phase = 'crop';
       cropPending = true;
+      setPhase('preview');
+      if (!valid()) return;
       const output = await options.crop(file);
       if (!valid()) return;
       cropPending = false;
@@ -111,6 +141,7 @@ export function createEditorImageCrop(options: EditorImageCropOptions) {
         return;
       }
       phase = 'upload';
+      setPhase('commit');
       notify(true);
       if (!valid()) return;
       const item = await service.upload({ file: output, fileTypes: ['image'], groupId: null, signal: abort.signal });
@@ -130,10 +161,27 @@ export function createEditorImageCrop(options: EditorImageCropOptions) {
       editor.view.dispatch(transaction);
       editor.view.dispatch(closeHistory(editor.state.tr));
     } catch (cause) {
-      if (valid()) options.onError({ phase, cause });
+      if (valid()) {
+        failed = true;
+        setRetryTarget(() => (valid() ? target : undefined));
+        options.onError({ phase, cause });
+      }
     } finally {
-      if (current === generation) cancel();
+      if (current === generation) {
+        if (failed) {
+          active = false;
+          committing = false;
+          cropPending = false;
+          notify(false);
+          setPhase('idle');
+        } else cancel();
+      }
     }
   };
-  return { start, cancel, setCommitPending };
+  const retry = (): void => {
+    if (active) return;
+    const target = retryTarget?.();
+    if (target !== undefined) start(target);
+  };
+  return { start, retry, cancel, setCommitPending };
 }

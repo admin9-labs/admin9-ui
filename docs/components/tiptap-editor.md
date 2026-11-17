@@ -217,6 +217,8 @@ focus/clear 返回 Tiptap 命令的布尔结果；编辑器尚未就绪时返回
 
 ## 段落与文字间距
 
+工具栏按文字、段落、插入和编辑操作分组。首行缩进与行距菜单使用可读选项，字间距位于“文字排版”面板；默认、显式值和混合格式分别显示。不适用的入口禁用，例如纯标题选择不能设置首行缩进。菜单支持方向键、Enter 和 Escape，操作保留原选区。
+
 段落 `firstLineIndent` 接受 `null`（继承，不输出）、`'0em'`、`'2em'`，HTML 对应 `text-indent`；导入的 `0`、`0px`、`0em` 归一为 `'0em'`。仅更新实际选中的 paragraph，标题及列表、引用、表格容器不会被改成段落。
 
 paragraph/heading 的 `textAlign` 支持 `justify`，末行保持浏览器常规 `auto` 行为，不改变空白内容。媒体仍只支持左／中／右对齐。`lineHeight` 接受 `null | '1' | '1.5' | '2'`，输出无单位 `line-height`。textStyle 的 `letterSpacing` 接受 `null | '0px' | '1px' | '2px'`，输出 span `letter-spacing`。默认值与显式零分开保存。Enter 继承显式格式，Shift+Enter 在同段换行；清除文字格式不改变段落行距、缩进或对齐。文字色板包含有边框的白色；36px、48px 可导入、选择、复制和输出。
@@ -231,6 +233,8 @@ HTML 模式使用 `documentAttributes?: Record<string, unknown>` 和 `update:doc
 
 ## 正文图片再次裁剪
 
+选中图片后，可从布局和显示宽度菜单调整排版；裁剪、替换和桌面对齐保留直接入口，替代文字与删除位于“更多操作”。窄容器将对齐收为下拉，工具栏按组换行。
+
 配置 `imageCrop?: TiptapImageCropOptions`，并启用 `canUploadImage` 且服务有 `upload` 时，块图和行内图操作栏出现裁剪入口。配置复用 `ImageCropOptions` 的 source/output 限制，另外要求 `readSource({ src, signal }): Promise<File>`，由应用读取当前图片的字节；组件不内置鉴权请求，不将 URL 伪造成素材项传给 `readOriginal`。
 
 `aspectRatioMode?: 'free' | 'original'` 默认自由裁剪，可选择保持当前图片原比例。仅支持按字节识别的静态 JPEG/PNG；GIF、APNG 和 WebP 不裁剪。GIF 仍沿选择、上传、粘贴、拖拽及块图／行内图原路径保存动画，不新增文件类型或转换动画。
@@ -238,3 +242,5 @@ HTML 模式使用 `documentAttributes?: Record<string, unknown>` 和 `update:doc
 裁剪生成新 File 后调用现有 `service.upload`。成功只替换发起节点的 src，保留 alt、布局和 marks，不覆盖、删除原资源；下一次基于当前图。成功产生一个独立撤销步骤，重做不重传。事务映射跟踪目标，删除、替换、切文档、禁用和卸载会使迟到结果无效。`cancelImageCrop()` 同步取消会话，应用切换业务文档时也可主动调用。
 
 `imageCropError({ phase: 'read' | 'crop' | 'upload' | 'commit', cause })` 是独立裁剪错误事件。`TiptapImageUploadState.cropCommitPending?: boolean` 仅从确认开始编码到上传校验、正文替换和同步模型输出完成期间为 true；读取预览不占用保存忙状态。`canSave` 同时检查原上传任务与该字段。裁剪失败保留合法旧图并解除忙状态，不增加正文上传的 failed 数量；编码失败可在对话框重试，上传失败可重新打开裁剪。消费方继续以 `canSave` 决定保存能力。
+
+编辑器自行显示读取、应用裁剪和失败反馈，同时继续发出上述事件。读取失败可重新尝试，上传失败可重新裁剪；不会缓存上次裁剪文件用于重传。目标被删除或替换、文档回填或会话取消后，原目标的重试入口失效。
