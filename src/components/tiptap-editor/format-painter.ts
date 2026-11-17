@@ -2,14 +2,24 @@ import { computed, ref, shallowRef } from 'vue';
 import type { Editor } from '@tiptap/core';
 import { Mark, type Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { AllSelection, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
+import { CellSelection } from '@tiptap/pm/tables';
 import { closeHistory } from '@tiptap/pm/history';
-import { normalizeFontSize, normalizeTextColor } from './text-format';
+import { normalizeFontSize, normalizeLetterSpacing, normalizeTextColor } from './text-format';
 
 const formatNames = ['bold', 'italic', 'underline', 'strike', 'textStyle', 'highlight'];
 type Failure = 'source' | 'mixed' | 'code' | 'target';
 type TextPart = { from: number; to: number; node: ProseMirrorNode; parent: ProseMirrorNode };
 
 function textParts(state: EditorState): TextPart[] {
+  if (state.selection instanceof CellSelection) {
+    const parts: TextPart[] = [];
+    state.selection.forEachCell((cell, cellPos) => {
+      cell.descendants((node, pos, parent) => {
+        if (node.isText && parent) parts.push({ from: cellPos + 1 + pos, to: cellPos + 1 + pos + node.nodeSize, node, parent });
+      });
+    });
+    return parts;
+  }
   if (!(state.selection instanceof TextSelection || state.selection instanceof AllSelection)) return [];
   const { from, to } = state.selection;
   const parts: TextPart[] = [];
@@ -25,7 +35,8 @@ function formats(marks: readonly Mark[]): Mark[] {
     if (mark.type.name === 'textStyle') {
       const color = normalizeTextColor(mark.attrs.color);
       const fontSize = normalizeFontSize(mark.attrs.fontSize);
-      return color || fontSize ? [mark.type.create({ color, fontSize })] : [];
+      const letterSpacing = normalizeLetterSpacing(mark.attrs.letterSpacing);
+      return color || fontSize || letterSpacing ? [mark.type.create({ color, fontSize, letterSpacing })] : [];
     }
     if (mark.type.name === 'highlight') return [mark.type.create({ color: normalizeTextColor(mark.attrs.color) })];
     return [mark];

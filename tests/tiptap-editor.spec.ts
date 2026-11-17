@@ -1,7 +1,7 @@
 /* eslint-disable vue/one-component-per-file */
 import { createApp, defineComponent, h, KeepAlive, nextTick, ref, type App, type ComponentPublicInstance } from 'vue';
 import { Message } from '@arco-design/web-vue';
-import type { Editor } from '@tiptap/core';
+import { Extension, type Editor } from '@tiptap/core';
 import { GapCursor } from '@tiptap/pm/gapcursor';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { CellSelection, columnResizingPluginKey } from '@tiptap/pm/tables';
@@ -460,7 +460,7 @@ describe('ATiptapEditor public contract', () => {
   });
 
   it.each(['clear', 'external replacement'])(
-    'restores a retryable image when undoing %s and ignores the cancelled response',
+    'cancels in-flight uploads on %s and preserves the appropriate history',
     async (operation) => {
       vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview');
       vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
@@ -491,13 +491,18 @@ describe('ATiptapEditor public contract', () => {
       const retry = [...document.querySelectorAll<HTMLButtonElement>('.a9-tiptap-editor__upload button')].find(
         (button) => button.textContent === 'Retry'
       );
-      expect(retry).toBeDefined();
+      if (operation === 'clear') expect(retry).toBeDefined();
+      else {
+        expect(retry).toBeUndefined();
+        expect(instance.getHTML()).toBe('<p>Replacement</p>');
+      }
       complete({ id: 'old', name: 'image.png', type: 'image', groupId: null, url: '/old.png' });
       await flush();
       expect(instance.getHTML()).not.toContain('/old.png');
       retry?.click();
       await flush();
-      expect(instance.getHTML()).toContain('/retry.png');
+      if (operation === 'clear') expect(instance.getHTML()).toContain('/retry.png');
+      else expect(upload).toHaveBeenCalledTimes(1);
       expect(instance.getImageUploadState().canSave).toBe(true);
     }
   );
@@ -2495,5 +2500,233 @@ describe('ATiptapEditor public contract', () => {
     await flush();
     internalEditor.commands.insertContent('9');
     expect(instance.getHTML()).toBe('<p>123456789</p>');
+  });
+  it('atomically loads HTML and validated root attributes without updates or history', async () => {
+    const onUpdate = vi.fn();
+    const onAttrs = vi.fn();
+    const extension = Extension.create({
+      name: 'articleRoot',
+      addGlobalAttributes() {
+        return [
+          {
+            types: ['doc'],
+            attributes: {
+              title: {
+                default: '',
+                validate: (value: unknown) => {
+                  if (typeof value !== 'string') throw new Error('Expected title');
+                },
+              },
+            },
+          },
+        ];
+      },
+    });
+    const { props, instance, editor } = await mountReactiveEditor({
+      'modelValue': '<p>One</p>',
+      'documentAttributes': { title: 'First' },
+      'additionalExtensions': [extension],
+      'onUpdate:modelValue': onUpdate,
+      'onUpdate:documentAttributes': onAttrs,
+    });
+    expect(instance.getJSON().attrs?.title).toBe('First');
+    const original = editor.state.doc;
+    props.value = { ...props.value, modelValue: '<p>One</p>', documentAttributes: { title: 'First' } };
+    await flush();
+    expect(editor.state.doc).toBe(original);
+    props.value = { ...props.value, modelValue: '<p>Two</p>', documentAttributes: { title: 'Second' } };
+    await flush();
+    expect(instance.getHTML()).toBe('<p>Two</p>');
+    expect(instance.getJSON().attrs?.title).toBe('Second');
+    expect(editor.can().undo()).toBe(false);
+    expect(onUpdate).not.toHaveBeenCalled();
+    expect(onAttrs).not.toHaveBeenCalled();
+    editor.view.dispatch(editor.state.tr.setDocAttribute('title', 'Third'));
+    expect(onAttrs).toHaveBeenLastCalledWith({ title: 'Third' });
+    expect(onUpdate).toHaveBeenLastCalledWith('<p>Two</p>');
+  });
+
+  it('rejects invalid HTML root attributes atomically', async () => {
+    const error = vi.fn();
+    const extension = Extension.create({
+      name: 'validRoot',
+      addGlobalAttributes() {
+        return [
+          {
+            types: ['doc'],
+            attributes: {
+              title: {
+                default: '',
+                validate: (value: unknown) => {
+                  if (typeof value !== 'string') throw new Error('Expected title');
+                },
+              },
+            },
+          },
+        ];
+      },
+    });
+    const { props, instance } = await mountReactiveEditor({
+      modelValue: '<p>Old</p>',
+      documentAttributes: { title: 'Old' },
+      additionalExtensions: [extension],
+      onContentError: error,
+    });
+    props.value = { ...props.value, modelValue: '<p>Bad</p>', documentAttributes: { title: 42 } };
+    await flush();
+    expect(instance.getHTML()).toBe('<p>Old</p>');
+    expect(instance.getJSON().attrs?.title).toBe('Old');
+    expect(error).toHaveBeenCalledWith(expect.objectContaining({ reason: 'invalid-document' }));
+  });
+  it('invalidates a late crop source response when a kept-alive editor is deactivated', async () => {
+    const visible = ref(true);
+    const exposed = ref<TiptapEditorInstance>();
+    let complete!: (file: File) => void;
+    let signal: AbortSignal | undefined;
+    const upload = vi.fn();
+    const readSource = vi.fn((context: { signal: AbortSignal }) => {
+      signal = context.signal;
+      return new Promise<File>((resolve) => {
+        complete = resolve;
+      });
+    });
+    const app = createApp({
+      setup: () => () =>
+        h(KeepAlive, null, {
+          default: () =>
+            visible.value
+              ? h(ATiptapEditor, {
+                  ref: exposed,
+                  modelValue: '<p>Before</p><img src="/old.png" data-display="block">',
+                  canUploadImage: true,
+                  service: { list: vi.fn(), upload },
+                  imageCrop: {
+                    source: { maxBytes: 1000, maxPixels: 1000 },
+                    output: { format: 'image/png', maxBytes: 1000, resize: { mode: 'max', longEdge: 100 } },
+                    readSource,
+                  },
+                })
+              : null,
+        }),
+    });
+    app.use(createI18n({ legacy: false, locale: 'en-US', messages }));
+    installStubs(app);
+    mountedApps.push(app);
+    app.mount('#app');
+    await flush();
+    if (!exposed.value) throw new Error('Editor did not mount');
+    const instance = exposed.value;
+    const editor = getInternalEditor(instance);
+    let target = 0;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'blockImage') target = pos;
+    });
+    const controller = (instance.$.setupState as { imageCrop: { start(pos: number): Promise<void> } }).imageCrop;
+    const pending = controller.start(target);
+    visible.value = false;
+    await flush();
+    expect(signal?.aborted).toBe(true);
+    complete(new File(['late'], 'late.png', { type: 'image/png' }));
+    await pending;
+    visible.value = true;
+    await flush();
+    expect(instance.getHTML()).toContain('/old.png');
+    expect(upload).not.toHaveBeenCalled();
+    expect(instance.getImageUploadState().canSave).toBe(true);
+    expect(document.querySelector('.a9-image-cropper-modal')).toBeNull();
+  });
+  it('preserves body selection, undo history and pending crop when only root attributes change', async () => {
+    let complete!: (file: File) => void;
+    let signal: AbortSignal | undefined;
+    const readSource = vi.fn((context: { signal: AbortSignal }) => {
+      signal = context.signal;
+      return new Promise<File>((resolve) => {
+        complete = resolve;
+      });
+    });
+    const extension = Extension.create({
+      name: 'rootOnly',
+      addGlobalAttributes() {
+        return [
+          {
+            types: ['doc'],
+            attributes: {
+              title: {
+                default: '',
+                validate: (value: unknown) => {
+                  if (typeof value !== 'string') throw new Error('Expected title');
+                },
+              },
+            },
+          },
+        ];
+      },
+    });
+    const { props, instance, editor } = await mountReactiveEditor({
+      modelValue: '<p>abcdef</p><img src="/old.png" data-display="block">',
+      documentAttributes: { title: 'Old' },
+      additionalExtensions: [extension],
+      canUploadImage: true,
+      service: { list: vi.fn(), upload: vi.fn() },
+      imageCrop: {
+        source: { maxBytes: 1000, maxPixels: 1000 },
+        output: { format: 'image/png', maxBytes: 1000, resize: { mode: 'max', longEdge: 100 } },
+        readSource,
+      },
+    });
+    editor.commands.setTextSelection(3);
+    editor.commands.insertContent('X');
+    const controller = (instance.$.setupState as { imageCrop: { start(pos: number): Promise<void>; cancel(): void } })
+      .imageCrop;
+    const crop = controller.start(findNodePosition(editor, 'blockImage'));
+    const position = editor.state.selection.from;
+    props.value = { ...props.value, modelValue: instance.getHTML(), documentAttributes: { title: 'New' } };
+    await flush();
+    expect(editor.state.selection.from).toBe(position);
+    expect(signal?.aborted).toBe(false);
+    expect(instance.getJSON().attrs?.title).toBe('New');
+    editor.commands.undo();
+    expect(instance.getHTML()).toContain('<p>abcdef</p>');
+    expect(instance.getJSON().attrs?.title).toBe('New');
+    controller.cancel();
+    complete(new File(['late'], 'late.png', { type: 'image/png' }));
+    await crop;
+  });
+  it('emits detached nested root attributes without sharing mutable editor state', async () => {
+    const onAttrs = vi.fn();
+    const extra = Extension.create({
+      name: 'nestedOutput',
+      addGlobalAttributes() {
+        return [
+          {
+            types: ['doc'],
+            attributes: {
+              meta: {
+                default: { title: '' },
+                validate: (value: unknown) => {
+                  if (!value || typeof value !== 'object' || typeof (value as { title: unknown }).title !== 'string') {
+                    throw new Error('Invalid meta');
+                  }
+                },
+              },
+            },
+          },
+        ];
+      },
+    });
+    const instance = mountEditor({
+      'modelValue': '<p>Body</p>',
+      'documentAttributes': { meta: { title: 'Old' } },
+      'additionalExtensions': [extra],
+      'onUpdate:documentAttributes': onAttrs,
+    });
+    await flush();
+    const editor = getInternalEditor(instance);
+    editor.commands.insertContent('X');
+    const before = editor.state.doc;
+    const output = onAttrs.mock.calls[0][0] as { meta: { title: unknown } };
+    output.meta.title = 42;
+    expect(instance.getJSON().attrs?.meta).toEqual({ title: 'Old' });
+    expect(editor.state.doc).toBe(before);
   });
 });

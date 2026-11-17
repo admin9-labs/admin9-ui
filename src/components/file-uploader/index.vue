@@ -112,6 +112,7 @@
     groupId: task.groupId,
     status: task.status,
     progress: task.progress,
+    statusText: task.statusText,
     item: task.item,
     error: task.error,
     failureReason: task.failureReason,
@@ -255,9 +256,11 @@
     }
     task.status = 'uploading';
     task.progress = undefined;
+    task.statusText = undefined;
     task.error = undefined;
     task.failureReason = undefined;
     notifyTasks();
+    let settled = false;
     let request: Promise<FileItem>;
     try {
       request = service.upload({
@@ -265,19 +268,26 @@
         fileTypes: [...task.fileTypes],
         groupId: task.groupId,
         signal: controller.signal,
+        onStatus: (text) => {
+          if (settled || !mounted.value || task.run !== run || controller.signal.aborted) return;
+          task.statusText = text;
+          notifyTasks();
+        },
         onProgress: (percent) => {
-          if (!mounted.value || task.run !== run || controller.signal.aborted) return;
+          if (settled || !mounted.value || task.run !== run || controller.signal.aborted) return;
           task.progress = normalizeProgress(percent);
           task.callbacks.onProgress(percent);
           notifyTasks();
         },
       });
     } catch (error) {
+      settled = true;
       failUpload(task, error);
       return;
     }
     Promise.resolve(request)
       .then((item) => {
+        settled = true;
         if (!mounted.value || task.run !== run || controller.signal.aborted) return;
         task.item = item;
         emit('response', item, snapshotTask(task));
@@ -295,6 +305,7 @@
         finishBatchIfSettled();
       })
       .catch((error: unknown) => {
+        settled = true;
         if (!mounted.value || task.run !== run || controller.signal.aborted) return;
         failUpload(task, error);
       });
@@ -380,6 +391,7 @@
     succeededCount.value = 0;
     batchRevision += 1;
     task.status = 'pending';
+    task.statusText = undefined;
     task.item = undefined;
     task.error = undefined;
     task.failureReason = undefined;
@@ -512,7 +524,7 @@
             <div class="a9-file-uploader__task-main">
               <span class="a9-file-uploader__name" :title="task.file.name">{{ task.file.name }}</span>
               <span class="a9-file-uploader__status">
-                {{ t(`admin9Ui.fileUploader.status.${task.status}`) }}
+                {{ (task.status === 'uploading' && task.statusText) || t(`admin9Ui.fileUploader.status.${task.status}`) }}
               </span>
             </div>
             <a-progress

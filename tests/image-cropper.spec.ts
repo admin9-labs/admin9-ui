@@ -2,7 +2,7 @@ import { createApp, defineComponent, h, nextTick, ref, type App } from 'vue';
 import { createI18n } from 'vue-i18n';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AImageCropper from '../src/components/image-cropper/index.vue';
-import type { AImageCropperExposed, ImageCropOptions } from '../src/components/image-cropper/types';
+import type { AImageCropperExposed, AImageCropperProps, ImageCropOptions } from '../src/components/image-cropper/types';
 import { messages } from '../src/locale';
 
 const engine = vi.hoisted(() => ({ decode: vi.fn(), encode: vi.fn() }));
@@ -43,9 +43,14 @@ const tick = async () => {
   await nextTick();
 };
 let app: App;
-function mount(onVisibleChange?: (visible: boolean) => void) {
+function mount(
+  onVisibleChange?: (visible: boolean) => void,
+  cropperProps: Partial<AImageCropperProps> & { onCommitPendingChange?: (pending: boolean) => void } = {}
+) {
   const exposed = ref<AImageCropperExposed>();
-  app = createApp({ setup: () => () => h(AImageCropper, { ref: exposed, crop, aspectRatio: 1, onVisibleChange }) });
+  app = createApp({
+    setup: () => () => h(AImageCropper, { ref: exposed, crop, aspectRatio: 1, onVisibleChange, ...cropperProps }),
+  });
   app.use(createI18n({ legacy: false, locale: 'en-US', messages }));
   app.component(
     'AButton',
@@ -155,5 +160,75 @@ describe('AImageCropper lifecycle', () => {
     expect(document.querySelector('canvas')).not.toBeNull();
     api.cancel();
     expect(await second).toBeNull();
+  });
+});
+
+describe('AImageCropper ratios and commit state', () => {
+  const confirm = () =>
+    [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Confirm'))?.click();
+  it.each([
+    [undefined, undefined, undefined],
+    [undefined, 'free', undefined],
+    [undefined, 'original', 2],
+    [1, 'original', 1],
+  ] as const)('uses ratio %s with mode %s', async (aspectRatio, aspectRatioMode, expected) => {
+    engine.decode.mockResolvedValue({ width: 400, height: 200, close: vi.fn() });
+    engine.encode.mockResolvedValue(new File(['crop'], 'crop.png'));
+    const api = mount(undefined, { aspectRatio, aspectRatioMode });
+    const result = api.open(source);
+    await tick();
+    const box = document.querySelector<HTMLElement>('.a9-image-cropper-stage__box');
+    if (!box?.parentElement) throw new Error('Crop box did not render');
+    const stage = box.parentElement;
+    vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue({ width: 400, height: 200 } as DOMRect);
+    const handle = box.querySelector<HTMLElement>('[data-crop-handle="bottom-right"]');
+    if (!handle) throw new Error('Resize handle did not render');
+    handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    await nextTick();
+    expect(box.style.width).toBe(expected === 1 ? '50%' : '81%');
+    const expectedHeight = new Map([
+      [undefined, '80%'],
+      [2, '81%'],
+      [1, '100%'],
+    ]).get(expected);
+    expect(box.style.height).toBe(expectedHeight);
+    confirm();
+    await tick();
+    expect(engine.encode.mock.calls[0][2]).toBe(expected);
+    expect(await result).toBeInstanceOf(File);
+  });
+  it.each(['finish', 'failure', 'cancel'] as const)('emits pending synchronously and clears on %s', async (outcome) => {
+    engine.decode.mockResolvedValue({ width: 200, height: 200, close: vi.fn() });
+    const pending = vi.fn();
+    const encoding = deferred<File>();
+    engine.encode.mockImplementation(() => {
+      expect(pending).toHaveBeenLastCalledWith(true);
+      return outcome === 'failure' ? Promise.reject(new Error('encode')) : encoding.promise;
+    });
+    const api = mount(undefined, { onCommitPendingChange: pending });
+    const result = api.open(source);
+    await tick();
+    pending.mockClear();
+    confirm();
+    expect(pending).toHaveBeenLastCalledWith(true);
+    if (outcome === 'cancel') api.cancel();
+    encoding.resolve(new File(['crop'], 'crop.png'));
+    await tick();
+    expect(pending.mock.calls).toEqual([[true], [false]]);
+    if (outcome === 'failure') api.cancel();
+    expect(await result).toEqual(outcome === 'finish' ? expect.any(File) : null);
+  });
+  it('allows a pending listener to cancel before encoding starts', async () => {
+    engine.decode.mockResolvedValue({ width: 200, height: 200, close: vi.fn() });
+    const api = mount(undefined, {
+      onCommitPendingChange: (pending) => {
+        if (pending) api.cancel();
+      },
+    });
+    const result = api.open(source);
+    await tick();
+    confirm();
+    expect(engine.encode).not.toHaveBeenCalled();
+    expect(await result).toBeNull();
   });
 });

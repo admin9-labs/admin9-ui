@@ -19,7 +19,10 @@ export interface ImageCropOptions {
 }
 
 export interface AImageCropperProps {
-  aspectRatio: number;
+  /** A numeric ratio takes precedence over aspectRatioMode. */
+  aspectRatio?: number;
+  /** Defaults to free when aspectRatio is omitted. */
+  aspectRatioMode?: 'free' | 'original';
   crop: ImageCropOptions;
 }
 

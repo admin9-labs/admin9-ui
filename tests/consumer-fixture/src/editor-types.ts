@@ -9,6 +9,8 @@ import {
   type TiptapImageUploadState,
   type TiptapImageUploadError,
   type TiptapPasteWarning,
+  type TiptapImageCropOptions,
+  type TiptapImageCropError,
 } from '@admin9-labs/admin9-ui';
 
 const document: TiptapDocument = { type: 'doc', content: [{ type: 'paragraph' }] };
@@ -64,3 +66,32 @@ h(ATiptapEditor<'html'>, { modelValue: document });
 h(ATiptapEditor<'json'>, { valueFormat: 'json', modelValue: '<p>HTML</p>' });
 // @ts-expect-error JSON change handlers receive documents.
 h(ATiptapEditor<'json'>, { valueFormat: 'json', onChange: (value: string) => value });
+
+export const cropOptions: TiptapImageCropOptions = {
+  source: { maxBytes: 20_000_000, maxPixels: 40_000_000 },
+  output: { format: 'image/png', resize: { mode: 'max', longEdge: 1920 }, maxBytes: 5_000_000 },
+  aspectRatioMode: 'original',
+  readSource: async ({ src, signal }) => {
+    const response = await fetch(src, { signal });
+    return new File([await response.blob()], 'image.png', { type: 'image/png' });
+  },
+};
+editorRef.value?.cancelImageCrop();
+h(ATiptapEditor<'html'>, {
+  'modelValue': '<p>Rich text</p>',
+  'documentAttributes': {},
+  'additionalExtensions': [],
+  'showHighlight': false,
+  'showAudio': false,
+  'showAttachment': false,
+  'imageCrop': cropOptions,
+  'onUpdate:documentAttributes': (attrs: Record<string, unknown>) => attrs,
+  'onScrollViewportChange': (viewport: HTMLElement | null) => viewport,
+  'onImageCropError': (error: TiptapImageCropError) => error.phase,
+});
+// @ts-expect-error JSON owns its root attributes inside modelValue.
+export const duplicatedJSONAttributes: ATiptapEditorProps<'json'> = {
+  valueFormat: 'json',
+  modelValue: document,
+  documentAttributes: {},
+};

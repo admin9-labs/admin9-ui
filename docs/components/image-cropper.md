@@ -51,3 +51,6 @@ async function process(file: File) {
 - 修改比例/加工配置或卸载会取消当前请求。应用负责在业务上下文改变时调用 `cancel()`。
 
 需要现代浏览器的Canvas、`createImageBitmap`、Pointer Events与File API。SSR可以导入组件，裁剪只在客户端调用。全局安装、语言包和样式接入与其他Admin9 UI组件一致。
+
+
+不传 `aspectRatio` 时，`aspectRatioMode?: 'free' | 'original'` 默认自由裁剪，或按当前图片自然比例裁剪；传入数字比例仍优先保持原有固定比例行为。`commitPendingChange(boolean)` 在确认编码开始时同步发出 true，编码失败、取消或完成时发出 false；`error(error)` 报告读取解码／编码错误。

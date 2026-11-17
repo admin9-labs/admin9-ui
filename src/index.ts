@@ -110,6 +110,8 @@ export type {
   TiptapDocument,
   TiptapContentError,
   TiptapImageUploadState,
+  TiptapImageCropOptions,
+  TiptapImageCropError,
   TiptapImageUploadError,
   TiptapPasteWarning,
   TiptapAudioWidth,

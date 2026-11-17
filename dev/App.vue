@@ -25,6 +25,7 @@
     type ProTableDataChange,
     type TiptapDocument,
     type TiptapImageUploadState,
+    type TiptapImageCropOptions,
   } from '../src';
   import { type AcceptanceState } from './fake-acceptance-utils';
   import createFakeFilePickerService from './fake-file-picker-service';
@@ -132,11 +133,11 @@
       '<p><a href="/notice"><strong><u>格式刷目标：带链接的粗体下划线</u></strong></a></p>',
       '<p>默认格式来源；<strong>混合格式粗体</strong>与普通文字；<code>行内代码不参与格式刷</code>。</p>',
       '<p>独占一行的图片用于正文视觉内容，跟随文字的图片 <img src="/media-layout.svg" alt="状态图标" data-display="inline" data-size="1.25em"> 可与文字保持基线。</p>',
-      '<img src="/media-board.svg" alt="素材面板" data-display="block" data-width="50%" data-align="left">',
+      '<img src="/media-board.png" alt="素材面板" data-display="block" data-width="50%" data-align="left">',
       '<p>长正文验收段落一：正文先自动增高，到达上限后只在编辑器内部滚动。</p>',
       '<p>长正文验收段落二：主工具栏和字数统计始终位于正文滚动区之外，媒体操作使用不占布局的悬浮栏。</p>',
       '<p>长正文验收段落三：下面的高图用于检查在顶部、中部和底部选择时，悬浮栏都锚定当前可见区域。</p>',
-      '<img src="/media-tall.svg" alt="长内容工作流示意" data-display="block" data-width="100%" data-align="left">',
+      '<img src="/media-tall.png" alt="长内容工作流示意" data-display="block" data-width="100%" data-align="left">',
       '<p>高图之后的正文用于确认内部滚动能继续访问后续混排内容。</p>',
       '<blockquote><p>引用内容的首尾间距应保持紧凑。</p><p>多段引用仍需清晰分隔。</p></blockquote>',
       '<h2>检查清单</h2>',
@@ -150,6 +151,16 @@
     ].join('')
   );
   const filePickerState = ref<AcceptanceState>('normal');
+  const editorImageCrop: TiptapImageCropOptions = {
+    source: { maxBytes: 20_000_000, maxPixels: 40_000_000 },
+    output: { format: 'image/png', resize: { mode: 'max', longEdge: 1920 }, maxBytes: 10_000_000 },
+    readSource: async ({ src, signal }) => {
+      const response = await fetch(src, { signal });
+      if (!response.ok) throw new Error(`Image read failed: ${response.status}`);
+      const blob = await response.blob();
+      return new File([blob], 'body-image.png', { type: blob.type });
+    },
+  };
   const htmlEditor = ref<InstanceType<typeof ATiptapEditor>>();
   const jsonEditor = ref<InstanceType<typeof ATiptapEditor>>();
   const htmlUploadState = ref<TiptapImageUploadState>({ pending: 0, uploading: 0, failed: 0, canSave: true });
@@ -638,6 +649,7 @@
             ref="htmlEditor"
             v-model="tiptapValue"
             :service="filePickerService"
+            :image-crop="editorImageCrop"
             :readonly="editorMode === 'readonly'"
             :disabled="editorMode === 'disabled'"
             max-height="min(640px, 60dvh)"
@@ -668,6 +680,7 @@
             value-format="json"
             :can-upload-image="true"
             :service="filePickerService"
+            :image-crop="editorImageCrop"
             :readonly="editorMode === 'readonly'"
             :disabled="editorMode === 'disabled'"
             :max-length="2000"

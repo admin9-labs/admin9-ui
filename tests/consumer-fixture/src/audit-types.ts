@@ -209,3 +209,13 @@ export const invalidPng: ImageCropOptions['output'] = {
   resize: { mode: 'exact', longEdge: 640 },
   maxBytes: 1_000_000,
 };
+
+export const uploadStatusCallback: NonNullable<FileUploadOptions['onStatus']> = (text: string) => {
+  const status: string = text;
+  return undefined;
+};
+export function checkUploadStatus(options: FileUploadOptions, task: import('@admin9-labs/admin9-ui').FileUploadTask) {
+  options.onStatus?.('Processing');
+  const status: string | undefined = task.statusText;
+  return status;
+}

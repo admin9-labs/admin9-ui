@@ -57,7 +57,7 @@ export default {
     closeQueue: '关闭上传队列',
     summary: '上传中 {active} 项，成功 {succeeded} 项，失败 {failed} 项',
     summaryParts: {
-      active: '上传中 {count} 项',
+      active: '处理中 {count} 项',
       succeeded: '成功 {count} 项',
       failed: '失败 {count} 项',
       cancelled: '已取消 {count} 项',
@@ -80,7 +80,7 @@ export default {
     },
     status: {
       pending: '等待上传',
-      uploading: '上传中',
+      uploading: '处理中',
       succeeded: '上传成功',
       failed: '上传失败',
       cancelled: '已取消',
@@ -291,6 +291,10 @@ export default {
     textColor: '文字颜色',
     highlight: '背景高亮',
     fontSize: '字号',
+    alignJustify: '两端对齐',
+    firstLineIndent: '首行缩进',
+    lineHeight: '行高',
+    letterSpacing: '字间距',
     defaultFormat: '恢复默认',
     mixedFormat: '混合格式',
     pasteImagesSkipped: '有 {count} 张图片无法导入，其余内容已保留。',

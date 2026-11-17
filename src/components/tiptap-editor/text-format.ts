@@ -1,8 +1,9 @@
+import { Extension } from '@tiptap/core';
 import { Color, FontSize, TextStyle } from '@tiptap/extension-text-style';
 import Highlight from '@tiptap/extension-highlight';
 
-export const fontSizes = ['12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px'];
-export const textColors = ['#000000', '#666666', '#f53f3f', '#ff7d00', '#f7ba1e', '#00b42a', '#165dff', '#722ed1'];
+export const fontSizes = ['12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px', '36px', '48px'];
+export const textColors = ['#000000', '#ffffff', '#666666', '#f53f3f', '#ff7d00', '#f7ba1e', '#00b42a', '#165dff', '#722ed1'];
 export const highlightColors = ['#fff7cc', '#e8ffea', '#e8f3ff', '#ffe8f1', '#f5e8ff'];
 
 export function normalizeTextColor(value: unknown): string | null {
@@ -86,3 +87,57 @@ export const SafeHighlight = Highlight.extend({
 }).configure({ multicolor: true });
 
 export { TextStyle };
+
+export const firstLineIndents = ['0em', '2em'];
+export const lineHeights = ['1', '1.5', '2'];
+export const letterSpacings = ['0px', '1px', '2px'];
+export function normalizeFirstLineIndent(value: unknown): string | null {
+  if (typeof value === 'string' && ['0', '0px', '0em'].includes(value)) return '0em';
+  return value === '2em' ? value : null;
+}
+export const normalizeLineHeight = (value: unknown) =>
+  typeof value === 'string' && lineHeights.includes(value) ? value : null;
+export const normalizeLetterSpacing = (value: unknown) =>
+  typeof value === 'string' && letterSpacings.includes(value) ? value : null;
+
+/** Register alongside TextStyle and TextAlign in the editor's extension list. */
+export const TextFormat = Extension.create({
+  name: 'a9TextFormat',
+  addGlobalAttributes() {
+    return [
+      {
+        types: ['paragraph'],
+        attributes: {
+          firstLineIndent: {
+            default: null,
+            parseHTML: (element: HTMLElement) => normalizeFirstLineIndent(element.style.textIndent),
+            renderHTML: (attrs: Record<string, unknown>) =>
+              normalizeFirstLineIndent(attrs.firstLineIndent) ? { style: `text-indent: ${attrs.firstLineIndent}` } : {},
+          },
+        },
+      },
+      {
+        types: ['paragraph', 'heading'],
+        attributes: {
+          lineHeight: {
+            default: null,
+            parseHTML: (element: HTMLElement) => normalizeLineHeight(element.style.lineHeight),
+            renderHTML: (attrs: Record<string, unknown>) =>
+              normalizeLineHeight(attrs.lineHeight) ? { style: `line-height: ${attrs.lineHeight}` } : {},
+          },
+        },
+      },
+      {
+        types: ['textStyle'],
+        attributes: {
+          letterSpacing: {
+            default: null,
+            parseHTML: (element: HTMLElement) => normalizeLetterSpacing(element.style.letterSpacing),
+            renderHTML: (attrs: Record<string, unknown>) =>
+              normalizeLetterSpacing(attrs.letterSpacing) ? { style: `letter-spacing: ${attrs.letterSpacing}` } : {},
+          },
+        },
+      },
+    ];
+  },
+});

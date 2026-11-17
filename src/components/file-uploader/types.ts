@@ -18,6 +18,7 @@ export interface FileUploadTask {
   groupId: string | null;
   status: FileUploadTaskStatus;
   progress?: number;
+  statusText?: string;
   item?: FileItem;
   error?: unknown;
   failureReason?: FileUploadFailureReason;

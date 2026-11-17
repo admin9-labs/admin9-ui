@@ -25,6 +25,7 @@ interface UploadTask {
   status: 'pending' | 'uploading' | 'failed' | 'succeeded';
   preview: string;
   progress?: number;
+  statusText?: string;
   controller?: AbortController;
   run: number;
   item?: FileItem;
@@ -141,10 +142,12 @@ export function createImageUploads(options: UploadOptions) {
         active += 1;
         task.status = 'uploading';
         task.progress = undefined;
+        task.statusText = undefined;
         const controller = new AbortController();
         task.controller = controller;
         task.run += 1;
         const { run } = task;
+        let settled = false;
         const valid = () => !disposed && task.run === run && !controller.signal.aborted && positions().has(id);
         Promise.resolve()
           .then(() => {
@@ -154,14 +157,20 @@ export function createImageUploads(options: UploadOptions) {
               fileTypes: ['image'],
               groupId: null,
               signal: controller.signal,
+              onStatus: (text) => {
+                if (settled || !valid()) return;
+                task.statusText = text;
+                notify();
+              },
               onProgress: (percent) => {
-                if (!valid()) return;
+                if (settled || !valid()) return;
                 task.progress = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : undefined;
                 notify();
               },
             });
           })
           .then((item) => {
+            settled = true;
             if (!valid()) return;
             if (
               !item ||
@@ -180,6 +189,7 @@ export function createImageUploads(options: UploadOptions) {
             resolve(task);
           })
           .catch((cause: unknown) => {
+            settled = true;
             if (valid()) fail(task, fileUploadRejection(cause) ? 'unsupported-image' : 'upload-failed', cause);
           })
           // The scheduler and pump deliberately call one another.
@@ -214,6 +224,7 @@ export function createImageUploads(options: UploadOptions) {
     if (!task || task.rejection || !options.editor()?.isEditable || !options.enabled() || !positions().has(id)) return;
     stop(task);
     task.status = 'pending';
+    task.statusText = undefined;
     sync();
   };
   const extension = Node.create({
@@ -253,9 +264,12 @@ export function createImageUploads(options: UploadOptions) {
           } else {
             image.removeAttribute('src');
           }
-          let text = options.t(!task || task.status === 'failed' ? 'uploadFailed' : 'uploadingImage');
+          let text =
+            (task?.status === 'uploading' && task.statusText) ||
+            options.t(!task || task.status === 'failed' ? 'uploadFailed' : 'uploadingImage');
           if (task?.rejection) text = options.t('unsupportedImageUpload');
-          if (task?.status === 'uploading' && task.progress !== undefined) text += ` ${Math.round(task.progress)}%`;
+          if (task?.status === 'uploading' && !task.statusText && task.progress !== undefined)
+            text += ` ${Math.round(task.progress)}%`;
           if (label.textContent !== text) label.textContent = text;
           retryButton.textContent = options.t('retryUpload');
           deleteButton.textContent = options.t('deleteUpload');

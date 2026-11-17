@@ -111,11 +111,11 @@ export async function decodeImageSource(file: File, limits: ImageCropSourceOptio
   }
 }
 
-export function validateCropOptions(ratio: number, options: ImageCropOptions) {
+export function validateCropOptions(ratio: number | undefined, options: ImageCropOptions) {
   const positive = (value: number) => Number.isFinite(value) && value > 0;
   const { source, output } = options;
   if (
-    !positive(ratio) ||
+    (ratio !== undefined && !positive(ratio)) ||
     !positive(source.maxBytes) ||
     !positive(source.maxPixels) ||
     !positive(output.maxBytes) ||
@@ -137,7 +137,8 @@ export interface ImageCropRectangle {
 }
 
 /** Round the short edge to the nearest pixel; the configured long edge stays exact. */
-export function cropOutputSize(width: number, height: number, ratio: number, output: ImageCropOutputOptions) {
+export function cropOutputSize(width: number, height: number, ratio: number | undefined, output: ImageCropOutputOptions) {
+  ratio ??= width / height;
   const target = output.resize.longEdge;
   const sourceEdge = ratio >= 1 ? Math.min(width, height * ratio) : Math.min(height, width / ratio);
   const edge = output.resize.mode === 'exact' ? target : Math.min(target, Math.floor(sourceEdge));
@@ -150,7 +151,7 @@ export function cropOutputSize(width: number, height: number, ratio: number, out
 export async function encodeImageCrop(
   source: ImageBitmap,
   rectangle: ImageCropRectangle,
-  ratio: number,
+  ratio: number | undefined,
   output: ImageCropOutputOptions,
   name: string
 ) {

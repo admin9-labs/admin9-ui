@@ -12,8 +12,8 @@
   import type { FileUploadBatchResult, FileUploadCapability } from '@admin9-labs/admin9-ui';
 
   const uploadService: FileUploadCapability = {
-    upload: ({ file, fileTypes, groupId, onProgress, signal }) =>
-      api.uploadFile({ file, fileTypes, groupId, onProgress, signal }),
+    upload: ({ file, fileTypes, groupId, onProgress, onStatus, signal }) =>
+      api.uploadFile({ file, fileTypes, groupId, onProgress, onStatus, signal }),
   };
 
   const onComplete = (result: FileUploadBatchResult) => {
@@ -92,8 +92,9 @@
 
 ## 队列与生命周期
 
-- 每个本地 `File` 单独调用一次 `upload({ file, fileTypes, groupId, onProgress, signal })`，应用不需要提供 batch 接口。
+- 每个本地 `File` 单独调用一次 `upload({ file, fileTypes, groupId, onProgress, onStatus, signal })`，应用不需要提供 batch 接口。
 - adapter 调用 `onProgress` 时显示确定进度；未提供进度时显示不确定进度。
+- adapter 可调用 `onStatus(text)` 显示上传后处理等阶段文字；任务快照通过可选 `statusText` 暴露。非空阶段文字优先显示，空字符串恢复默认状态和进度；重试清空旧值，已结束或取消任务的迟到回调无效。正文粘贴／拖拽图片上传占位也支持同一阶段回调。
 - 每个任务独立成功或失败，可取消、重试或移除；取消依赖 `AbortSignal`，即使 adapter 忽略信号，迟到响应也不会改变已取消任务。
 - 队列仍有活动任务时保持面板可见并提供取消入口，文件选择器同时保持可用，新文件追加到当前允许类型集合/分组队列。全部成功后面板自动关闭并清空；存在失败或取消时保留面板供重试或移除。关闭面板后焦点会回到上传触发器。默认成功摘要仅在队列关闭时显示，保留到主动关闭、下一批上传或组件关闭；`result` 插槽仍接收成功数量和关闭方法。
 - `fileTypes` 规范集合、`groupId` 或 service 变化时取消并清空旧上下文队列；组件卸载时中止活动请求并屏蔽迟到回调。

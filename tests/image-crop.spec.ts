@@ -25,6 +25,11 @@ describe('image crop processing', () => {
     expect(cropOutputSize(100, 100, ratio, crop.output)).toEqual({ width, height });
     expect(cropOutputSize(1024, 1028, ratio, crop.output)).toEqual({ width, height });
   });
+  it('derives free output dimensions from the selected rectangle', () => {
+    validateCropOptions(undefined, crop);
+    expect(cropOutputSize(300, 200, undefined, crop.output)).toEqual({ width: 640, height: 427 });
+    expect(cropOutputSize(200, 400, undefined, crop.output)).toEqual({ width: 320, height: 640 });
+  });
   it('max mode does not upscale the selected source area', () => {
     const output = { ...crop.output, resize: { mode: 'max' as const, longEdge: 1280 } };
     expect(cropOutputSize(400, 300, 4 / 3, output)).toEqual({ width: 400, height: 300 });
@@ -40,6 +45,7 @@ describe('image crop processing', () => {
     const png = new Uint8Array(readFileSync('dev/public/media-tall.png'));
     expect(inspectImageSource(png, 20_000_000).type).toBe('image/png');
     expect(() => inspectImageSource(png, 1)).toThrow('pixels');
+    expect(() => inspectImageSource(new TextEncoder().encode('GIF89a'), 20_000_000)).toThrow('format');
     expect(() => inspectImageSource(new TextEncoder().encode('<svg/>'), 20_000_000)).toThrow('format');
     expect(() => inspectImageSource(png.slice(0, 30), 20_000_000)).toThrow('format');
   });

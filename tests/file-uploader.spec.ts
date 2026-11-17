@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AFileUploader from '../src/components/file-uploader/index.vue';
 import type { AFileUploaderExposed, FileUploadBatchResult } from '../src/components/file-uploader/types';
 import { messages } from '../src/locale';
-import type { FileItem, FileUploadCapability } from '../src/services/types';
+import type { FileItem, FileUploadOptions, FileUploadCapability } from '../src/services/types';
 
 const mountedApps: App[] = [];
 let latestCustomRequest: ((option: Record<string, unknown>) => unknown) | undefined;
@@ -93,6 +93,72 @@ describe('AFileUploader', () => {
     latestCustomRequest = undefined;
   });
 
+  it('preserves status text through progress and ignores stale, settled, and aborted callbacks', async () => {
+    const requests: FileUploadOptions[] = [];
+    const responses = [deferred<FileItem>(), deferred<FileItem>()];
+    const uploader = mountUploader({
+      upload: (options) => {
+        requests.push(options);
+        return responses[requests.length - 1].promise;
+      },
+    });
+    const batch = uploader.upload([new File(['image'], 'status.png')]);
+    const { id } = uploader.tasks[0];
+    requests[0].onStatus?.('Converting video');
+    requests[0].onProgress?.(60);
+    await flush();
+    expect(uploader.tasks[0]).toMatchObject({ statusText: 'Converting video', progress: 60 });
+    expect(document.querySelector('.a9-file-uploader__status')?.textContent).toContain('Converting video');
+    expect(document.querySelector('.a9-file-uploader__summary')?.textContent).toContain('1 in progress');
+    responses[0].reject(new Error('network'));
+    await batch;
+    requests[0].onStatus?.('late settled');
+    expect(uploader.tasks[0].statusText).toBe('Converting video');
+    await flush();
+    expect(document.querySelector('.a9-file-uploader__status')?.textContent).not.toContain('Converting video');
+    uploader.retry(id);
+    expect(uploader.tasks[0].statusText).toBeUndefined();
+    requests[0].onStatus?.('late previous run');
+    expect(uploader.tasks[0].statusText).toBeUndefined();
+    requests[1].onStatus?.('Processing');
+    uploader.cancel(id);
+    requests[1].onStatus?.('late aborted');
+    requests[1].onProgress?.(90);
+    expect(requests[1].signal?.aborted).toBe(true);
+    expect(uploader.tasks[0]).toMatchObject({ status: 'cancelled', statusText: 'Processing' });
+    expect(uploader.tasks[0].progress).toBeUndefined();
+    responses[1].resolve(validItem('late', 'status.png'));
+    await flush();
+    expect(uploader.tasks[0].status).toBe('cancelled');
+  });
+
+  it('ignores status callbacks after success and unmount', async () => {
+    const response = deferred<FileItem>();
+    let request!: FileUploadOptions;
+    const changed = vi.fn();
+    const uploader = mountUploader(
+      {
+        upload: (options) => {
+          request = options;
+          return response.promise;
+        },
+      },
+      {},
+      { onTasksChange: changed }
+    );
+    const batch = uploader.upload([new File(['image'], 'success.png')]);
+    request.onStatus?.('Processing');
+    response.resolve(validItem('success', 'success.png'));
+    await batch;
+    const calls = changed.mock.calls.length;
+    request.onStatus?.('late success');
+    request.onProgress?.(20);
+    expect(changed).toHaveBeenCalledTimes(calls);
+    mountedApps.splice(0).forEach((app) => app.unmount());
+    request.onStatus?.('late unmount');
+    expect(changed).toHaveBeenCalledTimes(calls);
+  });
+
   it('classifies non-string adapter URLs as invalid results', async () => {
     const uploader = mountUploader({
       upload: async () => validItem('invalid-url', 'image.png', { url: 42 as unknown as string }),
@@ -114,7 +180,7 @@ describe('AFileUploader', () => {
     const uploader = mountUploader({ upload: () => pending.promise });
     const batch = uploader.upload([new File(['one'], 'one.png')]);
     await flush();
-    expect(document.querySelector('.a9-file-uploader__summary')?.textContent).toBe('1 uploading');
+    expect(document.querySelector('.a9-file-uploader__summary')?.textContent).toBe('1 in progress');
     uploader.cancel(uploader.tasks[0].id);
     await batch;
     await flush();

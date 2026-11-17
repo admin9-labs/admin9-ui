@@ -13,7 +13,11 @@
 
   defineOptions({ name: 'AImageCropper' });
   const props = defineProps<AImageCropperProps>();
-  const emit = defineEmits<{ (event: 'visibleChange', visible: boolean): void }>();
+  const emit = defineEmits<{
+    (event: 'visibleChange', visible: boolean): void;
+    (event: 'commitPendingChange', pending: boolean): void;
+    (event: 'error', error: unknown): void;
+  }>();
   const { t } = useI18n();
   const cropVisible = ref(false);
   const cropLoading = ref(false);
@@ -23,6 +27,11 @@
   const cropNatural = reactive({ width: 0, height: 0 });
   const cropBox = reactive({ x: 10, y: 10, width: 80, height: 80 });
   const error = ref('');
+  const aspectRatio = computed(
+    () =>
+      props.aspectRatio ??
+      (props.aspectRatioMode === 'original' && cropNatural.height ? cropNatural.width / cropNatural.height : undefined)
+  );
   let source: File | undefined;
   let bitmap: ImageBitmap | undefined;
   let generation = 0;
@@ -42,7 +51,7 @@
       return cropOutputSize(
         (cropNatural.width * cropBox.width) / 100,
         (cropNatural.height * cropBox.height) / 100,
-        props.aspectRatio,
+        aspectRatio.value,
         props.crop.output
       );
     } catch {
@@ -128,7 +137,22 @@
       return;
     }
     const minimum = Math.min(12, cropDrag.width);
-    const heightPerWidth = (cropNatural.width || 1) / (props.aspectRatio * (cropNatural.height || 1));
+    if (aspectRatio.value === undefined) {
+      const right = cropDrag.x + cropDrag.width;
+      const bottom = cropDrag.y + cropDrag.height;
+      const leftHandle = cropDrag.handle.includes('left');
+      const topHandle = cropDrag.handle.includes('top');
+      cropBox.width = clamp(cropDrag.width + (leftHandle ? -dx : dx), minimum, leftHandle ? right : 100 - cropDrag.x);
+      cropBox.height = clamp(
+        cropDrag.height + (topHandle ? -dy : dy),
+        Math.min(12, cropDrag.height),
+        topHandle ? bottom : 100 - cropDrag.y
+      );
+      cropBox.x = leftHandle ? right - cropBox.width : cropDrag.x;
+      cropBox.y = topHandle ? bottom - cropBox.height : cropDrag.y;
+      return;
+    }
+    const heightPerWidth = (cropNatural.width || 1) / (aspectRatio.value * (cropNatural.height || 1));
     const right = cropDrag.x + cropDrag.width;
     const bottom = cropDrag.y + cropDrag.height;
     const horizontalDelta = cropDrag.handle.includes('left') ? -dx : dx;
@@ -170,8 +194,9 @@
     cropVisible.value = false;
     cropLoading.value = false;
     cropSaving.value = false;
-    emit('visibleChange', false);
     pending?.(file);
+    emit('commitPendingChange', false);
+    emit('visibleChange', false);
   };
   const cancel = () => finish(null);
   const drawPreview = () => {
@@ -201,7 +226,7 @@
       bitmap = decoded;
       cropNatural.width = decoded.width;
       cropNatural.height = decoded.height;
-      fitCropBoxToRatio(props.aspectRatio);
+      if (aspectRatio.value !== undefined) fitCropBoxToRatio(aspectRatio.value);
       cropLoading.value = false;
       await nextTick();
       if (current === generation) drawPreview();
@@ -209,6 +234,7 @@
       if (current !== generation) return;
       cropLoading.value = false;
       error.value = message(failure);
+      emit('error', failure);
     }
   };
   const open = (file: File) => {
@@ -234,6 +260,8 @@
     const current = generation;
     cropSaving.value = true;
     error.value = '';
+    emit('commitPendingChange', true);
+    if (current !== generation) return;
     try {
       const file = await encodeImageCrop(
         bitmap,
@@ -243,7 +271,7 @@
           width: (cropBox.width * bitmap.width) / 100,
           height: (cropBox.height * bitmap.height) / 100,
         },
-        props.aspectRatio,
+        aspectRatio.value,
         props.crop.output,
         source.name
       );
@@ -251,7 +279,9 @@
     } catch (failure) {
       if (current !== generation) return;
       error.value = message(failure);
+      emit('error', failure);
       cropSaving.value = false;
+      emit('commitPendingChange', false);
     }
   };
   const onCropKeydown = (event: KeyboardEvent) => {
@@ -270,7 +300,7 @@
     cropDrag = undefined;
   };
   watch(cropImage, drawPreview);
-  watch(() => [props.aspectRatio, props.crop], cancel, { deep: true, flush: 'sync' });
+  watch(() => [props.aspectRatio, props.aspectRatioMode, props.crop], cancel, { deep: true, flush: 'sync' });
   onMounted(() => {
     window.addEventListener('pointermove', onCropPointerMove);
     window.addEventListener('pointerup', onCropPointerUp);

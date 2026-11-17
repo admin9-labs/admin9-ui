@@ -63,7 +63,7 @@ export default {
     closeQueue: 'Close upload queue',
     summary: '{active} uploading, {succeeded} succeeded, {failed} failed',
     summaryParts: {
-      active: '{count} uploading',
+      active: '{count} in progress',
       succeeded: '{count} succeeded',
       failed: '{count} failed',
       cancelled: '{count} cancelled',
@@ -86,7 +86,7 @@ export default {
     },
     status: {
       pending: 'Pending',
-      uploading: 'Uploading',
+      uploading: 'In progress',
       succeeded: 'Succeeded',
       failed: 'Failed',
       cancelled: 'Cancelled',
@@ -303,6 +303,10 @@ export default {
     textColor: 'Text color',
     highlight: 'Highlight',
     fontSize: 'Font size',
+    alignJustify: 'Justify',
+    firstLineIndent: 'First line indent',
+    lineHeight: 'Line height',
+    letterSpacing: 'Letter spacing',
     defaultFormat: 'Reset to default',
     mixedFormat: 'Mixed formatting',
     pasteImagesSkipped: '{count} images could not be imported. Other content was retained.',

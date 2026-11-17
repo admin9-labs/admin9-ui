@@ -81,6 +81,7 @@ export interface FileUploadOptions {
   fileTypes: readonly FileType[];
   groupId: string | null;
   onProgress?: (percent: number) => void;
+  onStatus?: (text: string) => void;
   signal?: AbortSignal;
 }
 

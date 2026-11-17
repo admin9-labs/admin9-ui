@@ -259,7 +259,7 @@ describe('ACoverPicker native cropping', () => {
     await host.select(2);
     const status = document.querySelector('[data-testid="cover-picker-status-2"]');
     expect(status?.parentElement).toBe(document.querySelector('[data-testid="cover-picker-slot-2"]')?.parentElement);
-    expect(status?.textContent).toContain('Uploading');
+    expect(status?.textContent).toContain('In progress');
     expect(document.querySelectorAll('.a9-cover-picker__crop-status')).toHaveLength(1);
     expect(status?.closest('button')).toBeNull();
     status?.querySelector<HTMLButtonElement>('button')?.click();

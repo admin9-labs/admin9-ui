@@ -13,7 +13,7 @@
     type Ref,
   } from 'vue';
   import { FormItem, Message, useFormItem } from '@arco-design/web-vue';
-  import { Extension, isNodeEmpty, type Editor } from '@tiptap/core';
+  import { Extension, isNodeEmpty, type Editor, type Extensions } from '@tiptap/core';
   import CharacterCount from '@tiptap/extension-character-count';
   import Placeholder from '@tiptap/extension-placeholder';
   import { Table, TableKit } from '@tiptap/extension-table';
@@ -27,12 +27,16 @@
   import { useI18n } from 'vue-i18n';
   import admin9UIOptionsKey from '../../internal/options';
   import type { FileItem, FilePickerAdapter, FileType } from '../../services/types';
+  import AImageCropper from '../image-cropper/index.vue';
+  import type { AImageCropperExposed } from '../image-cropper/types';
+  import { validateAdditionalExtensions, parseHTMLDocument } from './application-extensions';
   import AFilePicker from '../file-picker/index.vue';
   import MediaBubbleMenu from './media-bubble-menu.vue';
   import { getDocumentSnapshot, getPublicDocument, parseTiptapDocument } from './content';
+  import { createEditorImageCrop } from './image-crop';
   import { createImageUploads } from './image-upload';
   import { cleanPastedHTML, parseTableText, tableTextContent } from './paste';
-  import { SafeColor, SafeFontSize, SafeHighlight, TextStyle } from './text-format';
+  import { SafeColor, SafeFontSize, SafeHighlight, TextFormat, TextStyle } from './text-format';
   import TextFormatToolbar from './text-format-toolbar.vue';
   import Modal from '../../internal/modal.vue';
   import { createFormatPainter } from './format-painter';
@@ -53,12 +57,25 @@
     TiptapImageUploadState,
     TiptapImageUploadError,
     TiptapPasteWarning,
+    TiptapImageCropOptions,
+    TiptapImageCropError,
   } from './types';
 
   defineOptions({ name: 'ATiptapEditor' });
+  defineSlots<{
+    'toolbar-extra'(context: { disabled: boolean; readonly: boolean }): unknown;
+    'content-before'(): unknown;
+    'content-after'(): unknown;
+  }>();
 
   const props = withDefaults(
     defineProps<{
+      additionalExtensions?: Extensions;
+      documentAttributes?: Record<string, unknown>;
+      showHighlight?: boolean;
+      showAudio?: boolean;
+      showAttachment?: boolean;
+      imageCrop?: TiptapImageCropOptions;
       valueFormat?: F;
       modelValue?: TiptapEditorValue<F>;
       placeholder?: string;
@@ -79,6 +96,9 @@
       defaultImageDisplay?: TiptapImageDisplay;
     }>(),
     {
+      showHighlight: true,
+      showAudio: true,
+      showAttachment: true,
       placeholder: '',
       disabled: false,
       readonly: false,
@@ -101,6 +121,9 @@
   const emit = defineEmits<{
     (e: 'update:modelValue', value: TiptapEditorValue<F>): void;
     (e: 'change', value: TiptapEditorValue<F>): void;
+    (e: 'update:documentAttributes', attributes: Record<string, unknown>): void;
+    (e: 'scrollViewportChange', viewport: HTMLElement | null): void;
+    (e: 'imageCropError', error: TiptapImageCropError): void;
     (e: 'focus'): void;
     (e: 'blur'): void;
     (e: 'mediaError', error: TiptapMediaError): void;
@@ -114,14 +137,15 @@
   const { readonly, canUploadImage, canUploadVideo, canUploadAudio, showWordCount, maxLength } = toRefs(props);
   const readContent = (currentEditor: Editor, value: unknown, phase: TiptapContentError['phase']) => {
     if (value === undefined) {
-      return valueFormat === 'json' ? parseTiptapDocument({ type: 'doc', content: [] }, currentEditor) : '';
+      value = valueFormat === 'json' ? { type: 'doc', content: [] } : '';
     }
     if ((valueFormat === 'html' && typeof value !== 'string') || (valueFormat === 'json' && typeof value === 'string')) {
       emit('contentError', { phase, reason: 'format-mismatch' });
       return null;
     }
-    if (valueFormat === 'html') return value as string;
     try {
+      if (valueFormat === 'html') return parseHTMLDocument(currentEditor, value as string, props.documentAttributes ?? {});
+      if (props.documentAttributes !== undefined) throw new Error('JSON documents own their root attributes.');
       return parseTiptapDocument(value, currentEditor);
     } catch (cause) {
       emit('contentError', { phase, reason: 'invalid-document', cause });
@@ -340,13 +364,20 @@
   });
 
   let uploadEditor: Editor | undefined;
+  const cropper = ref<AImageCropperExposed>();
+  const cropCommitPending = ref(false);
+  const withCropState = (state: TiptapImageUploadState): TiptapImageUploadState => ({
+    ...state,
+    cropCommitPending: cropCommitPending.value,
+    canSave: state.canSave && !cropCommitPending.value,
+  });
   const uploads = createImageUploads({
     editor: () => uploadEditor,
     service: () => resolvedFileService.value,
     enabled: () => isEditable.value && props.canUploadImage && typeof resolvedFileService.value?.upload === 'function',
     display: () => props.defaultImageDisplay,
     t: (key) => t(`admin9Ui.tiptapEditor.${key}`),
-    state: (state) => emit('imageUploadStateChange', state),
+    state: (state) => emit('imageUploadStateChange', withCropState(state)),
     error: (error) => {
       emit('imageUploadError', error);
       let key = 'uploadFailed';
@@ -355,6 +386,30 @@
       Message.error(t(`admin9Ui.tiptapEditor.${key}`));
     },
   });
+  const cropEnabled = computed(
+    () =>
+      isEditable.value &&
+      props.canUploadImage &&
+      Boolean(props.imageCrop) &&
+      typeof resolvedFileService.value?.upload === 'function'
+  );
+  const imageCrop = createEditorImageCrop({
+    getEditor: () => uploadEditor,
+    editable: () => cropEnabled.value,
+    config: () => props.imageCrop,
+    service: () => resolvedFileService.value,
+    crop: (file) => cropper.value?.open(file) ?? Promise.resolve(null),
+    onState: (pending) => {
+      cropCommitPending.value = pending;
+      emit('imageUploadStateChange', withCropState(uploads.state()));
+    },
+    onError: (error) => emit('imageCropError', error),
+  });
+  const cancelImageCrop = () => {
+    imageCrop.cancel();
+    cropper.value?.cancel();
+  };
+  const onCropCommitPending = (pending: boolean) => imageCrop.setCommitPending(pending);
   const publicHTML = (currentEditor: Editor) => {
     const doc = getPublicDocument(currentEditor.state.doc);
     if (isNodeEmpty(doc)) return '';
@@ -362,53 +417,55 @@
     container.append(DOMSerializer.fromSchema(currentEditor.schema).serializeFragment(doc.content));
     return container.innerHTML;
   };
+  const builtinExtensions: Extensions = [
+    uploads.extension,
+    uploads.inlineExtension,
+    TextStyle,
+    SafeColor,
+    SafeFontSize,
+    TextFormat,
+    SafeHighlight,
+    StarterKit.configure({
+      trailingNode: false,
+      link: {
+        openOnClick: false,
+        HTMLAttributes: {
+          rel: 'noopener noreferrer nofollow',
+          target: '_blank',
+        },
+      },
+    }),
+    BlockImage.configure({ getDefaultDisplay: () => props.defaultImageDisplay }),
+    InlineImage.configure({ getDefaultDisplay: () => props.defaultImageDisplay }),
+    Video.configure({
+      getPlaybackTabIndex: () => (props.readonly && !interactionDisabled.value ? undefined : -1),
+    }),
+    Audio.configure({
+      getPlaybackTabIndex: () => (props.readonly && !interactionDisabled.value ? undefined : -1),
+    }),
+    Placeholder.configure({
+      placeholder: () => props.placeholder || t('admin9Ui.tiptapEditor.placeholder'),
+    }),
+    TextAlign.configure({
+      types: ['heading', 'paragraph'],
+      alignments: ['left', 'center', 'right', 'justify'],
+    }),
+    TableKit.configure({ table: false }),
+    DynamicEditableTable.configure({ cellMinWidth: 120, resizable: true }),
+    CharacterCount,
+    DynamicCharacterLimit,
+    RemoveLeadingEmptyParagraphBeforeMedia,
+  ];
   const editor = useEditor({
     content: '',
     onBeforeCreate: ({ editor: currentEditor }) => {
       painterEditor = currentEditor;
       uploadEditor = currentEditor;
       const content = readContent(currentEditor, props.modelValue, 'initial');
-      currentEditor.options.content = typeof content === 'string' ? content : content?.toJSON() ?? '';
+      currentEditor.options.content = content?.toJSON() ?? '';
     },
     editable: isEditable.value,
-    extensions: [
-      uploads.extension,
-      uploads.inlineExtension,
-      TextStyle,
-      SafeColor,
-      SafeFontSize,
-      SafeHighlight,
-      StarterKit.configure({
-        trailingNode: false,
-        link: {
-          openOnClick: false,
-          HTMLAttributes: {
-            rel: 'noopener noreferrer nofollow',
-            target: '_blank',
-          },
-        },
-      }),
-      BlockImage.configure({ getDefaultDisplay: () => props.defaultImageDisplay }),
-      InlineImage.configure({ getDefaultDisplay: () => props.defaultImageDisplay }),
-      Video.configure({
-        getPlaybackTabIndex: () => (props.readonly && !interactionDisabled.value ? undefined : -1),
-      }),
-      Audio.configure({
-        getPlaybackTabIndex: () => (props.readonly && !interactionDisabled.value ? undefined : -1),
-      }),
-      Placeholder.configure({
-        placeholder: () => props.placeholder || t('admin9Ui.tiptapEditor.placeholder'),
-      }),
-      TextAlign.configure({
-        types: ['heading', 'paragraph'],
-        alignments: ['left', 'center', 'right'],
-      }),
-      TableKit.configure({ table: false }),
-      DynamicEditableTable.configure({ cellMinWidth: 120, resizable: true }),
-      CharacterCount,
-      DynamicCharacterLimit,
-      RemoveLeadingEmptyParagraphBeforeMedia,
-    ],
+    extensions: [...builtinExtensions, ...validateAdditionalExtensions(props.additionalExtensions ?? [], builtinExtensions)],
     editorProps: {
       transformPastedHTML: (html) => {
         const result = cleanPastedHTML(html);
@@ -450,6 +507,9 @@
       const value = content as TiptapEditorValue<F>;
       const changeValue =
         valueFormat === 'json' ? (getDocumentSnapshot(currentEditor.state.doc) as TiptapEditorValue<F>) : value;
+      if (valueFormat === 'html') {
+        emit('update:documentAttributes', JSON.parse(JSON.stringify(currentEditor.state.doc.attrs)) as Record<string, unknown>);
+      }
       emit('update:modelValue', value);
       emit('change', changeValue);
       eventHandlers.value?.onInput?.();
@@ -1007,6 +1067,7 @@
 
   const focus = () => editor.value?.commands.focus();
   const clear = () => {
+    cancelImageCrop();
     painter.cancel();
     uploads.pause();
     return editor.value?.commands.clearContent(true);
@@ -1015,31 +1076,46 @@
   const getJSON = (): TiptapDocument =>
     editor.value ? getDocumentSnapshot(editor.value.state.doc) : { type: 'doc', content: [{ type: 'paragraph' }] };
 
-  const getImageUploadState = () => uploads.state();
-  defineExpose<ATiptapEditorExposed>({ focus, clear, getHTML, getJSON, getImageUploadState });
+  const getImageUploadState = () => withCropState(uploads.state());
+  defineExpose<ATiptapEditorExposed>({ cancelImageCrop, focus, clear, getHTML, getJSON, getImageUploadState });
 
   watch(
-    () => props.modelValue,
-    (value) => {
+    () => [props.modelValue, props.documentAttributes] as const,
+    ([value]) => {
       if (!editor.value) return;
       const content = readContent(editor.value, value, 'update');
       if (content === null) return;
-      const unchanged =
-        typeof content === 'string' ? content === getHTML() : content.eq(getPublicDocument(editor.value.state.doc));
+      const current = getPublicDocument(editor.value.state.doc);
+      const unchanged = content.eq(current);
       if (!unchanged) {
-        uploads.pause();
-        editor.value.commands.setContent(content, { emitUpdate: false });
+        const bodyChanged = !content.content.eq(current.content);
+        if (bodyChanged) {
+          cancelImageCrop();
+          uploads.pause();
+        }
+        editor.value.commands.command(({ tr, dispatch }) => {
+          if (dispatch) {
+            if (bodyChanged) tr.replaceWith(0, tr.doc.content.size, content.content);
+            Object.keys(content.attrs).forEach((name) => tr.setDocAttribute(name, content.attrs[name]));
+            tr.setMeta('addToHistory', false).setMeta('preventUpdate', true);
+          }
+          return true;
+        });
         if (!isEditable.value) {
           clearNodeSelection(editor.value);
           selectedMedia.value = undefined;
         }
       }
-    }
+    },
+    { deep: true, flush: 'post' }
   );
+  watch(contentRef, (viewport) => emit('scrollViewportChange', viewport ?? null), { flush: 'post' });
+  onBeforeUnmount(() => emit('scrollViewportChange', null));
   watch(editorAttributes, (attributes) => {
     editor.value?.setOptions({ editorProps: { attributes } });
   });
   watch(isEditable, (value) => {
+    if (!value) cancelImageCrop();
     if (!value) painter.cancel();
     if (!value) uploads.pause();
     if (!value) tablePopupVisible.value = false;
@@ -1067,9 +1143,14 @@
     uploads.sync();
   });
   watch([resolvedFileService, () => props.canUploadImage], () => uploads.pause());
+  watch([resolvedFileService, () => props.canUploadImage, () => props.imageCrop], cancelImageCrop);
+  onBeforeUnmount(cancelImageCrop);
   onBeforeUnmount(() => uploads.dispose());
   onBeforeUnmount(() => painter.dispose());
-  onDeactivated(() => painter.cancel());
+  onDeactivated(() => {
+    painter.cancel();
+    cancelImageCrop();
+  });
 </script>
 
 <template>
@@ -1102,7 +1183,7 @@
         </div>
         <span class="a9-tiptap-editor__divider" aria-hidden="true" />
         <div class="a9-tiptap-editor__tool-group" role="group" :aria-label="t('admin9Ui.tiptapEditor.textTools')">
-          <TextFormatToolbar :editor="editor" :disabled="interactionDisabled" />
+          <TextFormatToolbar :editor="editor" :disabled="interactionDisabled" :show-highlight="props.showHighlight" />
           <a-tooltip :content="t('admin9Ui.tiptapEditor.bold')">
             <a-button
               size="small"
@@ -1271,7 +1352,7 @@
         </div>
         <div class="a9-tiptap-editor__tool-group" role="group" :aria-label="t('admin9Ui.tiptapEditor.mediaTools')">
           <AFilePicker
-            v-if="resolvedFileService"
+            v-if="resolvedFileService && props.showAttachment"
             v-model="attachmentValue"
             :service="resolvedFileService"
             :file-types="['document', 'archive', 'other']"
@@ -1365,7 +1446,7 @@
           </a-tooltip>
 
           <a-tooltip
-            v-if="resolvedFileService"
+            v-if="resolvedFileService && props.showAudio"
             v-model:popup-visible="audioPickerTooltipVisible"
             :content="t('admin9Ui.tiptapEditor.audio')"
           >
@@ -1527,7 +1608,19 @@
               <template #icon><icon-align-right /></template>
             </a-button>
           </a-tooltip>
+          <a-tooltip :content="t('admin9Ui.tiptapEditor.alignJustify')">
+            <a-button
+              size="small"
+              :type="editor?.isActive({ textAlign: 'justify' }) ? 'primary' : 'text'"
+              :disabled="interactionDisabled"
+              :aria-label="t('admin9Ui.tiptapEditor.alignJustify')"
+              :aria-pressed="editor?.isActive({ textAlign: 'justify' })"
+              @click="editor?.chain().focus().setTextAlign('justify').run()"
+              >≡</a-button
+            >
+          </a-tooltip>
         </div>
+        <slot name="toolbar-extra" :disabled="interactionDisabled" :readonly="props.readonly" />
         <span class="a9-tiptap-editor__toolbar-spacer" />
         <div class="a9-tiptap-editor__tool-group" role="group" :aria-label="t('admin9Ui.tiptapEditor.historyTools')">
           <a-tooltip :content="t('admin9Ui.tiptapEditor.undo')">
@@ -1594,9 +1687,19 @@
         role="region"
         :aria-label="t('admin9Ui.tiptapEditor.contentArea')"
       >
+        <slot name="content-before" />
         <EditorContent :editor="editor" />
+        <slot name="content-after" />
       </div>
 
+      <AImageCropper
+        v-if="props.imageCrop"
+        ref="cropper"
+        :crop="props.imageCrop"
+        :aspect-ratio-mode="props.imageCrop.aspectRatioMode"
+        @commit-pending-change="onCropCommitPending"
+        @error="emit('imageCropError', { phase: 'crop', cause: $event })"
+      />
       <MediaBubbleMenu
         v-if="editor && bubbleMenuReady"
         :editor="editor"
@@ -1622,6 +1725,15 @@
             {{ selectedMediaLabel }}
           </span>
 
+          <a-button
+            v-if="cropEnabled && (selectedMedia.type === 'blockImage' || selectedMedia.type === 'inlineImage')"
+            size="small"
+            type="text"
+            :disabled="cropCommitPending"
+            :aria-label="t('admin9Ui.imageCropper.title')"
+            @click="imageCrop.start(selectedMedia.pos)"
+            >{{ t('admin9Ui.imageCropper.title') }}</a-button
+          >
           <template v-if="selectedMedia.type === 'blockImage' || selectedMedia.type === 'video'">
             <span class="a9-tiptap-editor__media-toolbar-group" :aria-label="t('admin9Ui.tiptapEditor.mediaWidth')">
               <a-button
@@ -1947,6 +2059,7 @@
   }
 
   .a9-tiptap-editor__toolbar :deep(.a9-text-format-size.arco-btn-size-small),
+  .a9-tiptap-editor__toolbar :deep(.a9-text-format-spacing.arco-btn-size-small),
   .a9-tiptap-editor__block-menu.arco-btn-size-small {
     width: auto;
     min-width: 86px;

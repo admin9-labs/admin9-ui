@@ -116,7 +116,7 @@ describe('format painter document contract', () => {
     expect(readFormatSource(editor.state)).toHaveProperty('marks');
   });
 
-  it('reads cursor stored marks, rejects empty paragraphs, node selections and cell selections', () => {
+  it('reads cursor stored marks, rejects empty paragraphs and node selections, accepts cell selections', () => {
     const { editor } = mount('<p>Source</p><p></p><table><tr><td>Cell</td></tr></table>');
     editor.commands.setTextSelection(2);
     editor.commands.setBold();
@@ -124,16 +124,14 @@ describe('format painter document contract', () => {
     expect('marks' in source && source.marks.map((mark) => mark.type.name)).toEqual(['bold']);
     editor.commands.setTextSelection(9);
     expect(readFormatSource(editor.state)).toEqual({ error: 'source' });
-    let tablePos = 0;
     let cellPos = 0;
     editor.state.doc.descendants((node, pos) => {
-      if (node.type.name === 'table') tablePos = pos;
       if (node.type.name === 'tableCell') cellPos = pos;
     });
-    editor.view.dispatch(editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, tablePos)));
+    editor.view.dispatch(editor.state.tr.setSelection(NodeSelection.create(editor.state.doc, 0)));
     expect(readFormatSource(editor.state)).toEqual({ error: 'source' });
     editor.view.dispatch(editor.state.tr.setSelection(CellSelection.create(editor.state.doc, cellPos)));
-    expect(paintTextFormat(editor.state, [])).toEqual({ error: 'target' });
+    expect(paintTextFormat(editor.state, [])).toHaveProperty('transaction');
   });
 
   it.each(['<code>Code</code>', '</p><pre><code>Code</code></pre><p>'])(

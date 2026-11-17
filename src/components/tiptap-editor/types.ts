@@ -1,4 +1,5 @@
-import type { JSONContent } from '@tiptap/core';
+import type { Extensions, JSONContent } from '@tiptap/core';
+import type { ImageCropOptions } from '../image-cropper/types';
 import type { FileItem, FilePickerAdapter, FileType } from '../../services/types';
 
 export type TiptapValueFormat = 'html' | 'json';
@@ -24,6 +25,7 @@ export interface TiptapImageUploadState {
   uploading: number;
   failed: number;
   canSave: boolean;
+  cropCommitPending?: boolean;
 }
 
 export interface TiptapImageUploadError {
@@ -49,7 +51,21 @@ export interface TiptapMediaError {
   cause?: unknown;
 }
 
+export type TiptapImageCropOptions = ImageCropOptions & {
+  readSource(context: { src: string; signal: AbortSignal }): Promise<File>;
+  aspectRatioMode?: 'free' | 'original';
+};
+export interface TiptapImageCropError {
+  phase: 'read' | 'crop' | 'upload' | 'commit';
+  cause: unknown;
+}
+
 interface TiptapEditorCommonProps {
+  additionalExtensions?: Extensions;
+  showHighlight?: boolean;
+  showAudio?: boolean;
+  showAttachment?: boolean;
+  imageCrop?: TiptapImageCropOptions;
   placeholder?: string;
   disabled?: boolean;
   readonly?: boolean;
@@ -73,9 +89,12 @@ interface TiptapEditorCommonProps {
 
 /** JSON models require an explicit format; omitting the format always selects HTML at runtime. */
 export type ATiptapEditorProps<F extends TiptapValueFormat = 'html'> = TiptapEditorCommonProps &
-  (F extends 'json' ? { valueFormat: F; modelValue?: TiptapDocument } : { valueFormat?: F; modelValue?: string });
+  (F extends 'json'
+    ? { valueFormat: F; modelValue?: TiptapDocument; documentAttributes?: never }
+    : { valueFormat?: F; modelValue?: string; documentAttributes?: Record<string, unknown> });
 
 export interface ATiptapEditorExposed {
+  cancelImageCrop(): void;
   focus(): boolean | undefined;
   clear(): boolean | undefined;
   getHTML(): string;

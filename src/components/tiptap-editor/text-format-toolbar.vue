@@ -1,11 +1,22 @@
 <script setup lang="ts">
   import { computed, onBeforeUnmount, ref, watch } from 'vue';
   import type { Editor } from '@tiptap/core';
-  import type { Mark } from '@tiptap/pm/model';
+  import { CellSelection } from '@tiptap/pm/tables';
+  import type { Mark, Node as ProseMirrorNode } from '@tiptap/pm/model';
   import { useI18n } from 'vue-i18n';
-  import { fontSizes, highlightColors, normalizeTextColor, textColors } from './text-format';
+  import {
+    firstLineIndents,
+    fontSizes,
+    highlightColors,
+    letterSpacings,
+    lineHeights,
+    normalizeTextColor,
+    textColors,
+  } from './text-format';
 
-  const props = defineProps<{ editor?: Editor; disabled: boolean }>();
+  const props = withDefaults(defineProps<{ editor?: Editor; disabled: boolean; showHighlight?: boolean }>(), {
+    showHighlight: true,
+  });
   const { t } = useI18n();
   const revision = ref(0);
   const popupVisible = ref({ color: false, highlight: false });
@@ -24,14 +35,16 @@
   const read = (mark: string, attribute: string) => {
     const { editor } = props;
     if (!editor) return '';
-    const { from, to, empty, $from } = editor.state.selection;
+    const { ranges, empty, $from } = editor.state.selection;
     const values = new Set<string>();
     const take = (marks: readonly Mark[]) =>
       values.add(String(marks.find((item) => item.type.name === mark)?.attrs[attribute] ?? ''));
     if (empty) take(editor.state.storedMarks ?? $from.marks());
     else
-      editor.state.doc.nodesBetween(from, to, (node) => {
-        if (node.isText) take(node.marks);
+      ranges.forEach(({ $from: start, $to: end }) => {
+        editor.state.doc.nodesBetween(start.pos, end.pos, (node) => {
+          if (node.isText) take(node.marks);
+        });
       });
     return values.size > 1 ? 'mixed' : [...values][0] ?? '';
   };
@@ -41,12 +54,99 @@
       color: read('textStyle', 'color'),
       highlight: read('highlight', 'color'),
       fontSize: read('textStyle', 'fontSize'),
+      letterSpacing: read('textStyle', 'letterSpacing'),
     };
   });
-  const palettes = computed(() => [
-    { key: 'color' as const, label: t('admin9Ui.tiptapEditor.textColor'), colors: textColors },
-    { key: 'highlight' as const, label: t('admin9Ui.tiptapEditor.highlight'), colors: highlightColors },
-  ]);
+  const forEachBlock = (take: (node: ProseMirrorNode, pos: number) => void) => {
+    const { editor } = props;
+    if (!editor) return;
+    const { selection, doc } = editor.state;
+    if (selection.empty) {
+      if (selection.$from.depth) take(selection.$from.parent, selection.$from.before());
+      return;
+    }
+    selection.ranges.forEach(({ $from, $to }) => {
+      doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
+        // A text selection ending at the next paragraph's start has selected none of that paragraph.
+        if (node.isTextblock && (selection instanceof CellSelection || pos + 1 < $to.pos)) take(node, pos);
+      });
+    });
+  };
+  const blockValue = (attribute: string) => {
+    const values = new Set<string>();
+    forEachBlock((node) => {
+      if (attribute in node.attrs) values.add(String(node.attrs[attribute] ?? ''));
+    });
+    return values.size > 1 ? 'mixed' : [...values][0] ?? '';
+  };
+  const spacingControls = computed(() => {
+    return [
+      {
+        key: 'firstLineIndent',
+        label: t('admin9Ui.tiptapEditor.firstLineIndent'),
+        values: firstLineIndents,
+        current: blockValue('firstLineIndent'),
+      },
+      {
+        key: 'lineHeight',
+        label: t('admin9Ui.tiptapEditor.lineHeight'),
+        values: lineHeights,
+        current: blockValue('lineHeight'),
+      },
+      {
+        key: 'letterSpacing',
+        label: t('admin9Ui.tiptapEditor.letterSpacing'),
+        values: letterSpacings,
+        current: current.value.letterSpacing,
+      },
+    ].filter(() => props.editor?.extensionManager.extensions.some((extension) => extension.name === 'a9TextFormat'));
+  });
+  const applySpacing = (key: string, value: string | number | Record<string, unknown> | undefined) => {
+    if (!props.editor || props.disabled || typeof value !== 'string') return;
+    const control = spacingControls.value.find((item) => item.key === key);
+    if (!control || (value !== 'default' && !control.values.includes(value))) return;
+    const attrs = { [key]: value === 'default' ? null : value };
+    const chain = props.editor.chain().focus();
+    if (key === 'letterSpacing') {
+      chain
+        .setMark('textStyle', attrs)
+        .command(({ tr }) => {
+          const type = tr.doc.type.schema.marks.textStyle;
+          if (tr.selection.empty) {
+            const mark = tr.storedMarks?.find((item) => item.type === type);
+            if (mark && Object.values(mark.attrs).every((attribute) => attribute == null)) tr.removeStoredMark(type);
+          } else
+            tr.selection.ranges.forEach(({ $from, $to }) => {
+              tr.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
+                if (!node.isText) return;
+                const mark = node.marks.find((item) => item.type === type);
+                if (mark && Object.values(mark.attrs).every((attribute) => attribute == null)) {
+                  tr.removeMark(Math.max(pos, $from.pos), Math.min(pos + node.nodeSize, $to.pos), type);
+                }
+              });
+            });
+          return true;
+        })
+        .run();
+    } else {
+      chain
+        .command(({ tr }) => {
+          forEachBlock((node, pos) => {
+            if (node.type.name === 'paragraph' || (key === 'lineHeight' && node.type.name === 'heading')) {
+              tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...attrs });
+            }
+          });
+          return true;
+        })
+        .run();
+    }
+  };
+  const palettes = computed(() =>
+    [
+      { key: 'color' as const, label: t('admin9Ui.tiptapEditor.textColor'), colors: textColors },
+      { key: 'highlight' as const, label: t('admin9Ui.tiptapEditor.highlight'), colors: highlightColors },
+    ].filter((palette) => palette.key !== 'highlight' || props.showHighlight)
+  );
   const applyColor = (kind: 'color' | 'highlight', color: string) => {
     if (!props.editor || props.disabled) return;
     const chain = props.editor.chain().focus();
@@ -132,6 +232,27 @@
     <template #content>
       <a-doption value="default">{{ t('admin9Ui.tiptapEditor.defaultFormat') }}</a-doption>
       <a-doption v-for="size in fontSizes" :key="size" :value="size">{{ size }}</a-doption>
+    </template>
+  </a-dropdown>
+  <a-dropdown v-for="control in spacingControls" :key="control.key" trigger="click" @select="applySpacing(control.key, $event)">
+    <a-button
+      class="a9-text-format-spacing"
+      size="small"
+      type="text"
+      :disabled="disabled"
+      :aria-label="control.label"
+      @mousedown.prevent
+    >
+      {{ control.label }}:
+      {{
+        control.current === 'mixed'
+          ? t('admin9Ui.tiptapEditor.mixedFormat')
+          : control.current || t('admin9Ui.tiptapEditor.defaultFormat')
+      }}
+    </a-button>
+    <template #content>
+      <a-doption value="default">{{ t('admin9Ui.tiptapEditor.defaultFormat') }}</a-doption>
+      <a-doption v-for="value in control.values" :key="value" :value="value">{{ value }}</a-doption>
     </template>
   </a-dropdown>
 </template>

@@ -56,6 +56,89 @@ afterEach(() => {
 });
 
 describe('editor-local image uploads', () => {
+  it('displays adapter status without a percentage and resets it on retry', async () => {
+    const requests: FileUploadOptions[] = [];
+    let fail!: (cause: unknown) => void;
+    let complete!: (item: FileItem) => void;
+    const { editor, queue } = mount((options) => {
+      requests.push(options);
+      return new Promise((resolve, reject) => {
+        complete = resolve;
+        fail = reject;
+      });
+    });
+    queue.insert([file()], 'paste', 7);
+    await flush();
+    const label = () => editor.view.dom.querySelector('[role="status"]')?.textContent;
+    requests[0].onProgress?.(30);
+    expect(label()).toBe('uploadingImage 30%');
+    requests[0].onStatus?.('Optimizing image');
+    requests[0].onProgress?.(70);
+    expect(label()).toBe('Optimizing image');
+    requests[0].onStatus?.('');
+    expect(label()).toBe('uploadingImage 70%');
+    requests[0].onStatus?.('Optimizing image');
+    fail(new Error('network'));
+    await flush();
+    expect(label()).toBe('uploadFailed');
+    requests[0].onStatus?.('late settled');
+    expect(label()).toBe('uploadFailed');
+    const retry = [...editor.view.dom.querySelectorAll<HTMLButtonElement>('button')].find(
+      (button) => button.textContent === 'retryUpload'
+    );
+    retry?.click();
+    await flush();
+    expect(label()).toBe('uploadingImage');
+    requests[0].onStatus?.('late previous run');
+    expect(label()).toBe('uploadingImage');
+    requests[1].onStatus?.('Processing');
+    complete(ready());
+    await flush();
+    requests[1].onStatus?.('late success');
+    expect(label()).toBeUndefined();
+    expect(editor.getHTML()).toContain('/images/one.png');
+  });
+
+  it('ignores status callbacks after abort and disposal', async () => {
+    let request!: FileUploadOptions;
+    const { editor, queue, disable } = mount((options) => {
+      request = options;
+      return new Promise(() => {
+        // Keep the request pending until cancellation.
+      });
+    });
+    queue.insert([file()], 'paste', 7);
+    await flush();
+    request.onStatus?.('Processing');
+    disable();
+    request.onStatus?.('late aborted');
+    expect(request.signal?.aborted).toBe(true);
+    expect(editor.view.dom.querySelector('[role="status"]')?.textContent).toBe('uploadFailed');
+    queue.dispose();
+    request.onStatus?.('late disposal');
+    expect(editor.view.dom.querySelector('[role="status"]')?.textContent).not.toContain('late');
+  });
+
+  it.each(['paste', 'drop'] as const)('uploads the original GIF File unchanged for %s', async (source) => {
+    const original = new File(['GIF89a'], 'animated.gif', { type: 'image/gif' });
+    const uploaded = { ...ready('animated'), name: original.name, url: '/images/animated.gif' };
+    const upload = vi.fn(async (options: FileUploadOptions) => {
+      expect(options.file).toBe(original);
+      return uploaded;
+    });
+    const { editor, queue, error } = mount(upload);
+    queue.insert([original], source, 7);
+    await flush();
+    expect(upload).toHaveBeenCalledTimes(1);
+    expect(upload.mock.calls[0][0].file).toBe(original);
+    expect(upload.mock.calls[0][0].file.type).toBe('image/gif');
+    expect(upload.mock.calls[0][0].fileTypes).toEqual(['image']);
+    expect(editor.getHTML()).toContain('/images/animated.gif');
+    expect(editor.getHTML()).not.toContain('data-a9-upload');
+    expect(error).not.toHaveBeenCalled();
+    expect(queue.state().canSave).toBe(true);
+  });
+
   it('preserves focused action buttons when another image reports progress', async () => {
     let progress: FileUploadOptions['onProgress'];
     let calls = 0;

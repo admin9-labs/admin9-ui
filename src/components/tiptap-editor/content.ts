@@ -7,8 +7,15 @@ import {
   normalizeInlineSize,
   normalizeMediaAlign,
 } from './media-attributes';
+import { validatedDocumentAttributes } from './application-extensions';
 import type { TiptapDocument } from './types';
-import { normalizeFontSize, normalizeTextColor } from './text-format';
+import {
+  normalizeFirstLineIndent,
+  normalizeFontSize,
+  normalizeLetterSpacing,
+  normalizeLineHeight,
+  normalizeTextColor,
+} from './text-format';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -46,7 +53,8 @@ const positiveInteger = (value: unknown, fallback: number) =>
 export function parseTiptapDocument(value: unknown, editor: Editor): ProseMirrorNode {
   checkShape(value);
   if (value.type !== 'doc' || !Array.isArray(value.content)) throw new Error('Expected a complete doc document.');
-  const source = editor.schema.nodeFromJSON(value);
+  const rootAttributes = validatedDocumentAttributes(editor, value.attrs ?? {});
+  const source = editor.schema.nodeFromJSON({ ...value, attrs: rootAttributes });
   // Accept an empty root as an empty editor, while still checking the root attributes and marks.
   const document = source.childCount ? source : editor.schema.topNodeType.createAndFill(source.attrs, undefined, source.marks);
   if (!document) throw new Error('Invalid empty document.');
@@ -70,8 +78,10 @@ export function parseTiptapDocument(value: unknown, editor: Editor): ProseMirror
       }
     }
     if (name === 'paragraph' || name === 'heading') {
-      attrs.textAlign = ['left', 'center', 'right'].includes(attrs.textAlign) ? attrs.textAlign : null;
+      attrs.textAlign = ['left', 'center', 'right', 'justify'].includes(attrs.textAlign) ? attrs.textAlign : null;
     }
+    if (name === 'paragraph') attrs.firstLineIndent = normalizeFirstLineIndent(attrs.firstLineIndent);
+    if (name === 'paragraph' || name === 'heading') attrs.lineHeight = normalizeLineHeight(attrs.lineHeight);
     if (name === 'heading') attrs.level = [1, 2, 3, 4, 5, 6].includes(attrs.level) ? attrs.level : 1;
     if (name === 'orderedList') {
       attrs.start = typeof attrs.start === 'number' && Number.isSafeInteger(attrs.start) ? attrs.start : 1;
@@ -93,7 +103,8 @@ export function parseTiptapDocument(value: unknown, editor: Editor): ProseMirror
       if (mark.type.name === 'textStyle') {
         const color = normalizeTextColor(mark.attrs.color);
         const fontSize = normalizeFontSize(mark.attrs.fontSize);
-        return color || fontSize ? [mark.type.create({ color, fontSize })] : [];
+        const letterSpacing = normalizeLetterSpacing(mark.attrs.letterSpacing);
+        return color || fontSize || letterSpacing ? [mark.type.create({ color, fontSize, letterSpacing })] : [];
       }
       if (mark.type.name === 'highlight') {
         const color = normalizeTextColor(mark.attrs.color);

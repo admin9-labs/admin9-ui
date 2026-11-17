@@ -28,6 +28,7 @@
     type TiptapDocument,
   } from '@admin9-labs/admin9-ui';
 
+  import { cropOptions } from './editor-types';
   import { beforeSelect, beforeUpload, nativeCrop } from './audit-types';
 
   defineProps<{
@@ -58,6 +59,7 @@
   const cover = ref<CoverPickerValue>({ mode: 'triple', images: [null, null, null] });
   const coverSize: CoverPickerSize = 'small';
   const filters = reactive({ keyword: '', status: undefined as string | undefined });
+  const documentAttributes = ref<Record<string, unknown>>({});
   const htmlContent = ref('<p>HTML model</p>');
   const jsonContent = ref<TiptapDocument>({ type: 'doc', content: [{ type: 'paragraph' }] });
   const editorRef = ref<InstanceType<typeof ATiptapEditor>>();
@@ -123,6 +125,12 @@
     />
     <AIconPicker model-value="" />
     <ATiptapEditor
+      v-model:document-attributes="documentAttributes"
+      :additional-extensions="[]"
+      :image-crop="cropOptions"
+      :show-highlight="false"
+      :show-audio="false"
+      :show-attachment="false"
       ref="editorRef"
       :service="filePickerService"
       can-create-group
@@ -131,7 +139,11 @@
       v-model="htmlContent"
       @change="(value) => onHTMLChange(value)"
       @update:model-value="onHTMLChange"
-    />
+    >
+      <template #toolbar-extra="{ disabled, readonly }"><button :disabled="disabled || readonly">Extra</button></template>
+      <template #content-before><div>Document header</div></template>
+      <template #content-after><div>Document footer</div></template>
+    </ATiptapEditor>
     <ATiptapEditor
       v-model="jsonContent"
       value-format="json"
