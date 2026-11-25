@@ -854,6 +854,48 @@ describe('ATiptapEditor public contract', () => {
     expect(instance.getHTML()).toContain('href="/registration.pdf"');
     expect(instance.getHTML()).toContain('Registration.pdf');
   });
+  it('keeps a partial-paste notice visible without a counter and excludes it from serialized content', async () => {
+    const { editor, instance } = await mountReactiveEditor({ modelValue: '<p>BEGIN</p>', maxLength: 10, showWordCount: false });
+    editor.commands.setTextSelection(6);
+    const clipboardData = new DataTransfer();
+    clipboardData.setData('text/plain', `${'汉'.repeat(20)}END`);
+    editor.view.dom.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData }));
+    await flush();
+    expect(editor.state.doc.textContent).toBe(`BEGIN${'汉'.repeat(5)}`);
+    const notice = document.querySelector('.a9-editor-integrity [role="status"]');
+    expect(notice).not.toBeNull();
+    expect(notice?.textContent).toContain('10');
+    expect(document.querySelector('.a9-tiptap-editor__footer')).toBeNull();
+    expect(instance.getHTML()).not.toContain('a9-editor-integrity');
+    expect(JSON.stringify(instance.getJSON())).not.toContain('pastePartial');
+    editor.commands.setTextSelection(1);
+    await flush();
+    expect(document.querySelector('.a9-editor-integrity')).not.toBeNull();
+    document.querySelector<HTMLButtonElement>('.a9-editor-integrity button')?.click();
+    await flush();
+    expect(document.querySelector('.a9-editor-integrity')).toBeNull();
+    expect(editor.state.doc.textContent).toBe(`BEGIN${'汉'.repeat(5)}`);
+  });
+
+  it('keeps omitted-image feedback across normal updates and clears it for a replacement document', async () => {
+    const onPasteWarning = vi.fn();
+    const { editor, instance, props } = await mountReactiveEditor({ modelValue: '<p>Before</p>', onPasteWarning });
+    const clipboardData = new DataTransfer();
+    clipboardData.setData('text/html', '<p>Pasted<img src="file:///missing.png"></p>');
+    editor.view.dom.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData }));
+    await flush();
+    expect(onPasteWarning).toHaveBeenCalledWith({ reason: 'unsupported-image', count: 1 });
+    expect(document.querySelector('.a9-editor-integrity')).not.toBeNull();
+    editor.commands.insertContent('!');
+    props.value = { ...props.value, modelValue: instance.getHTML() };
+    await flush();
+    expect(document.querySelector('.a9-editor-integrity')).not.toBeNull();
+    expect(instance.getHTML()).not.toContain('missing.png');
+    props.value = { ...props.value, modelValue: '<p>Replacement</p>' };
+    await flush();
+    expect(document.querySelector('.a9-editor-integrity')).toBeNull();
+  });
+
   beforeEach(() => {
     document.body.innerHTML = '<div id="app"></div>';
     // Notification transitions outlive individual fixtures on slower CI runners.

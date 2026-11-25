@@ -137,12 +137,41 @@
       '<p>整理素材时，可以按内容分组，并为选中的照片补充简短说明。相似的画面只保留最能表达主题的一张，避免重复占用阅读空间。</p>',
       '<h2>让每张图片都有作用</h2>',
       '<ul><li><p><strong>交代环境：</strong>用一张全景照片说明活动在哪里发生。</p></li><li><p><strong>呈现过程：</strong>选择能看清动作和人物关系的画面。</p></li><li><p><strong>留下细节：</strong>用作品、手部动作或现场表情补充故事。</p></li></ul>',
+      '<table><tr><th><p>稿件环节</p></th><th><p>建议配图</p></th></tr><tr><td><p>活动开场</p></td><td><p>环境全景与参与者合影</p></td></tr><tr><td><p>现场过程</p></td><td><p>人物互动与作品细节</p></td></tr></table>',
       '<p>裁剪时先确定画面的重点，再去掉与主题无关的边缘。横图适合交代场景，竖图适合突出人物；同一组照片保持接近的显示宽度，阅读节奏会更稳定。</p>',
       '<h2>完成前，通读一次</h2>',
       '<p>检查标题是否准确，段落之间是否衔接自然，图片是否与相邻文字呼应。把过长的段落拆开，为不同内容加上小标题，让读者能快速找到感兴趣的部分。</p>',
       '<p>好的活动记录不必面面俱到。保留清楚的线索和具体的细节，就能让没有到场的人也理解这一天发生了什么。</p>',
     ].join('')
   );
+  const manuscriptHTML = articleValue.value
+    .replace('<h2>先理清内容，再挑选照片</h2>', '<p><strong>先理清内容，再挑选照片</strong></p>')
+    .replace(
+      '从活动的起因、现场的变化和参与者的感受入手',
+      '<span style="color:#165dff;font-size:20px">从活动的起因</span>、<span style="color:#f53f3f">现场的变化</span>和参与者的感受入手'
+    )
+    .replace('写下三个最想告诉读者的要点', '<mark>写下三个最想告诉读者的要点</mark>');
+  const manuscriptCopyStatus = ref('');
+  const copyManuscript = async (kind: 'normal' | 'overLimit' | 'missingImage') => {
+    let html = manuscriptHTML;
+    if (kind === 'overLimit') html = `<p>${'活动记录应保留完整的现场信息。'.repeat(180)}</p>`;
+    if (kind === 'missingImage') {
+      html += '<p>现场作品与合影</p><img src="file:///source/portrait.png"><img src="file:///source/group.png">';
+    }
+    const template = document.createElement('template');
+    template.innerHTML = html;
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([template.content.textContent ?? ''], { type: 'text/plain' }),
+        }),
+      ]);
+      manuscriptCopyStatus.value = '来稿已复制，请在正文中粘贴。';
+    } catch {
+      manuscriptCopyStatus.value = '浏览器未允许复制，请从下方来稿预览中选择并复制。';
+    }
+  };
   const acceptanceValue = ref(
     [
       '<h1>活动公告示例</h1>',
@@ -685,6 +714,20 @@
             <a-radio value="article">文章示例</a-radio>
             <a-radio value="acceptance">验收场景</a-radio>
           </a-radio-group>
+          <details class="tiptap-manuscript">
+            <summary>来稿整理体验</summary>
+            <p>复制来稿 → 粘贴到正文 → 整理标题与文字 → 配图裁剪 → 切换只读通读。下面的辅助操作仅用于演示。</p>
+            <a-space wrap>
+              <a-button @click="copyManuscript('normal')">复制来稿</a-button>
+              <a-button @click="copyManuscript('overLimit')">复制超长段落</a-button>
+              <a-button @click="copyManuscript('missingImage')">复制含本地图片的来稿</a-button>
+              <a-button :disabled="editorMode !== 'normal'" @click="htmlEditor?.clear()">从空白稿开始</a-button>
+            </a-space>
+            <p role="status">{{ manuscriptCopyStatus }}</p>
+            <!-- This fixture is a local, static article, never user-provided HTML. -->
+            <!-- eslint-disable-next-line vue/no-v-html -->
+            <div class="tiptap-manuscript__source" v-html="manuscriptHTML" />
+          </details>
           <ATiptapEditor
             :key="editorScenario"
             ref="htmlEditor"

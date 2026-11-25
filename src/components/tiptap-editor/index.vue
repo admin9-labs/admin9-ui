@@ -22,7 +22,7 @@
   import StarterKit from '@tiptap/starter-kit';
   import { GapCursor } from '@tiptap/pm/gapcursor';
   import { DOMSerializer, Fragment } from '@tiptap/pm/model';
-  import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transaction } from '@tiptap/pm/state';
+  import { NodeSelection, Selection, TextSelection, type Transaction } from '@tiptap/pm/state';
   import { columnResizing, tableEditing } from '@tiptap/pm/tables';
   import { EditorContent, useEditor } from '@tiptap/vue-3';
   import { useI18n } from 'vue-i18n';
@@ -40,6 +40,8 @@
   import { SafeColor, SafeFontSize, SafeHighlight, TextFormat, TextStyle } from './text-format';
   import TextFormatToolbar from './text-format-toolbar.vue';
   import MediaActionMenu from './media-action-menu.vue';
+  import createCharacterLimit from './character-limit';
+  import IntegrityFeedback from './integrity-feedback.vue';
   import Modal from '../../internal/modal.vue';
   import { createFormatPainter } from './format-painter';
   import { Audio, BlockImage, InlineImage, isSafeMediaUrl, type TiptapMediaNodeName, Video } from './media-node';
@@ -253,43 +255,20 @@
     '2em': 'inlineSizeExtraLarge',
   };
   const appendMediaBubbleToBody = () => document.body;
-  const DynamicCharacterLimit = Extension.create({
-    name: 'a9DynamicCharacterLimit',
-    addProseMirrorPlugins() {
-      let initialEvaluationDone = false;
-      const characters = (node: typeof this.editor.state.doc) => this.editor.storage.characterCount.characters({ node });
-
-      return [
-        new Plugin({
-          key: new PluginKey('a9DynamicCharacterLimit'),
-          appendTransaction: (_transactions, _oldState, newState) => {
-            if (initialEvaluationDone) return undefined;
-            initialEvaluationDone = true;
-            const limit = props.maxLength;
-            if (limit <= 0) return undefined;
-            const initialSize = characters(newState.doc);
-            if (initialSize <= limit) return undefined;
-            return newState.tr.deleteRange(0, initialSize - limit);
-          },
-          filterTransaction: (transaction, state) => {
-            const limit = props.maxLength;
-            if (!transaction.docChanged || limit <= 0) return true;
-
-            const oldSize = characters(state.doc);
-            const newSize = characters(transaction.doc);
-            if (newSize <= limit) return true;
-            if (oldSize > limit && newSize <= oldSize) return true;
-            if (!transaction.getMeta('paste')) return false;
-
-            const over = newSize - limit;
-            const to = transaction.selection.$head.pos;
-            transaction.deleteRange(to - over, to);
-            return characters(transaction.doc) <= limit;
-          },
-        }),
-      ];
-    },
-  });
+  const integrityNotices = ref<{ id: string; message: string }[]>([]);
+  const addIntegrityNotice = (id: string, message: string) => {
+    integrityNotices.value = [...integrityNotices.value.filter((notice) => notice.id !== id), { id, message }];
+  };
+  const DynamicCharacterLimit = createCharacterLimit(
+    () => props.maxLength,
+    (notice) =>
+      addIntegrityNotice(
+        'limit',
+        t(`admin9Ui.tiptapEditor.${notice.kind === 'partial' ? 'pastePartial' : 'pasteRejected'}`, {
+          limit: notice.limit.toLocaleString(),
+        })
+      )
+  );
   const RemoveLeadingEmptyParagraphBeforeMedia = Extension.create({
     name: 'a9RemoveLeadingEmptyParagraphBeforeMedia',
     priority: 1000,
@@ -517,7 +496,7 @@
         const result = cleanPastedHTML(html);
         if (result.skippedImages) {
           emit('pasteWarning', { reason: 'unsupported-image', count: result.skippedImages });
-          Message.warning(t('admin9Ui.tiptapEditor.pasteImagesSkipped', { count: result.skippedImages }));
+          addIntegrityNotice('images', t('admin9Ui.tiptapEditor.pasteImagesSkipped', { count: result.skippedImages }));
         }
         return result.html;
       },
@@ -1177,6 +1156,7 @@
   });
   const focus = () => editor.value?.commands.focus();
   const clear = () => {
+    integrityNotices.value = [];
     cancelImageCrop();
     painter.cancel();
     uploads.pause();
@@ -1200,6 +1180,7 @@
       if (!unchanged) {
         const bodyChanged = !content.content.eq(current.content);
         if (bodyChanged) {
+          integrityNotices.value = [];
           cancelImageCrop();
           uploads.pause();
           closeMediaMenus();
@@ -2087,6 +2068,10 @@
         />
       </Modal>
 
+      <IntegrityFeedback
+        :notices="integrityNotices"
+        @dismiss="integrityNotices = integrityNotices.filter((notice) => notice.id !== $event)"
+      />
       <div v-if="showWordCount" class="a9-tiptap-editor__footer">
         <span>
           {{
