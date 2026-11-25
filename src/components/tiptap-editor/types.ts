@@ -8,7 +8,7 @@ export type TiptapEditorValue<F extends TiptapValueFormat> = F extends 'json' ? 
 
 export interface TiptapContentError {
   phase: 'initial' | 'update';
-  reason: 'format-mismatch' | 'invalid-document';
+  reason: 'format-mismatch' | 'invalid-document' | 'transaction-rejected';
   cause?: unknown;
 }
 

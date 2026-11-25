@@ -3176,6 +3176,10 @@ describe('ATiptapEditor public contract', () => {
     props.value = { ...props.value, modelValue: '<p>One</p>', documentAttributes: { title: 'First' } };
     await flush();
     expect(editor.state.doc).toBe(original);
+    editor.view.dispatch(editor.state.tr.setDocAttribute('title', 'Edited'));
+    expect(editor.can().undo()).toBe(true);
+    onUpdate.mockClear();
+    onAttrs.mockClear();
     props.value = { ...props.value, modelValue: '<p>Two</p>', documentAttributes: { title: 'Second' } };
     await flush();
     expect(instance.getHTML()).toBe('<p>Two</p>');
@@ -3186,6 +3190,30 @@ describe('ATiptapEditor public contract', () => {
     editor.view.dispatch(editor.state.tr.setDocAttribute('title', 'Third'));
     expect(onAttrs).toHaveBeenLastCalledWith({ title: 'Third' });
     expect(onUpdate).toHaveBeenLastCalledWith('<p>Two</p>');
+  });
+
+  it('stops stale updates after a rejected model switch and resumes when the model loads', async () => {
+    const onUpdate = vi.fn();
+    const onError = vi.fn();
+    const { props, editor, instance } = await mountReactiveEditor({
+      'modelValue': '<p>A</p>',
+      'maxLength': 2,
+      'onContentError': onError,
+      'onUpdate:modelValue': onUpdate,
+    });
+    props.value.modelValue = '<p>BBBB</p>';
+    await flush();
+    expect(onError).toHaveBeenCalledWith({ phase: 'update', reason: 'transaction-rejected' });
+    expect(editor.isEditable).toBe(false);
+    editor.commands.insertContent('x');
+    expect(onUpdate).not.toHaveBeenCalled();
+    props.value.maxLength = 4;
+    await flush();
+    expect(instance.getHTML()).toBe('<p>BBBB</p>');
+    expect(editor.isEditable).toBe(true);
+    editor.commands.selectAll();
+    editor.commands.insertContent('C');
+    expect(onUpdate).toHaveBeenLastCalledWith('<p>C</p>');
   });
 
   it('rejects invalid HTML root attributes atomically', async () => {

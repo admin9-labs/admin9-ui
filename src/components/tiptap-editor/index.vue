@@ -20,6 +20,7 @@
   import { Table, TableKit } from '@tiptap/extension-table';
   import TextAlign from '@tiptap/extension-text-align';
   import StarterKit from '@tiptap/starter-kit';
+  import { history, undoDepth, redoDepth } from '@tiptap/pm/history';
   import { GapCursor } from '@tiptap/pm/gapcursor';
   import { DOMSerializer, Fragment } from '@tiptap/pm/model';
   import { NodeSelection, Selection, TextSelection, type SelectionBookmark, type Transaction } from '@tiptap/pm/state';
@@ -178,7 +179,8 @@
   const resolvedFileService = computed(() => props.service ?? globalOptions?.fileService);
   const { mergedDisabled, mergedError, eventHandlers } = useFormItem({ disabled: toRef(props, 'disabled') });
   const interactionDisabled = computed(() => Boolean(mergedDisabled.value));
-  const isEditable = computed(() => !interactionDisabled.value && !props.readonly);
+  const loadRejected = ref(false);
+  const isEditable = computed(() => !loadRejected.value && !interactionDisabled.value && !props.readonly);
   let painterEditor: Editor | undefined;
   const painter = createFormatPainter(
     () => painterEditor,
@@ -193,8 +195,8 @@
     'aria-multiline': 'true',
     'aria-label': props.placeholder || t('admin9Ui.tiptapEditor.ariaLabel'),
     'aria-disabled': String(interactionDisabled.value),
-    'aria-readonly': String(props.readonly),
-    'aria-invalid': String(Boolean(mergedError.value)),
+    'aria-readonly': String(props.readonly || loadRejected.value),
+    'aria-invalid': String(loadRejected.value || Boolean(mergedError.value)),
   }));
   const linkPopupVisible = ref(false);
   let originalLinkBookmark: SelectionBookmark | undefined;
@@ -531,6 +533,7 @@
       attributes: () => editorAttributes.value,
     },
     onUpdate: ({ editor: currentEditor }) => {
+      if (loadRejected.value) return;
       let content: string | TiptapDocument;
       if (valueFormat === 'json') content = getDocumentSnapshot(currentEditor.state.doc);
       else {
@@ -1487,8 +1490,9 @@
   defineExpose<ATiptapEditorExposed>({ cancelImageCrop, focus, clear, getHTML, getJSON, getImageUploadState });
 
   watch(
-    () => [props.modelValue, props.documentAttributes] as const,
-    ([value]) => {
+    [() => props.modelValue, () => props.documentAttributes, () => props.maxLength],
+    ([value, attrs, limit], [oldValue, oldAttrs, previousLimit]) => {
+      if (limit !== previousLimit && !loadRejected.value && value === oldValue && attrs === oldAttrs) return;
       if (!editor.value) return;
       const current = getPublicDocument(editor.value.state.doc);
       const content = readContent(editor.value, value, 'update', current);
@@ -1499,7 +1503,28 @@
       const unchanged = content.eq(current);
       if (!unchanged) {
         const bodyChanged = !content.content.eq(current.content);
+        const { view } = editor.value;
+        const before = view.state;
+        const { tr } = before;
+        if (bodyChanged) tr.replaceWith(0, tr.doc.content.size, content.content);
+        Object.keys(content.attrs).forEach((name) => tr.setDocAttribute(name, content.attrs[name]));
+        view.dispatch(tr.setMeta('addToHistory', false).setMeta('preventUpdate', true));
+        if (view.state === before) {
+          loadRejected.value = true;
+          emit('contentError', { phase: 'update', reason: 'transaction-rejected' });
+          return;
+        }
         if (bodyChanged) {
+          // A replacement body starts a new undo/redo history, including root attributes.
+          if (undoDepth(view.state) || redoDepth(view.state)) {
+            const { key } = history().spec;
+            const plugin = key?.get(view.state);
+            if (key && plugin) {
+              const plugins = [...view.state.plugins];
+              editor.value.unregisterPlugin(key);
+              editor.value.registerPlugin(plugin, () => plugins);
+            }
+          }
           closeToolbarOverlays();
           integrityNotices.value = [];
           originalLinkBookmark = undefined;
@@ -1511,19 +1536,12 @@
           closeMediaMenus();
           altPopupVisible.value = false;
         }
-        editor.value.commands.command(({ tr, dispatch }) => {
-          if (dispatch) {
-            if (bodyChanged) tr.replaceWith(0, tr.doc.content.size, content.content);
-            Object.keys(content.attrs).forEach((name) => tr.setDocAttribute(name, content.attrs[name]));
-            tr.setMeta('addToHistory', false).setMeta('preventUpdate', true);
-          }
-          return true;
-        });
         if (!isEditable.value) {
           clearNodeSelection(editor.value);
           selectedMedia.value = undefined;
         }
       }
+      loadRejected.value = false;
     },
     { deep: true, flush: 'post' }
   );

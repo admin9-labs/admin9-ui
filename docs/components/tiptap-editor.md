@@ -202,7 +202,7 @@ HTML 与 JSON 模型均支持格式刷，继续使用原有内容更新事件及
 
 `TiptapMediaError` 包含 `operation`、`mediaType`、`reason`、`attemptedItems` 和 `rejectedItems`；底层命令抛错时还包含 `cause`。`invalid-selection` 可能伴随部分成功，应用应以 `rejectedItems` 判断被跳过的素材；`command-failed` 表示本次有效素材未能写入或替换。
 
-`TiptapContentError` 包含 `phase: 'initial' | 'update'`、`reason: 'format-mismatch' | 'invalid-document'` 及可选的 `cause`。格式不匹配、未知节点或非法文档结构会拒绝整次输入：初始化失败保持空编辑器，外部更新失败保留原内容；均不回写空值，不自动弹提示。属性按现有允许值规范化，不安全媒体节点剔除，不安全链接移除标记并保留文字。应用可监听事件提供自己的错误反馈。
+`TiptapContentError` 包含 `phase: 'initial' | 'update'`、`reason: 'format-mismatch' | 'invalid-document' | 'transaction-rejected'` 及可选的 `cause`。格式不匹配、未知节点或非法文档结构会拒绝整次输入：初始化失败保持空编辑器，外部更新失败保留原内容；均不回写空值，不自动弹提示。属性按现有允许值规范化，不安全媒体节点剔除，不安全链接移除标记并保留文字。应用可监听事件提供自己的错误反馈。扩展或字数限制拒绝回填事务时，组件报告 `transaction-rejected`，暂停编辑和模型回写，直到成功同步外部内容。替换正文后，撤销和重做只作用于新正文。
 
 ## 实例方法
 
