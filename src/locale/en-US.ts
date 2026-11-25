@@ -1,8 +1,12 @@
 export default {
   imageCropper: {
+    resizeTopLeft: 'Resize top-left crop corner',
+    resizeTopRight: 'Resize top-right crop corner',
+    resizeBottomLeft: 'Resize bottom-left crop corner',
+    resizeBottomRight: 'Resize bottom-right crop corner',
     outputSize: 'Output size {width} × {height} px',
     title: 'Crop image',
-    hint: 'Drag the selection to move it; drag a corner to resize',
+    hint: 'Drag the selection to move it; drag a corner to resize. Scroll to view tall images.',
     image: 'Image to crop',
     move: 'Move selection, or use arrow keys',
     resize: 'Resize selection, or use arrow keys',
@@ -300,6 +304,10 @@ export default {
     refresh: 'Refresh',
   },
   tiptapEditor: {
+    imageLoadFailed: 'Image could not be loaded',
+    imageReloading: 'Reloading image…',
+    imageReload: 'Reload',
+    imageFailureActions: 'Image actions',
     formatDefault: 'Default',
     formatNotApplicable: 'Not applicable',
     indentNone: 'No indent',

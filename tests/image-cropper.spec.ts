@@ -239,6 +239,28 @@ describe('AImageCropper ratios and commit state', () => {
 });
 
 describe('AImageCropper viewport adaptation', () => {
+  it.each([undefined, 1])('scrolls to the initial crop without changing source coordinates (ratio %s)', async (aspectRatio) => {
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function getHeight(this: HTMLElement) {
+      return this.classList.contains('a9-image-cropper-stage') ? 12000 : 480;
+    });
+    engine.decode.mockResolvedValue({ width: 200, height: 10000, close: vi.fn() });
+    engine.encode.mockResolvedValue(new File(['crop'], 'crop.png'));
+    const api = mount(undefined, { aspectRatio });
+    const result = api.open(source);
+    await tick();
+    const viewport = document.querySelector<HTMLElement>('.a9-image-cropper__viewport');
+    if (!viewport) throw new Error('Crop viewport did not render');
+    expect(viewport.scrollTop).toBeCloseTo(aspectRatio === undefined ? 0 : 5904);
+    viewport.scrollTop = 9000;
+    viewport.dispatchEvent(new Event('scroll'));
+    [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Confirm'))?.click();
+    await tick();
+    expect(engine.encode.mock.calls[0][1]).toEqual(
+      aspectRatio === undefined ? { x: 0, y: 0, width: 200, height: 10000 } : { x: 20, y: 4920, width: 160, height: 160 }
+    );
+    expect(await result).toBeInstanceOf(File);
+  });
+
   it.each([180, 360])('preserves the source crop in a %spx tall viewport', async (viewportHeight) => {
     const frames: FrameRequestCallback[] = [];
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
@@ -271,6 +293,7 @@ describe('AImageCropper viewport adaptation', () => {
 describe('AImageCropper scaled preview coordinates', () => {
   it.each([
     [200, 2000],
+    [200, 10000],
     [2000, 200],
   ])('starts free cropping with the entire %s × %s source', async (width, height) => {
     engine.decode.mockResolvedValue({ width, height, close: vi.fn() });
@@ -281,6 +304,11 @@ describe('AImageCropper scaled preview coordinates', () => {
     const box = document.querySelector<HTMLElement>('.a9-image-cropper-stage__box');
     if (!box) throw new Error('Crop box did not render');
     expect([box.style.left, box.style.top, box.style.width, box.style.height]).toEqual(['0%', '0%', '100%', '100%']);
+    const viewport = document.querySelector<HTMLElement>('.a9-image-cropper__viewport');
+    if (!viewport) throw new Error('Crop viewport did not render');
+    viewport.scrollTop = 500;
+    viewport.dispatchEvent(new Event('scroll'));
+    await nextTick();
     [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Confirm'))?.click();
     await tick();
     expect(engine.encode.mock.calls[0][1]).toEqual({ x: 0, y: 0, width, height });
@@ -312,6 +340,59 @@ describe('AImageCropper scaled preview coordinates', () => {
     expect(engine.encode.mock.calls[0][1]).toEqual(
       aspectRatio === undefined ? { x: 20, y: 0, width: 180, height: 2000 } : { x: 40, y: 400, width: 140, height: 1400 }
     );
+    expect(await result).toBeInstanceOf(File);
+  });
+});
+
+describe('AImageCropper corner controls', () => {
+  it.each([
+    ['top-left', 'ArrowRight', { x: 2, y: 0, width: 198, height: 200 }],
+    ['top-right', 'ArrowLeft', { x: 0, y: 0, width: 198, height: 200 }],
+    ['bottom-left', 'ArrowRight', { x: 2, y: 0, width: 198, height: 200 }],
+    ['bottom-right', 'ArrowLeft', { x: 0, y: 0, width: 198, height: 200 }],
+  ] as const)('names and keyboard-resizes the %s corner without moving the opposite edge', async (corner, key, bounds) => {
+    engine.decode.mockResolvedValue({ width: 200, height: 200, close: vi.fn() });
+    engine.encode.mockResolvedValue(new File(['crop'], 'crop.png'));
+    const api = mount(undefined, { aspectRatio: undefined });
+    const result = api.open(source);
+    await tick();
+    const handles = [...document.querySelectorAll<HTMLButtonElement>('[data-crop-handle]')];
+    expect(handles).toHaveLength(4);
+    expect(new Set(handles.map((handle) => handle.getAttribute('aria-label'))).size).toBe(4);
+    const handle = handles.find((item) => item.dataset.cropHandle === corner);
+    const stage = document.querySelector<HTMLElement>('.a9-image-cropper-stage');
+    if (!handle || !stage) throw new Error('Crop corner did not render');
+    expect(handle.tagName).toBe('BUTTON');
+    expect(handle.getAttribute('aria-label')).toBe(`Resize ${corner} crop corner`);
+    vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue({ width: 100, height: 100 } as DOMRect);
+    handle.focus();
+    handle.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    await nextTick();
+    expect(document.activeElement).toBe(handle);
+    [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Confirm'))?.click();
+    await tick();
+    expect(engine.encode.mock.calls[0][1]).toEqual(bounds);
+    expect(await result).toBeInstanceOf(File);
+  });
+
+  it('focuses and resizes the corner when its transparent hit area is pressed', async () => {
+    engine.decode.mockResolvedValue({ width: 200, height: 200, close: vi.fn() });
+    engine.encode.mockResolvedValue(new File(['crop'], 'crop.png'));
+    const api = mount(undefined, { aspectRatio: undefined });
+    const result = api.open(source);
+    await tick();
+    const handle = document.querySelector<HTMLButtonElement>('[data-crop-handle="top-left"]');
+    const stage = document.querySelector<HTMLElement>('.a9-image-cropper-stage');
+    if (!handle || !stage) throw new Error('Crop corner did not render');
+    vi.spyOn(stage, 'getBoundingClientRect').mockReturnValue({ width: 200, height: 200 } as DOMRect);
+    handle.dispatchEvent(new MouseEvent('pointerdown', { clientX: 20, clientY: 20, bubbles: true }));
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 30, clientY: 40 }));
+    window.dispatchEvent(new MouseEvent('pointerup'));
+    await nextTick();
+    expect(document.activeElement).toBe(handle);
+    [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Confirm'))?.click();
+    await tick();
+    expect(engine.encode.mock.calls[0][1]).toEqual({ x: 10, y: 20, width: 190, height: 180 });
     expect(await result).toBeInstanceOf(File);
   });
 });

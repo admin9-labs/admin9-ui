@@ -23,6 +23,7 @@
   const cropLoading = ref(false);
   const cropSaving = ref(false);
   const cropImage = ref<HTMLCanvasElement>();
+  const cropViewport = ref<HTMLElement>();
   const cropNatural = reactive({ width: 0, height: 0 });
   const cropBox = reactive({ x: 10, y: 10, width: 80, height: 80 });
   const error = ref('');
@@ -36,6 +37,12 @@
   let generation = 0;
   let resolve: ((file: File | null) => void) | undefined;
   type CropHandle = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+  const cropHandleLabels = {
+    'top-left': 'resizeTopLeft',
+    'top-right': 'resizeTopRight',
+    'bottom-left': 'resizeBottomLeft',
+    'bottom-right': 'resizeBottomRight',
+  } as const;
   let cropDrag:
     | { handle?: CropHandle; startX: number; startY: number; x: number; y: number; width: number; height: number }
     | undefined;
@@ -59,6 +66,7 @@
     if (!cropNatural.width || !cropNatural.height) return undefined;
     return {
       aspectRatio: `${cropNatural.width} / ${cropNatural.height}`,
+      minWidth: 'min(240px, calc(100% - 16px))',
       width: `min(calc(100% - 16px), calc((var(--a9-image-cropper-viewport-height) - 16px) * ${
         cropNatural.width / cropNatural.height
       }))`,
@@ -85,6 +93,7 @@
     if (cropSaving.value || cropLoading.value) return;
     const target = event.currentTarget as HTMLElement;
     const handle = (event.target as HTMLElement).dataset.cropHandle as CropHandle | undefined;
+    (handle ? (event.target as HTMLElement) : target).focus({ preventScroll: true });
     target.setPointerCapture?.(event.pointerId);
     cropDrag = {
       handle,
@@ -201,7 +210,12 @@
       else Object.assign(cropBox, { x: 0, y: 0, width: 100, height: 100 });
       cropLoading.value = false;
       await nextTick();
-      if (current === generation) drawPreview();
+      if (current === generation) {
+        drawPreview();
+        if (cropViewport.value) {
+          cropViewport.value.scrollTop = ((cropImage.value?.parentElement?.clientHeight ?? 0) * cropBox.y) / 100;
+        }
+      }
     } catch (failure) {
       if (current !== generation) return;
       cropLoading.value = false;
@@ -302,7 +316,7 @@
         t('admin9Ui.imageCropper.outputSize', { width: outputSize.width, height: outputSize.height })
       }}</span>
     </div>
-    <div class="a9-image-cropper__viewport">
+    <div ref="cropViewport" class="a9-image-cropper__viewport">
       <div
         class="a9-image-cropper-stage"
         :class="{ 'is-natural': cropNatural.width && cropNatural.height }"
@@ -318,14 +332,15 @@
           @pointerdown="onCropPointerDown"
           @keydown="onCropKeydown"
         >
-          <span
+          <button
             v-for="handle in (['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const)"
             :key="handle"
+            type="button"
             :data-crop-handle="handle"
             class="a9-image-cropper-stage__handle"
             :class="`a9-image-cropper-stage__handle--${handle}`"
-            tabindex="0"
-            :aria-label="t('admin9Ui.imageCropper.resize')"
+            :aria-label="t(`admin9Ui.imageCropper.${cropHandleLabels[handle]}`)"
+            :aria-description="t('admin9Ui.imageCropper.resize')"
           />
         </div>
         <span v-if="cropLoading" class="a9-image-cropper-stage__loading">{{ t('admin9Ui.imageCropper.loading') }}</span>
@@ -400,35 +415,73 @@
 
   .a9-image-cropper-stage__handle {
     position: absolute;
-    width: 8px;
-    height: 8px;
-    background: #fff;
-    border: 1px solid rgb(var(--primary-6));
-    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    touch-action: none;
+
+    &::after {
+      position: absolute;
+      top: -3px;
+      left: -3px;
+      width: 8px;
+      height: 8px;
+      background: #fff;
+      border: 1px solid rgb(var(--primary-6));
+      border-radius: 50%;
+      content: '';
+      pointer-events: none;
+    }
+
+    &:focus-visible {
+      outline: 2px solid rgb(var(--primary-6));
+      outline-offset: -2px;
+    }
+  }
+
+  .a9-image-cropper-stage__box:focus-visible {
+    outline: 2px solid var(--color-bg-2);
+    outline-offset: -4px;
   }
 
   .a9-image-cropper-stage__handle--top-left {
-    top: -5px;
-    left: -5px;
+    top: -2px;
+    left: -2px;
     cursor: nwse-resize;
   }
 
   .a9-image-cropper-stage__handle--top-right {
-    top: -5px;
-    right: -5px;
+    top: -2px;
+    right: -2px;
     cursor: nesw-resize;
+
+    &::after {
+      right: -3px;
+      left: auto;
+    }
   }
 
   .a9-image-cropper-stage__handle--bottom-left {
-    bottom: -5px;
-    left: -5px;
+    bottom: -2px;
+    left: -2px;
     cursor: nesw-resize;
+
+    &::after {
+      top: auto;
+      bottom: -3px;
+    }
   }
 
   .a9-image-cropper-stage__handle--bottom-right {
-    right: -5px;
-    bottom: -5px;
+    right: -2px;
+    bottom: -2px;
     cursor: nwse-resize;
+
+    &::after {
+      inset: auto -3px -3px auto;
+    }
   }
 
   .a9-image-cropper-stage__loading {

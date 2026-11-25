@@ -35,6 +35,8 @@
 
 图片先在插入位置显示预览，最多并发上传三张；提供进度的服务显示百分比，否则显示加载状态。普通失败可原位重试或删除；adapter 明确拒绝图片类型或格式时不可重试，应删除后更换图片。多图按输入顺序排列。删除或撤销未完成图片会取消上传，晚到响应不会将其重新插入；重做已成功图片使用正式地址，不再次上传。只读／禁用切换会取消在途请求，恢复编辑后可以重试或删除未完成项。
 
+已有地址的图片在实际加载失败时显示“图片加载失败”和“重新加载”，等待加载或懒加载本身不会被视为失败。编辑时可从“图片操作”选中该图，再用媒体浮层替换或删除。重载只刷新显示，不修改图片地址、正文和撤销记录。
+
 上传沿用 `FileUploadOptions`，图片使用 `fileTypes: ['image']`、`groupId: null`，并传入进度回调和 `AbortSignal`。adapter/后端识别真实类型并校验允许集合，不再读取旧的 `fileType` 参数；迁移要求见[文件服务迁移](./file-service-migration.md)。结果须有非空 ID、正确图片类型、就绪状态和 HTTP(S) 或相对 URL。`blob:`、base64、上传任务 ID 和本地文件对象不会写入公开 HTML／JSON。本组件当前采用即时上传，不提供保存时提交 base64 的模式。
 
 adapter 抛出 `FileUploadRejection` 中的 `unsupported-file-type` 或 `unsupported-file-format` 时，编辑器沿用 `image-upload-error` 的 `unsupported-image` 原因并保留原始 `cause`；节点提示和 toast 均指引删除后更换图片，撤销、重做不会重新请求该拒绝任务。未知错误仍按普通上传失败处理。

@@ -1,8 +1,12 @@
 export default {
   imageCropper: {
+    resizeTopLeft: '调整裁剪框左上角',
+    resizeTopRight: '调整裁剪框右上角',
+    resizeBottomLeft: '调整裁剪框左下角',
+    resizeBottomRight: '调整裁剪框右下角',
     outputSize: '输出尺寸 {width} × {height} px',
     title: '裁剪图片',
-    hint: '拖动裁剪框调整位置，拖动四角调整大小',
+    hint: '拖动裁剪框调整位置，拖动四角调整大小；长图可滚动查看',
     image: '待裁剪图片',
     move: '移动裁剪框，可使用方向键',
     resize: '调整裁剪框大小，可使用方向键',
@@ -288,6 +292,10 @@ export default {
     refresh: '刷新',
   },
   tiptapEditor: {
+    imageLoadFailed: '图片加载失败',
+    imageReloading: '正在重新加载图片…',
+    imageReload: '重新加载',
+    imageFailureActions: '图片操作',
     formatDefault: '默认',
     formatNotApplicable: '不适用',
     indentNone: '不缩进',
