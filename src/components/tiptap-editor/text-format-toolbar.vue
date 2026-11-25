@@ -2,13 +2,14 @@
   import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
   import { ColorPicker } from '@arco-design/web-vue';
   import { IconFontColors, IconHighlight, IconDown } from '@arco-design/web-vue/es/icon';
-  import type { Editor } from '@tiptap/core';
+  import type { Editor, EditorEvents } from '@tiptap/core';
   import type { SelectionBookmark, Transaction } from '@tiptap/pm/state';
   import type { Mark } from '@tiptap/pm/model';
   import { closeHistory } from '@tiptap/pm/history';
   import { useI18n } from 'vue-i18n';
   import TextSpacingOptions from './text-spacing-options.vue';
   import ToolbarTooltip from './toolbar-tooltip.vue';
+  import mapDraftSelection from './draft-selection';
   import {
     readBlockFormat,
     readInlineFormat,
@@ -152,12 +153,16 @@
     close();
     if (props.embedded) captureSelection();
   };
-  const changed = ({ transaction }: { transaction: Transaction }) => {
-    if (bookmark) bookmark = bookmark.map(transaction.mapping);
-    if (transaction.docChanged && !applying && transaction.getMeta('preventUpdate') !== undefined) {
-      close();
-      selectionInvalid = true;
-    }
+  const changed = ({ transaction, appendedTransactions }: EditorEvents['transaction']) => {
+    [transaction, ...appendedTransactions].forEach((step) => {
+      if (!bookmark) return;
+      bookmark = mapDraftSelection(bookmark, step);
+      const replaced = step.getMeta('preventUpdate') !== undefined && !step.before.content.eq(step.doc.content);
+      if (!applying && (!bookmark || replaced)) {
+        close();
+        selectionInvalid = true;
+      }
+    });
     revision.value += 1;
   };
   watch(

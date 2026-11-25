@@ -3,6 +3,7 @@ import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { TableKit } from '@tiptap/extension-table';
 import { CellSelection } from '@tiptap/pm/tables';
+import { Plugin } from '@tiptap/pm/state';
 import { undoDepth } from '@tiptap/pm/history';
 import ArcoVue from '@arco-design/web-vue';
 import { createApp, h, nextTick, reactive, type App } from 'vue';
@@ -321,23 +322,58 @@ describe('real Arco toolbar integration', () => {
     expect(undoDepth(editor.state)).toBe(history);
   });
 
-  it('keeps a mapped selection when the editor selection moves and another edit shifts its positions', async () => {
+  it('discards a color draft when its target is deleted', async () => {
+    const editor = makeEditor('<p>ABC</p>');
+    editor.commands.setTextSelection({ from: 2, to: 3 });
+    const { root, applied } = mount(editor, 'colors');
+    const trigger = await openColor(root);
+    await chooseColor();
+    editor.commands.deleteSelection();
+    await flush();
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(applied()).toBe(0);
+    editor.commands.insertContent('x');
+    expect(editor.getHTML()).toBe('<p>AxC</p>');
+  });
+
+  it('resolves each repeated explicit color once while recoloring a selection', () => {
+    const editor = makeEditor('<p><span style="color:red">A<b>B</b>C<b>D</b></span></p>');
+    editor.commands.selectAll();
+    const style = vi.spyOn(window, 'getComputedStyle');
+    try {
+      expect(setInlineFormat(editor.state, 'color', '#0000ff').docChanged).toBe(true);
+      expect(style.mock.calls.filter(([element]) => (element as HTMLElement).style.display === 'none')).toHaveLength(2);
+    } finally {
+      style.mockRestore();
+    }
+  });
+
+  it.each(['root', 'appended'])('keeps a mapped format selection after a %s transaction', async (mode) => {
     const editor = makeEditor('<p>ABC</p>');
     editor.commands.setTextSelection({ from: 2, to: 3 });
     const { root, applied } = mount(editor, 'colors');
     await openColor(root);
     await chooseColor();
-    editor.commands.insertContentAt(1, 'X');
+    if (mode === 'root') editor.commands.insertContentAt(1, 'X');
+    else {
+      editor.registerPlugin(
+        new Plugin({
+          appendTransaction: (transactions, _, state) =>
+            transactions.some((tr) => tr.getMeta('prefix')) ? state.tr.insertText('!', 3).insertText('X', 1) : undefined,
+        })
+      );
+      editor.view.dispatch(editor.state.tr.setMeta('prefix', true));
+    }
     editor.commands.setTextSelection(1);
     await flush();
     expect(button('Apply').disabled).toBe(false);
     button('Apply').click();
     await flush();
-    expect(editor.getHTML()).toMatch(/XA<span style="color: [^"]+;">B<\/span>C/);
+    expect(editor.getHTML()).toMatch(/XA<span style="color: [^"]+;">B<\/span>!?C/);
     expect(applied()).toBe(1);
     expect(document.activeElement).toBe(editor.view.dom);
     editor.commands.undo();
-    expect(editor.getHTML()).toBe('<p>XABC</p>');
+    expect(editor.getHTML()).toBe(mode === 'root' ? '<p>XABC</p>' : '<p>XAB!C</p>');
   });
 
   it.each(['Cancel', 'Escape'])('discards draft and returns focus to trigger on %s', async (action) => {

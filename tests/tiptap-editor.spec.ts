@@ -3,7 +3,7 @@ import { createApp, defineComponent, h, KeepAlive, nextTick, ref, type App, type
 import { Message } from '@arco-design/web-vue';
 import { Extension, type Editor } from '@tiptap/core';
 import { GapCursor } from '@tiptap/pm/gapcursor';
-import { NodeSelection, TextSelection } from '@tiptap/pm/state';
+import { NodeSelection, Plugin, TextSelection } from '@tiptap/pm/state';
 import { CellSelection, columnResizingPluginKey } from '@tiptap/pm/tables';
 import { createI18n } from 'vue-i18n';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -387,7 +387,27 @@ describe('ATiptapEditor public contract', () => {
     ['Text color', 'clear'],
     ['Highlight', 'clear'],
   ])('discards the open %s draft on document %s', async (label, operation) => {
-    const { props, instance, editor } = await mountReactiveEditor({ modelValue: '<p>Old document</p>' });
+    const { props, instance, editor } = await mountReactiveEditor({
+      modelValue: '<p>Old document</p>',
+      additionalExtensions: [
+        Extension.create({
+          name: 'draftTitle',
+          addGlobalAttributes: () => [
+            {
+              types: ['doc'],
+              attributes: {
+                title: {
+                  default: '',
+                  validate: (value: unknown) => {
+                    if (typeof value !== 'string') throw new Error('Expected title');
+                  },
+                },
+              },
+            },
+          ],
+        }),
+      ],
+    });
     editor.commands.setTextSelection({ from: 1, to: 4 });
     const trigger = () => document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
     trigger()?.click();
@@ -399,8 +419,8 @@ describe('ATiptapEditor public contract', () => {
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.blur();
     await flush();
-    // An unchanged model echo must not discard the pending draft.
-    props.value = { ...props.value, modelValue: instance.getHTML() };
+    // A root-only update must preserve the pending draft.
+    props.value = { ...props.value, modelValue: instance.getHTML(), documentAttributes: { title: 'Changed' } };
     await flush();
     expect(document.querySelector('.arco-color-picker-input-hex input')).toBe(input);
     expect(input.value.toUpperCase()).toBe('C0A5A5');
@@ -1225,7 +1245,7 @@ describe('ATiptapEditor public contract', () => {
     }
   });
 
-  it('keeps a link draft through an asynchronous preceding insertion and applies to the original mapped target', async () => {
+  it.each(['root', 'appended'])('keeps a link draft mapped across a %s insertion', async (mode) => {
     const { editor, instance } = await mountReactiveEditor({ modelValue: '<p>Before target after</p>' });
     editor.commands.setTextSelection({ from: 8, to: 14 });
     document.querySelector<HTMLButtonElement>('button[aria-label="Link"]')?.click();
@@ -1233,7 +1253,16 @@ describe('ATiptapEditor public contract', () => {
     const inputs = document.querySelectorAll<HTMLInputElement>('.a9-tiptap-editor__link-panel input');
     inputs[1].value = '/mapped';
     inputs[1].dispatchEvent(new Event('input', { bubbles: true }));
-    editor.view.dispatch(editor.state.tr.insertText('NEW ', 1));
+    if (mode === 'root') editor.view.dispatch(editor.state.tr.insertText('NEW ', 1));
+    else {
+      editor.registerPlugin(
+        new Plugin({
+          appendTransaction: (transactions, _, state) =>
+            transactions.some((tr) => tr.getMeta('prefix')) ? state.tr.insertText('!', 14).insertText('NEW ', 1) : undefined,
+        })
+      );
+      editor.view.dispatch(editor.state.tr.setMeta('prefix', true));
+    }
     editor.commands.setTextSelection(1);
     await flush();
     expect(document.querySelector('.a9-tiptap-editor__link-panel')).not.toBeNull();
@@ -1246,7 +1275,7 @@ describe('ATiptapEditor public contract', () => {
     const result = new DOMParser().parseFromString(instance.getHTML(), 'text/html');
     expect(result.querySelector('a')?.textContent).toBe('target');
     expect(result.querySelector('a')?.getAttribute('href')).toBe('/mapped');
-    expect(result.body.textContent).toBe('NEW Before target after');
+    expect(result.body.textContent).toBe(mode === 'root' ? 'NEW Before target after' : 'NEW Before target! after');
   });
 
   it('maps the original link cursor for cancellation and invalidates a deleted target', async () => {
@@ -3214,6 +3243,17 @@ describe('ATiptapEditor public contract', () => {
     editor.commands.selectAll();
     editor.commands.insertContent('C');
     expect(onUpdate).toHaveBeenLastCalledWith('<p>C</p>');
+  });
+
+  it('wraps three adjacent paragraphs in one quote and lifts them together', async () => {
+    const html = '<p>A</p><p>B</p><p>C</p>';
+    const { editor, instance } = await mountReactiveEditor({ modelValue: html });
+    editor.commands.selectAll();
+    const button = document.querySelector<HTMLButtonElement>('button[aria-label="Blockquote"]');
+    button?.click();
+    expect(instance.getHTML()).toBe(`<blockquote>${html}</blockquote>`);
+    button?.click();
+    expect(instance.getHTML()).toBe(html);
   });
 
   it('rejects invalid HTML root attributes atomically', async () => {

@@ -104,8 +104,16 @@ export function readBlockFormat(state: EditorState, key: string): FormatState {
 /** Change only the requested attribute; identical choices produce no document steps. */
 export function setInlineFormat(state: EditorState, key: InlineFormat, value: string | null): Transaction {
   const { tr } = state;
-  if (readInlineFormat(state, key).value === 'unavailable') return tr;
+  if (state.selection instanceof NodeSelection) return tr;
   const type = state.schema.marks[markName(key)];
+  const colorKeys = new Map<string, string>();
+  const colorKey = (color: string) => {
+    const cached = colorKeys.get(color);
+    if (cached !== undefined) return cached;
+    const resolved = explicitColorKey(color);
+    colorKeys.set(color, resolved);
+    return resolved;
+  };
   const update = (marks: readonly Mark[]) => {
     const previous = marks.find((mark) => mark.type === type);
     const previousColor = previous?.attrs.color;
@@ -114,7 +122,7 @@ export function setInlineFormat(state: EditorState, key: InlineFormat, value: st
       value !== null &&
       typeof previousColor === 'string' &&
       previousColor &&
-      (previousColor === value || explicitColorKey(previousColor) === explicitColorKey(value))
+      (previousColor === value || colorKey(previousColor) === colorKey(value))
     )
       return previous;
     if (key === 'highlight') return value === null ? null : type.create({ color: value });
@@ -123,6 +131,7 @@ export function setInlineFormat(state: EditorState, key: InlineFormat, value: st
   };
   if (state.selection.empty) {
     const marks = state.storedMarks ?? state.selection.$from.marks();
+    if (!allows(state, key, state.selection.$from.parent, marks)) return tr;
     const next = update(marks);
     const nextMarks = next ? next.addToSet(type.removeFromSet(marks)) : type.removeFromSet(marks);
     if (!Mark.sameSet(marks, nextMarks)) tr.setStoredMarks(nextMarks);

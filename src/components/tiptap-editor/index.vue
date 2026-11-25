@@ -45,6 +45,7 @@
   import ToolbarGroup from './toolbar-group.vue';
   import ToolbarTooltip from './toolbar-tooltip.vue';
   import createCharacterLimit from './character-limit';
+  import mapDraftSelection from './draft-selection';
   import IntegrityFeedback from './integrity-feedback.vue';
   import Modal from '../../internal/modal.vue';
   import { createFormatPainter } from './format-painter';
@@ -201,7 +202,6 @@
   const linkPopupVisible = ref(false);
   let originalLinkBookmark: SelectionBookmark | undefined;
   let appliedLinkBookmark: SelectionBookmark | undefined;
-  let linkTarget: { from: number; to: number } | undefined;
   const tablePopupVisible = ref(false);
   const tableRows = ref(1);
   const tableColumns = ref(1);
@@ -552,25 +552,19 @@
       eventHandlers.value?.onChange?.();
     },
     onSelectionUpdate: ({ editor: currentEditor }) => syncSelectedMedia(currentEditor),
-    onTransaction: ({ editor: currentEditor, transaction }) => {
-      if (transaction.docChanged) {
+    onTransaction: ({ editor: currentEditor, transaction, appendedTransactions }) => {
+      [transaction, ...appendedTransactions].forEach((step) => {
+        if (!step.docChanged) return;
         painter.cancel();
-        if (linkPopupVisible.value && linkTarget) {
-          const from = transaction.mapping.mapResult(linkTarget.from, 1);
-          const to = transaction.mapping.mapResult(linkTarget.to, -1);
-          const empty = linkTarget.from === linkTarget.to;
-          if ((empty && from.deletedAcross) || (!empty && from.pos >= to.pos)) {
+        if (linkPopupVisible.value && appliedLinkBookmark) {
+          appliedLinkBookmark = mapDraftSelection(appliedLinkBookmark, step);
+          if (appliedLinkBookmark && originalLinkBookmark) originalLinkBookmark = mapDraftSelection(originalLinkBookmark, step);
+          if (!appliedLinkBookmark) {
             linkPopupVisible.value = false;
             originalLinkBookmark = undefined;
-            appliedLinkBookmark = undefined;
-            linkTarget = undefined;
-          } else {
-            originalLinkBookmark = originalLinkBookmark?.map(transaction.mapping);
-            appliedLinkBookmark = appliedLinkBookmark?.map(transaction.mapping);
-            linkTarget = { from: from.pos, to: empty ? from.pos : to.pos };
           }
         }
-      }
+      });
       syncSelectedMedia(currentEditor);
       uploads.sync();
     },
@@ -859,25 +853,32 @@
     const blocks = selectedTextBlocks(editor.value.state);
     if (!blocks.length) return;
     const inside = (doc: typeof editor.value.state.doc, pos: number) => {
-      const resolved = doc.resolve(pos + 1);
+      const resolved = doc.resolve(pos);
       for (let depth = resolved.depth - 1; depth > 0; depth -= 1) {
         if (resolved.node(depth).type.name === kind) return true;
       }
       return false;
     };
     const currentDocument = editor.value.state.doc;
-    const enable = !blocks.every(({ pos }) => inside(currentDocument, pos));
+    const enable = !blocks.every(({ pos }) => inside(currentDocument, pos + 1));
     editor.value
       .chain()
       .focus()
       .command(({ tr, chain }) => {
         const original = tr.selection;
         const start = tr.steps.length;
-        [...blocks].reverse().forEach(({ pos }) => {
-          const mapped = tr.mapping.slice(start).map(pos);
-          const node = tr.doc.nodeAt(mapped);
-          if (!node?.isTextblock || inside(tr.doc, mapped) === enable) return;
-          const command = chain().setTextSelection({ from: mapped + 1, to: mapped + node.nodeSize - 1 });
+        const ranges: { from: number; to: number }[] = [];
+        blocks.forEach(({ pos, node }) => {
+          if (inside(currentDocument, pos + 1) === enable) return;
+          const last = ranges[ranges.length - 1];
+          if (kind === 'blockquote' && last?.to === pos) last.to += node.nodeSize;
+          else ranges.push({ from: pos, to: pos + node.nodeSize });
+        });
+        ranges.reverse().forEach(({ from, to }) => {
+          const mapping = tr.mapping.slice(start);
+          const mapped = mapping.map(from + 1);
+          if (!tr.doc.resolve(mapped).parent.isTextblock || inside(tr.doc, mapped) === enable) return;
+          const command = chain().setTextSelection({ from: mapped, to: mapping.map(to - 1) });
           if (kind === 'blockquote') command.toggleBlockquote().run();
           else if (kind === 'bulletList') command.toggleBulletList().run();
           else command.toggleOrderedList().run();
@@ -1101,7 +1102,6 @@
     linkHref.value = String(editor.value?.getAttributes('link').href ?? '');
     const selection = editor.value?.state.selection;
     appliedLinkBookmark = selection?.getBookmark();
-    linkTarget = selection ? { from: selection.from, to: selection.to } : undefined;
     initialLinkSelectionEmpty.value = selection?.empty ?? true;
     linkText.value = selection ? editor.value?.state.doc.textBetween(selection.from, selection.to, ' ') ?? '' : '';
     initialLinkText.value = linkText.value;
@@ -1529,7 +1529,6 @@
           integrityNotices.value = [];
           originalLinkBookmark = undefined;
           appliedLinkBookmark = undefined;
-          linkTarget = undefined;
           textFormatRevision.value += 1;
           cancelImageCrop();
           uploads.pause();

@@ -15,6 +15,7 @@
 ### Fixed
 
 - ATiptapEditor 在外部正文回填被拒绝时发出 `contentError` 并暂停模型回写，成功替换正文后重置撤销和重做历史。
+- ATiptapEditor 在扩展追加事务后继续跟踪链接和格式草稿的原选区，连续段落可一次合为同一引用块。
 - ATiptapEditor 在裁剪目标失效时关闭已打开的预览。
 - ATiptapEditor 按截断粘贴的实际结果提示部分插入或拒绝。
 - ATiptapEditor 保留 HTML 双向绑定回写时刚输入的空格和光标位置。图片裁剪跟踪扩展追加事务中的原图位置，扩展拒绝替换时显示失败并支持重试。
