@@ -146,8 +146,19 @@ assert.ok(host.querySelector('.a9-tiptap-editor'), 'ATiptapEditor did not mount.
 assert.equal(host.querySelector('.a9-tiptap-editor')?.style.getPropertyValue('--a9-tiptap-editor-max-height'), '480px');
 assert.equal(host.querySelector('.a9-tiptap-editor__content')?.parentElement, host.querySelector('.a9-tiptap-editor'));
 assert.ok(host.querySelector('button[aria-label="Insert image"]'), 'ATiptapEditor image picker did not mount.');
-assert.ok(host.querySelector('button[aria-label="Insert video"]'), 'ATiptapEditor video picker did not mount.');
-assert.ok(host.querySelector('button[aria-label="Insert audio"]'), 'ATiptapEditor audio picker did not mount.');
+const insertTrigger = host.querySelector('button[aria-label="Insert"][aria-haspopup="menu"]');
+assert.ok(insertTrigger, 'ATiptapEditor insert menu trigger did not mount.');
+insertTrigger.click();
+await nextTick();
+const insertMenu = document.querySelector('[role="menu"][aria-label="Insert"]');
+assert.equal(insertTrigger.getAttribute('aria-expanded'), 'true');
+assert.ok(insertMenu?.querySelector('[role="menuitem"][aria-label="Insert video"]'), 'Insert menu is missing video.');
+assert.ok(insertMenu?.querySelector('[role="menuitem"][aria-label="Insert audio"]'), 'Insert menu is missing audio.');
+// Let the teleported popover finish positioning before closing or unmounting it.
+await new Promise((resolve) => setTimeout(resolve, 0));
+insertTrigger.click();
+await nextTick();
+assert.equal(insertTrigger.getAttribute('aria-expanded'), 'false');
 const mountedVideo = host.querySelector('.a9-tiptap-editor video');
 const mountedAudio = host.querySelector('.a9-tiptap-editor audio');
 const mountedBlockImage = host.querySelector('.a9-tiptap-editor [data-media-node="blockImage"] img');
