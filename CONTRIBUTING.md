@@ -39,6 +39,12 @@ corepack pnpm@10.5.2 run release:check
 
 发布操作见 [RELEASING.md](./RELEASING.md)。
 
+### vue-i18n 消费兼容性
+
+2026-11-26 在两个隔离的消费应用中验证了同一份本地 tarball。两组均使用 Vue 3.5.18、Arco Design Vue 2.57.0 和 TypeScript 4.9.5，分别安装 vue-i18n 9.14.5、11.4.23。两组的严格 peer 安装、`smoke`、`typecheck` 和生产 `build` 均通过。
+
+组件使用宿主 Composition API 的 `useI18n().t`；图片预览还读取响应式 `locale.value`。消费夹具在同一挂载实例上切换 `en-US → zh-CN → en-US`，检查 `AChatMessageList` 的空状态和 `ATiptapEditor` 字数提示中的 `count`、`limit`。常规发布门禁使用夹具锁定的 v9 基线；复验 v11 时，在夹具的临时副本中安装相应版本和待测 tarball，并运行相同的三个脚本。
+
 ## 全组件契约验收
 
 启动验收应用后打开 `http://127.0.0.1:4174/?audit=1`。此页面集中覆盖十一个组件，可切换 Arco 尺寸、中英文、明暗主题、Form 禁用、只读、窄容器和 fake service 状态。聊天滚动与流式性能场景仍在 `?component=chat`，富文本深度场景在 `?component=tiptap-editor`。

@@ -16,7 +16,7 @@ pnpm add @admin9-labs/admin9-ui
 
 - Vue `^3.5.0`
 - Arco Design Vue `^2.57.0`
-- vue-i18n `^9.14.0`
+- vue-i18n `^9.14.0 || ^11.4.23`
 
 应用可以使用任意兼容的包管理器。
 

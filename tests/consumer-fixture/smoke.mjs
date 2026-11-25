@@ -99,6 +99,7 @@ document.body.append(host);
 const app = createApp({
   render: () =>
     h('main', [
+      h(packageExports.AChatMessageList, { messages: [] }),
       h(packageExports.ACoverPicker, { modelValue: { mode: 'single', images: [null] } }),
       h(packageExports.AImagePicker, { multiple: true, modelValue: [], displayMode: 'banner', fit: 'cover' }),
       h(packageExports.AIconPicker, { modelValue: '' }),
@@ -120,6 +121,7 @@ const app = createApp({
         service: fileService,
         defaultImageDisplay: 'inline',
         maxHeight: 480,
+        maxLength: 100,
         canUploadImage: false,
         canUploadVideo: false,
         canUploadAudio: false,
@@ -131,7 +133,8 @@ const app = createApp({
 
 app.use(ArcoVue);
 Object.entries(ArcoVueIcon).forEach(([name, component]) => app.component(name, component));
-app.use(createI18n({ legacy: false, locale: 'en-US', messages: localeExports.messages }));
+const i18n = createI18n({ legacy: false, locale: 'en-US', messages: localeExports.messages });
+app.use(i18n);
 app.use(packageExports.default, { fileService });
 app.mount(host);
 await nextTick();
@@ -143,6 +146,19 @@ assert.ok(host.querySelector('.a9-cover-picker'), 'ACoverPicker did not mount.')
 assert.ok(host.querySelector('.a9-coordinate-picker'), 'ACoordinatePicker did not mount.');
 assert.ok(host.querySelector('.a9-pro-table'), 'AProTable did not mount.');
 assert.ok(host.querySelector('.a9-tiptap-editor'), 'ATiptapEditor did not mount.');
+const emptyChat = host.querySelector('.a9-chat-message-list__empty');
+const characterCount = host.querySelector('.a9-tiptap-editor__footer span');
+assert.equal(emptyChat?.textContent, 'No messages yet');
+const englishCount = characterCount?.textContent.trim().match(/^([1-9]\d*) \/ 100 characters$/);
+assert.ok(englishCount, 'Expected the editor to interpolate count and limit.');
+i18n.global.locale.value = 'zh-CN';
+await nextTick();
+assert.equal(emptyChat.textContent, '暂无消息');
+assert.equal(characterCount.textContent.trim(), `${englishCount[1]} / 100 个字符`);
+i18n.global.locale.value = 'en-US';
+await nextTick();
+assert.equal(emptyChat.textContent, 'No messages yet');
+assert.equal(characterCount.textContent.trim(), englishCount[0]);
 assert.equal(host.querySelector('.a9-tiptap-editor')?.style.getPropertyValue('--a9-tiptap-editor-max-height'), '480px');
 assert.equal(host.querySelector('.a9-tiptap-editor__content')?.parentElement, host.querySelector('.a9-tiptap-editor'));
 assert.ok(host.querySelector('button[aria-label="Insert image"]'), 'ATiptapEditor image picker did not mount.');
