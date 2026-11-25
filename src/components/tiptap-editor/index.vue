@@ -418,6 +418,7 @@
     editable: () => cropEnabled.value,
     config: () => props.imageCrop,
     service: () => resolvedFileService.value,
+    closePreview: () => cropper.value?.cancel(),
     crop: (file) => cropper.value?.open(file) ?? Promise.resolve(null),
     onState: (pending) => {
       cropCommitPending.value = pending;
@@ -439,7 +440,6 @@
   const cancelImageCrop = () => {
     imageCrop.cancel();
     cropFailure.value = undefined;
-    cropper.value?.cancel();
   };
   const onCropCommitPending = (pending: boolean) => imageCrop.setCommitPending(pending);
   const publicHTML = (currentEditor: Editor) => {

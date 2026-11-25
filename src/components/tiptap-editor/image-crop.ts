@@ -22,6 +22,7 @@ interface EditorImageCropOptions {
   editable(): boolean;
   config(): EditorImageCropConfig | undefined;
   service(): FilePickerAdapter | undefined;
+  closePreview?(): void;
   crop(file: File): Promise<File | null>;
   onPhase?(phase: 'idle' | 'read' | 'preview' | 'commit'): void;
   onRetryChange?(available: boolean): void;
@@ -61,7 +62,9 @@ export function createEditorImageCrop(options: EditorImageCropOptions) {
     controller = undefined;
     detach?.();
     detach = undefined;
+    const previewOpen = cropPending;
     cropPending = false;
+    if (previewOpen) options.closePreview?.();
     setRetryTarget(undefined);
     notify(false);
     setPhase('idle');

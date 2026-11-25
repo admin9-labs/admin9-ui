@@ -45,6 +45,7 @@ function mount() {
   const onPhase = vi.fn();
   const onRetryChange = vi.fn();
   const openCrop = vi.fn();
+  const closePreview = vi.fn(() => crop.resolve(null));
   let cropResult = crop.promise;
   const onError = vi.fn();
   let editable = true;
@@ -58,6 +59,7 @@ function mount() {
     editable: () => editable,
     config: () => config,
     service: () => ({ list: vi.fn(), upload: uploadFile }),
+    closePreview,
     crop: (input) => {
       openCrop(input);
       return cropResult;
@@ -88,6 +90,7 @@ function mount() {
     onPhase,
     onRetryChange,
     openCrop,
+    closePreview,
     setCropResult: (result: Promise<File | null>) => {
       cropResult = result;
     },
@@ -100,6 +103,18 @@ function mount() {
 }
 
 describe('editor image crop controller', () => {
+  it('closes the preview immediately when its image disappears', async () => {
+    const { editor, controller, pos, read, openCrop, closePreview, uploadFile } = mount();
+    const session = controller.start(pos);
+    read.resolve(file);
+    await flush();
+    expect(openCrop).toHaveBeenCalledOnce();
+    editor.commands.deleteRange({ from: pos, to: pos + 1 });
+    expect(closePreview).toHaveBeenCalledOnce();
+    await session;
+    expect(uploadFile).not.toHaveBeenCalled();
+  });
+
   it('maps the target across transactions, preserves attributes, and isolates undo/redo', async () => {
     const { editor, controller, read, crop, upload, pos, onState, onError } = mount();
     const updates: boolean[] = [];
