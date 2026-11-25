@@ -318,6 +318,7 @@ export default {
     cropApplying: 'Applying crop…',
     cropReadFailed: 'The original image could not be read. Try again.',
     cropApplyFailed: 'The crop could not be applied. The original image is unchanged.',
+    cropUploadFailed: 'The cropped image could not be uploaded. The original image was retained.',
     cropRetryRead: 'Try again',
     cropRetryEdit: 'Crop again',
     dismiss: 'Dismiss',

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Editor } from '@tiptap/core';
+import { Plugin } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import { closeHistory } from '@tiptap/pm/history';
 import { createEditorImageCrop, type EditorImageCropConfig } from '../src/components/tiptap-editor/image-crop';
@@ -127,6 +128,46 @@ describe('editor image crop controller', () => {
     editor.commands.redo();
     expect(editor.getHTML()).toContain('/crop.png');
     expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('tracks the original image when an appended transaction inserts an identical image before it', async () => {
+    const { editor, controller, pos, read, crop, upload } = mount();
+    const original = editor.state.doc.nodeAt(pos);
+    if (!original) throw new Error('missing image');
+    editor.registerPlugin(
+      new Plugin({
+        appendTransaction: (transactions, _old, state) =>
+          transactions.some((tr) => tr.getMeta('duplicateImage')) ? state.tr.insert(pos, original) : null,
+      })
+    );
+    const result = controller.start(pos);
+    editor.view.dispatch(editor.state.tr.setMeta('duplicateImage', true));
+    read.resolve(file);
+    crop.resolve(file);
+    upload.resolve(item);
+    await result;
+    expect(editor.state.doc.nodeAt(pos)?.attrs.src).toBe('/original.png');
+    expect(editor.state.doc.nodeAt(pos + original.nodeSize)?.attrs.src).toBe(item.url);
+  });
+
+  it('reports a filtered crop commit and lets the user retry it', async () => {
+    const { editor, controller, pos, read, crop, upload, onError, onState, onRetryChange } = mount();
+    let locked = true;
+    editor.registerPlugin(new Plugin({ filterTransaction: (tr) => !locked || !tr.docChanged }));
+    const result = controller.start(pos);
+    read.resolve(file);
+    crop.resolve(file);
+    upload.resolve(item);
+    await result;
+    expect(editor.state.doc.nodeAt(pos)?.attrs.src).toBe('/original.png');
+    expect(onError).toHaveBeenCalledWith({ phase: 'commit', cause: expect.any(Error) });
+    expect(onRetryChange).toHaveBeenLastCalledWith(true);
+    expect(onState).toHaveBeenLastCalledWith(false);
+    locked = false;
+    controller.retry();
+    await flush();
+    expect(editor.state.doc.nodeAt(pos)?.attrs.src).toBe(item.url);
+    expect(onRetryChange).toHaveBeenLastCalledWith(false);
   });
 
   it.each(['delete', 'replace', 'type', 'disabled', 'cancel'] as const)('ignores late upload after %s', async (action) => {

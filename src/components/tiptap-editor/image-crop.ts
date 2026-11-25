@@ -1,4 +1,4 @@
-import type { Editor } from '@tiptap/core';
+import type { Editor, EditorEvents } from '@tiptap/core';
 import { closeHistory } from '@tiptap/pm/history';
 import type { Node } from '@tiptap/pm/model';
 import type { Transaction } from '@tiptap/pm/state';
@@ -97,7 +97,8 @@ export function createEditorImageCrop(options: EditorImageCropOptions) {
     controller = abort;
     active = true;
     let target = position;
-    let committing = false;
+    let commitTransaction: Transaction | undefined;
+    let commitApplied = false;
     const valid = () => {
       if (current !== generation) return false;
       if (
@@ -113,11 +114,17 @@ export function createEditorImageCrop(options: EditorImageCropOptions) {
       }
       return true;
     };
-    const onTransaction = ({ transaction }: { transaction: Transaction }) => {
-      if (committing) return;
-      const mapped = transaction.mapping.mapResult(target, 1);
-      target = mapped.pos;
-      if (mapped.deleted) cancel();
+    const onTransaction = ({ transaction, appendedTransactions }: EditorEvents['transaction']) => {
+      if (commitTransaction) {
+        if (transaction === commitTransaction) commitApplied = true;
+        return;
+      }
+      const deleted = [transaction, ...appendedTransactions].some(({ mapping }) => {
+        const mapped = mapping.mapResult(target, 1);
+        target = mapped.pos;
+        return mapped.deleted;
+      });
+      if (deleted) cancel();
       else valid();
     };
     editor.on('transaction', onTransaction);
@@ -151,14 +158,14 @@ export function createEditorImageCrop(options: EditorImageCropOptions) {
       phase = 'commit';
       const node = editor.state.doc.nodeAt(target);
       if (!node) return;
-      const transaction = closeHistory(editor.state.tr).setNodeMarkup(
+      commitTransaction = closeHistory(editor.state.tr).setNodeMarkup(
         target,
         undefined,
         { ...node.attrs, src: item.url },
         node.marks
       );
-      committing = true;
-      editor.view.dispatch(transaction);
+      editor.view.dispatch(commitTransaction);
+      if (!commitApplied) throw new Error('Image crop replacement transaction was rejected.');
       editor.view.dispatch(closeHistory(editor.state.tr));
     } catch (cause) {
       if (valid()) {
@@ -170,7 +177,7 @@ export function createEditorImageCrop(options: EditorImageCropOptions) {
       if (current === generation) {
         if (failed) {
           active = false;
-          committing = false;
+          commitTransaction = undefined;
           cropPending = false;
           notify(false);
           setPhase('idle');

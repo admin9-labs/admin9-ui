@@ -227,7 +227,7 @@ paragraph/heading 的 `textAlign` 支持 `justify`，末行保持浏览器常规
 
 `additionalExtensions?: Extensions` 只在实例初始化注册；可信应用扩展可在 Tiptap `onCreate/onDestroy` 中绑定校对 decorations 和业务局部事务，不需要额外获取 Editor 的组件事件。只允许普通 Extension，禁止新增或覆盖内置节点、mark、属性和上传私有节点。新增全局属性只能声明在 `doc`，且每个属性必须有会在非法值时抛错的 `validate(value)` 函数。组件独占整体内容回填；扩展不要调用整体 `setContent`。
 
-HTML 模式使用 `documentAttributes?: Record<string, unknown>` 和 `update:documentAttributes`，只接受注册过且通过校验、可用于 JSON 快照的根属性；输入、schema 对象默认值和输出事件均隔离嵌套引用。应用应在同一 Vue 更新批次设置 HTML 与根属性；组件一次事务原子回填，不发 change、不进入用户历史。等价回写不重建文档。JSON 模式使用 `modelValue.attrs`，不能另传 `documentAttributes`。扩展列表和 valueFormat 均不能在已有实例中动态更换。
+HTML 模式使用 `documentAttributes?: Record<string, unknown>` 和 `update:documentAttributes`，只接受注册过且通过校验、可用于 JSON 快照的根属性；输入、schema 对象默认值和输出事件均隔离嵌套引用。应用应在同一 Vue 更新批次设置 HTML 与根属性；组件一次事务原子回填，不发 change、不进入用户历史。原样回写编辑器输出的 HTML 会保留输入中的空格和光标位置，根属性仍独立校验。JSON 模式使用 `modelValue.attrs`，不能另传 `documentAttributes`。扩展列表和 valueFormat 均不能在已有实例中动态更换。
 
 `toolbar-extra` 插槽提供 `{ disabled, readonly }` 上下文；`content-before`、`content-after` 在组件自有的单滚动区内投影标题、封面等应用内容。`scrollViewportChange(viewport: HTMLElement | null)` 在实际滚动容器挂载及卸载时通知应用。工具栏可用 `showHighlight`、`showAudio`、`showAttachment` 隐藏相应入口，默认均为 true，解析和输出能力继续保留。
 
@@ -243,4 +243,4 @@ HTML 模式使用 `documentAttributes?: Record<string, unknown>` 和 `update:doc
 
 `imageCropError({ phase: 'read' | 'crop' | 'upload' | 'commit', cause })` 是独立裁剪错误事件。`TiptapImageUploadState.cropCommitPending?: boolean` 仅从确认开始编码到上传校验、正文替换和同步模型输出完成期间为 true；读取预览不占用保存忙状态。`canSave` 同时检查原上传任务与该字段。裁剪失败保留合法旧图并解除忙状态，不增加正文上传的 failed 数量；编码失败可在对话框重试，上传失败可重新打开裁剪。消费方继续以 `canSave` 决定保存能力。
 
-编辑器自行显示读取、应用裁剪和失败反馈，同时继续发出上述事件。读取失败可重新尝试，上传失败可重新裁剪；不会缓存上次裁剪文件用于重传。目标被删除或替换、文档回填或会话取消后，原目标的重试入口失效。
+编辑器自行显示读取、应用裁剪和失败反馈，同时继续发出上述事件。扩展通过追加事务移动原图位置时，裁剪仍作用于原图。扩展拒绝替换事务时，组件报告 `commit` 错误，可重新裁剪。读取失败可重新尝试，上传失败可重新裁剪；不会缓存上次裁剪文件用于重传。目标被删除或替换、文档回填或会话取消后，原目标的重试入口失效。

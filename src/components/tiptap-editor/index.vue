@@ -30,7 +30,7 @@
   import type { FileItem, FilePickerAdapter, FileType } from '../../services/types';
   import AImageCropper from '../image-cropper/index.vue';
   import type { AImageCropperExposed } from '../image-cropper/types';
-  import { validateAdditionalExtensions, parseHTMLDocument } from './application-extensions';
+  import { validateAdditionalExtensions, validatedDocumentAttributes, parseHTMLDocument } from './application-extensions';
   import AFilePicker from '../file-picker/index.vue';
   import MediaBubbleMenu from './media-bubble-menu.vue';
   import { getDocumentSnapshot, getPublicDocument, parseTiptapDocument } from './content';
@@ -137,7 +137,13 @@
 
   const valueFormat = props.valueFormat ?? 'html';
   const { readonly, canUploadImage, canUploadVideo, canUploadAudio, showWordCount, maxLength } = toRefs(props);
-  const readContent = (currentEditor: Editor, value: unknown, phase: TiptapContentError['phase']) => {
+  let emittedHTML: { value: string; body: Fragment } | undefined;
+  const readContent = (
+    currentEditor: Editor,
+    value: unknown,
+    phase: TiptapContentError['phase'],
+    current?: ReturnType<typeof getPublicDocument>
+  ) => {
     if (value === undefined) {
       value = valueFormat === 'json' ? { type: 'doc', content: [] } : '';
     }
@@ -146,7 +152,14 @@
       return null;
     }
     try {
-      if (valueFormat === 'html') return parseHTMLDocument(currentEditor, value as string, props.documentAttributes ?? {});
+      if (valueFormat === 'html') {
+        const attrs = props.documentAttributes ?? {};
+        if (current && emittedHTML?.body === currentEditor.state.doc.content && emittedHTML.value === value) {
+          // Parsing our own HTML again would collapse whitespace the user just typed.
+          return current.type.create(validatedDocumentAttributes(currentEditor, attrs), current.content, current.marks);
+        }
+        return parseHTMLDocument(currentEditor, value as string, attrs);
+      }
       if (props.documentAttributes !== undefined) throw new Error('JSON documents own their root attributes.');
       return parseTiptapDocument(value, currentEditor);
     } catch (cause) {
@@ -380,6 +393,12 @@
   const cropCommitPending = ref(false);
   const cropPhase = ref<'idle' | 'read' | 'preview' | 'commit'>('idle');
   const cropFailure = ref<TiptapImageCropError>();
+  const cropFailureMessage = computed(() => {
+    const phase = cropFailure.value?.phase;
+    if (phase === 'read') return t('admin9Ui.tiptapEditor.cropReadFailed');
+    if (phase === 'upload') return t('admin9Ui.tiptapEditor.cropUploadFailed');
+    return t('admin9Ui.tiptapEditor.cropApplyFailed');
+  });
   const cropCanRetry = ref(false);
   const withCropState = (state: TiptapImageUploadState): TiptapImageUploadState => ({
     ...state,
@@ -530,7 +549,10 @@
     onUpdate: ({ editor: currentEditor }) => {
       let content: string | TiptapDocument;
       if (valueFormat === 'json') content = getDocumentSnapshot(currentEditor.state.doc);
-      else content = publicHTML(currentEditor);
+      else {
+        content = publicHTML(currentEditor);
+        emittedHTML = { value: content, body: currentEditor.state.doc.content };
+      }
       const value = content as TiptapEditorValue<F>;
       const changeValue =
         valueFormat === 'json' ? (getDocumentSnapshot(currentEditor.state.doc) as TiptapEditorValue<F>) : value;
@@ -1171,9 +1193,9 @@
     () => [props.modelValue, props.documentAttributes] as const,
     ([value]) => {
       if (!editor.value) return;
-      const content = readContent(editor.value, value, 'update');
-      if (content === null) return;
       const current = getPublicDocument(editor.value.state.doc);
+      const content = readContent(editor.value, value, 'update', current);
+      if (content === null) return;
       const unchanged = content.eq(current);
       if (!unchanged) {
         const bodyChanged = !content.content.eq(current.content);
@@ -1779,7 +1801,7 @@
           <IconLoading v-if="!cropFailure" class="a9-tiptap-editor__loading-icon" />
           {{
             cropFailure
-              ? t(`admin9Ui.tiptapEditor.${cropFailure.phase === 'read' ? 'cropReadFailed' : 'cropApplyFailed'}`)
+              ? cropFailureMessage
               : t(`admin9Ui.tiptapEditor.${cropPhase === 'read' ? 'cropReading' : 'cropApplying'}`)
           }}
         </span>

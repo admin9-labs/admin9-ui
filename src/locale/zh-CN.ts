@@ -306,6 +306,7 @@ export default {
     cropApplying: '正在应用裁剪…',
     cropReadFailed: '原图片读取失败，请重试。',
     cropApplyFailed: '裁剪结果未能应用，原图已保留。',
+    cropUploadFailed: '裁剪结果上传失败，原图已保留。',
     cropRetryRead: '重新尝试',
     cropRetryEdit: '重新裁剪',
     dismiss: '关闭提示',

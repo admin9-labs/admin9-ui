@@ -2687,6 +2687,26 @@ describe('ATiptapEditor public contract', () => {
     internalEditor.commands.insertContent('9');
     expect(instance.getHTML()).toBe('<p>123456789</p>');
   });
+  it('preserves typed spaces and the caret when the parent echoes HTML', async () => {
+    const { props, editor, instance } = await mountReactiveEditor({ modelValue: '<p>Hello</p>' });
+    props.value = {
+      ...props.value,
+      'onUpdate:modelValue': (html: string) => {
+        props.value.modelValue = html;
+      },
+    };
+    await flush();
+    editor.commands.setTextSelection(6);
+    editor.view.dispatch(editor.state.tr.insertText(' '));
+    await flush();
+    expect(instance.getHTML()).toBe('<p>Hello </p>');
+    expect(editor.state.selection.from).toBe(7);
+    editor.view.dispatch(editor.state.tr.insertText('world'));
+    await flush();
+    expect(props.value.modelValue).toBe('<p>Hello world</p>');
+    expect(editor.state.selection.from).toBe(12);
+  });
+
   it('atomically loads HTML and validated root attributes without updates or history', async () => {
     const onUpdate = vi.fn();
     const onAttrs = vi.fn();
@@ -2860,8 +2880,8 @@ describe('ATiptapEditor public contract', () => {
         readSource,
       },
     });
-    editor.commands.setTextSelection(3);
-    editor.commands.insertContent('X');
+    editor.commands.setTextSelection(7);
+    editor.view.dispatch(editor.state.tr.insertText(' '));
     const controller = (instance.$.setupState as { imageCrop: { start(pos: number): Promise<void>; cancel(): void } })
       .imageCrop;
     const crop = controller.start(findNodePosition(editor, 'blockImage'));
@@ -2870,6 +2890,7 @@ describe('ATiptapEditor public contract', () => {
     await flush();
     expect(editor.state.selection.from).toBe(position);
     expect(signal?.aborted).toBe(false);
+    expect(instance.getHTML()).toContain('<p>abcdef </p>');
     expect(instance.getJSON().attrs?.title).toBe('New');
     editor.commands.undo();
     expect(instance.getHTML()).toContain('<p>abcdef</p>');
