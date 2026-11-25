@@ -182,15 +182,19 @@ const ButtonStub = defineComponent({
 });
 
 const TransparentStub = defineComponent({
-  props: { content: String },
+  props: { content: String, popupVisible: Boolean },
   setup(props, { slots }) {
-    return () => h('span', { 'data-tooltip-content': props.content }, [slots.default?.(), slots.content?.()]);
+    return () =>
+      h('span', { 'data-tooltip-content': props.content, 'data-tooltip-visible': props.popupVisible }, [
+        slots.default?.(),
+        slots.content?.(),
+      ]);
   },
 });
 
 const PopoverStub = defineComponent({
   props: { popupVisible: Boolean },
-  emits: ['update:popupVisible'],
+  emits: ['update:popupVisible', 'popupVisibleChange'],
   setup(props, { emit, slots }) {
     return () =>
       h(
@@ -198,7 +202,10 @@ const PopoverStub = defineComponent({
         {
           class: 'popover-stub',
           onClickCapture: () => {
-            if (!props.popupVisible) emit('update:popupVisible', true);
+            if (!props.popupVisible) {
+              emit('update:popupVisible', true);
+              emit('popupVisibleChange', true);
+            }
           },
         },
         [slots.default?.(), props.popupVisible ? slots.content?.() : undefined]
@@ -374,21 +381,118 @@ function dispatchEditorKey(key: 'ArrowLeft' | 'Backspace') {
 }
 
 describe('ATiptapEditor public contract', () => {
-  it('cancels a format menu when the parent replaces the body instead of applying its old selection to the new document', async () => {
-    const { props, editor, instance } = await mountReactiveEditor({ modelValue: '<p>ABC</p><p>DEF</p>' });
-    editor.commands.setTextSelection({ from: 1, to: 3 });
+  it.each([
+    ['Text color', 'replace'],
+    ['Highlight', 'replace'],
+    ['Text color', 'clear'],
+    ['Highlight', 'clear'],
+  ])('discards the open %s draft on document %s', async (label, operation) => {
+    const { props, instance, editor } = await mountReactiveEditor({ modelValue: '<p>Old document</p>' });
+    editor.commands.setTextSelection({ from: 1, to: 4 });
+    const trigger = () => document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+    trigger()?.click();
+    await flush();
+    const input = document.querySelector<HTMLInputElement>('.arco-color-picker-input-hex input');
+    if (!input) throw new Error('Missing color input');
+    input.focus();
+    input.value = 'C0A5A5';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.blur();
+    await flush();
+    // An unchanged model echo must not discard the pending draft.
+    props.value = { ...props.value, modelValue: instance.getHTML() };
+    await flush();
+    expect(document.querySelector('.arco-color-picker-input-hex input')).toBe(input);
+    expect(input.value.toUpperCase()).toBe('C0A5A5');
+    if (operation === 'clear') instance.clear();
+    else props.value = { ...props.value, modelValue: '<p>New document</p>' };
+    await flush();
+    expect(document.querySelector('.a9-text-palette')).toBeNull();
+    expect(trigger()?.getAttribute('aria-expanded')).toBe('false');
+    trigger()?.click();
+    await flush();
+    expect(document.querySelector<HTMLInputElement>('.arco-color-picker-input-hex input')?.value.toUpperCase()).not.toBe(
+      'C0A5A5'
+    );
+    editor.commands.insertContent('X');
+    expect(instance.getHTML()).not.toMatch(/color:|<mark/);
+  });
+
+  it('converts a code block to paragraph through the menu without enabling indentation for code', async () => {
+    const instance = mountEditor({ modelValue: '<pre><code>const value = 1;</code></pre>' });
+    await flush();
+    const editor = getInternalEditor(instance);
+    editor.commands.setTextSelection(4);
     await waitForEditorStateRender();
-    document
-      .querySelector<HTMLButtonElement>('[data-format-control="firstLineIndent"]')
-      ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    const spacing = document.querySelector<HTMLButtonElement>(
+      '.a9-tiptap-editor__toolbar-paragraph button[aria-label="Typography"]'
+    );
+    spacing?.click();
     await flush();
-    const staleOption = document.querySelector<HTMLButtonElement>('[data-format-option="firstLineIndent:2em"]');
-    expect(staleOption).not.toBeNull();
-    props.value = { ...props.value, modelValue: '<p>NEW DOCUMENT</p>' };
+    const indentOptions = document.querySelector('[role="menu"][aria-label="First line indent"]');
+    expect(indentOptions).not.toBeNull();
+    expect([...(indentOptions?.querySelectorAll<HTMLButtonElement>('button') ?? [])].every((button) => button.disabled)).toBe(
+      true
+    );
+    const trigger = document.querySelector<HTMLButtonElement>('.a9-tiptap-editor__block-menu');
+    expect(trigger?.getAttribute('aria-disabled')).toBe('false');
+    trigger?.click();
     await flush();
-    expect(document.querySelector('[data-format-option="firstLineIndent:2em"]')).toBeNull();
-    staleOption?.click();
-    expect(instance.getHTML()).toBe('<p>NEW DOCUMENT</p>');
+    const paragraph = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(
+      (button) => button.textContent?.trim() === 'Paragraph'
+    );
+    expect(paragraph?.disabled).toBe(false);
+    paragraph?.click();
+    await flush();
+    expect(instance.getHTML()).toBe('<p>const value = 1;</p>');
+    editor.commands.undo();
+    expect(instance.getHTML()).toBe('<pre><code>const value = 1;</code></pre>');
+    editor.commands.redo();
+    expect(instance.getHTML()).toBe('<p>const value = 1;</p>');
+  });
+
+  it('converts through the block menu without losing individual indents or lifting lists', async () => {
+    const instance = mountEditor({
+      modelValue: '<p style="text-indent:0em">A</p><p style="text-indent:2em">B</p><ul><li><p>C</p></li></ul>',
+    });
+    await flush();
+    const editor = getInternalEditor(instance);
+    editor.commands.selectAll();
+    await waitForEditorStateRender();
+    document.querySelector<HTMLButtonElement>('.a9-tiptap-editor__block-menu')?.click();
+    await flush();
+    const option = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(
+      (button) => button.textContent?.trim() === 'H2'
+    );
+    expect(option?.disabled).toBe(false);
+    option?.click();
+    await waitForEditorStateRender();
+    expect(
+      instance
+        .getJSON()
+        .content?.slice(0, 2)
+        .map((node) => [node.type, node.attrs?.level, node.attrs?.firstLineIndent])
+    ).toEqual([
+      ['heading', 2, '0em'],
+      ['heading', 2, '2em'],
+    ]);
+    expect(instance.getHTML()).toContain('<ul><li><p>C</p></li></ul>');
+    editor.commands.undo();
+    expect(instance.getJSON().content?.[0].type).toBe('paragraph');
+    editor.commands.redo();
+    expect(instance.getJSON().content?.[0].type).toBe('heading');
+    let listText = 0;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'paragraph' && node.textContent === 'C') listText = pos + 1;
+    });
+    editor.commands.setTextSelection(listText);
+    await waitForEditorStateRender();
+    document.querySelector<HTMLButtonElement>('.a9-tiptap-editor__block-menu')?.click();
+    await flush();
+    const heading = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find(
+      (button) => button.textContent?.trim() === 'H2'
+    );
+    expect(heading?.disabled).toBe(true);
   });
 
   it('shows source-reading feedback without blocking save and clears an invalid retry target', async () => {
@@ -896,6 +1000,292 @@ describe('ATiptapEditor public contract', () => {
     expect(document.querySelector('.a9-editor-integrity')).toBeNull();
   });
 
+  it.each([4, 5, 6])('labels imported H%s accurately while offering only H1-H3 creation', async (level) => {
+    const { editor } = await mountReactiveEditor({ modelValue: `<h${level}>Imported</h${level}>` });
+    editor.commands.setTextSelection(2);
+    await waitForEditorStateRender();
+    const trigger = document.querySelector<HTMLButtonElement>('.a9-tiptap-editor__block-menu');
+    expect(trigger?.textContent).toContain(`H${level}`);
+    trigger?.click();
+    await flush();
+    const choices = [...(trigger?.closest('.popover-stub')?.querySelectorAll('[role="menuitemradio"]') ?? [])].map((button) =>
+      button.textContent?.trim()
+    );
+    expect(choices).toEqual(['Paragraph', 'H1', 'H2', 'H3']);
+  });
+
+  it('enables all mixed bold text on the first toggle and removes it on the second', async () => {
+    const { editor, instance } = await mountReactiveEditor({ modelValue: '<p><strong>Bold</strong> plain</p>' });
+    editor.commands.selectAll();
+    await waitForEditorStateRender();
+    const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="Bold"]');
+    expect(trigger?.getAttribute('aria-pressed')).toBe('mixed');
+    expect(trigger?.querySelector('.a9-toolbar-mixed')).not.toBeNull();
+    trigger?.click();
+    expect(instance.getHTML()).toBe('<p><strong>Bold plain</strong></p>');
+    trigger?.click();
+    expect(instance.getHTML()).toBe('<p>Bold plain</p>');
+  });
+
+  it('cancels a link draft with Escape, restoring the trigger and original text selection without history', async () => {
+    const { editor, instance } = await mountReactiveEditor({ modelValue: '<p>Link target</p>' });
+    editor.commands.setTextSelection({ from: 1, to: 5 });
+    const selection = editor.state.selection.toJSON();
+    const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="Link"]');
+    trigger?.click();
+    await flush();
+    const input = document.querySelector<HTMLInputElement>('.a9-tiptap-editor__link-panel input');
+    expect(input).not.toBeNull();
+    input?.focus();
+    input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await flush();
+    expect(document.querySelector('.a9-tiptap-editor__link-panel')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    expect(editor.state.selection.toJSON()).toEqual(selection);
+    expect(instance.getHTML()).toBe('<p>Link target</p>');
+    expect(editor.can().undo()).toBe(false);
+  });
+
+  it('closes a stale link draft on external replacement and when disabled', async () => {
+    const { props } = await mountReactiveEditor({ modelValue: '<p>Original</p>' });
+    const open = async () => {
+      document.querySelector<HTMLButtonElement>('button[aria-label="Link"]')?.click();
+      await flush();
+      expect(document.querySelector('.a9-tiptap-editor__link-panel')).not.toBeNull();
+    };
+    await open();
+    props.value = { ...props.value, modelValue: '<p>Replacement</p>' };
+    await flush();
+    expect(document.querySelector('.a9-tiptap-editor__link-panel')).toBeNull();
+    await open();
+    props.value = { ...props.value, disabled: true };
+    await flush();
+    expect(document.querySelector('.a9-tiptap-editor__link-panel')).toBeNull();
+  });
+
+  it.each(['bulletList', 'orderedList', 'blockquote'])('uniformly toggles mixed %s blocks on then off', async (kind) => {
+    const markup =
+      kind === 'blockquote'
+        ? '<blockquote><p>A</p></blockquote><p>B</p>'
+        : `<${kind === 'bulletList' ? 'ul' : 'ol'}><li><p>A</p></li></${kind === 'bulletList' ? 'ul' : 'ol'}><p>B</p>`;
+    const { editor } = await mountReactiveEditor({ modelValue: markup });
+    editor.commands.selectAll();
+    const labels: Record<string, string> = { bulletList: 'Bullet list', orderedList: 'Ordered list', blockquote: 'Blockquote' };
+    const button = document.querySelector<HTMLButtonElement>(`button[aria-label="${labels[kind]}"]`);
+    expect(button).not.toBeNull();
+    await waitForEditorStateRender();
+    expect(button?.getAttribute('aria-pressed')).toBe('mixed');
+    expect(button?.querySelector('.a9-toolbar-mixed')).not.toBeNull();
+    button?.click();
+    const hasAncestor = (pos: number) => {
+      const resolved = editor.state.doc.resolve(pos + 1);
+      for (let depth = resolved.depth - 1; depth > 0; depth -= 1) {
+        if (resolved.node(depth).type.name === kind) return true;
+      }
+      return false;
+    };
+    let states: boolean[] = [];
+    editor.state.doc.descendants((node, pos) => {
+      if (node.isTextblock) states.push(hasAncestor(pos));
+    });
+    expect(states).toEqual([true, true]);
+    button?.click();
+    states = [];
+    editor.state.doc.descendants((node, pos) => {
+      if (node.isTextblock) states.push(hasAncestor(pos));
+    });
+    expect(states).toEqual([false, false]);
+    expect(editor.state.doc.textContent).toBe('AB');
+  });
+
+  it.each([
+    [996, 'is-wide'],
+    [800, 'is-medium'],
+    [320, 'is-narrow'],
+  ])('adapts toolbar groups to a %s pixel editor container', async (width, mode) => {
+    const originalRect = HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function rect(this: HTMLElement) {
+      return this.classList.contains('a9-tiptap-editor') ? new DOMRect(0, 0, Number(width), 500) : originalRect.call(this);
+    });
+    const { editor } = await mountReactiveEditor({ modelValue: '<p>Text</p>' });
+    const toolbar = document.querySelector('.a9-tiptap-editor__toolbar');
+    expect(toolbar?.classList.contains(String(mode))).toBe(true);
+    expect(toolbar?.querySelector('.a9-tiptap-editor__toolbar-history button[aria-label="Undo"]')).not.toBeNull();
+    const textMenu = toolbar?.querySelector<HTMLButtonElement>('button[aria-label="Text"]');
+    if (Number(width) < 960) {
+      expect(textMenu).not.toBeNull();
+      textMenu?.click();
+      await flush();
+      expect(document.querySelector('button[aria-label="Strikethrough"]')).not.toBeNull();
+      expect(document.querySelector('button[aria-label="Format painter"]')).not.toBeNull();
+    } else expect(textMenu).toBeNull();
+    if (Number(width) < 640) {
+      const insert = toolbar?.querySelector<HTMLButtonElement>('[data-toolbar-menu="insert"] button');
+      insert?.click();
+      await flush();
+      const tableItem = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(
+        (button) => button.textContent?.trim() === 'Table'
+      );
+      expect(tableItem).not.toBeUndefined();
+      tableItem?.click();
+      await flush();
+      expect(insert?.getAttribute('aria-expanded')).toBe('false');
+      expect(document.querySelector('.a9-tiptap-editor__table-picker')).not.toBeNull();
+    }
+    expect(editor.can().undo()).toBe(false);
+  });
+
+  it.each(['code', 'media'])('keeps unavailable formatting discoverable for a %s selection', async (kind) => {
+    const { editor, instance } = await mountReactiveEditor({
+      modelValue: kind === 'code' ? '<pre><code>Code</code></pre>' : '<img src="/image.png" data-display="block">',
+    });
+    if (kind === 'media') editor.commands.setNodeSelection(0);
+    else editor.commands.setTextSelection(2);
+    await waitForEditorStateRender();
+    const before = instance.getHTML();
+    ['Bold', 'Italic', 'Underline', 'Strikethrough', 'Bullet list', 'Ordered list', 'Blockquote'].forEach((label) => {
+      const button = document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+      expect(button).not.toBeNull();
+      expect(button?.disabled).toBe(false);
+      expect(button?.getAttribute('aria-disabled')).toBe('true');
+      expect(button?.getAttribute('aria-description')).toBeTruthy();
+      button?.focus();
+      expect(document.activeElement).toBe(button);
+      button?.click();
+      expect(instance.getHTML()).toBe(before);
+    });
+    if (kind === 'code') expect(document.querySelector('.a9-tiptap-editor__block-menu')?.textContent).toContain('Code block');
+  });
+
+  it('unsets explicit alignment through Default and avoids a document transaction for the current alignment', async () => {
+    const { editor, instance } = await mountReactiveEditor({ modelValue: '<p style="text-align:center">Center</p>' });
+    editor.commands.setTextSelection(2);
+    const changed = vi.fn();
+    editor.on('transaction', ({ transaction }) => {
+      if (transaction.docChanged) changed();
+    });
+    const open = async () => {
+      document.querySelector<HTMLButtonElement>('button[aria-label="Text alignment"]')?.click();
+      await flush();
+    };
+    await open();
+    document.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-label="Align center"]')?.click();
+    expect(changed).not.toHaveBeenCalled();
+    expect(editor.can().undo()).toBe(false);
+    await flush();
+    await open();
+    const reset = document.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-label="Default"]');
+    expect(reset).not.toBeNull();
+    reset?.click();
+    expect(editor.state.doc.firstChild?.attrs.textAlign).toBeNull();
+    expect(instance.getHTML()).toBe('<p>Center</p>');
+    expect(changed).toHaveBeenCalledOnce();
+    editor.commands.undo();
+    expect(editor.state.doc.firstChild?.attrs.textAlign).toBe('center');
+  });
+
+  it('remeasures when the editor container resizes and disconnects its observer', async () => {
+    let width = 996;
+    const callbacks: (() => void)[] = [];
+    const disconnect = vi.fn();
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          callbacks.push(callback);
+        }
+
+        observe = vi.fn();
+
+        unobserve = vi.fn();
+
+        disconnect = disconnect;
+      }
+    );
+    const originalRect = HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function rect(this: HTMLElement) {
+      return this.classList.contains('a9-tiptap-editor') ? new DOMRect(0, 0, width, 500) : originalRect.call(this);
+    });
+    try {
+      const { props } = await mountReactiveEditor({ modelValue: '<p>Resize</p>' });
+      expect(document.querySelector('.a9-tiptap-editor__toolbar')?.classList.contains('is-wide')).toBe(true);
+      width = 320;
+      callbacks.forEach((callback) => callback());
+      await flush();
+      expect(document.querySelector('.a9-tiptap-editor__toolbar')?.classList.contains('is-narrow')).toBe(true);
+      width = 800;
+      callbacks.forEach((callback) => callback());
+      await flush();
+      expect(document.querySelector('.a9-tiptap-editor__toolbar')?.classList.contains('is-medium')).toBe(true);
+      props.value = { ...props.value, readonly: true };
+      await flush();
+      expect(disconnect).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps a link draft through an asynchronous preceding insertion and applies to the original mapped target', async () => {
+    const { editor, instance } = await mountReactiveEditor({ modelValue: '<p>Before target after</p>' });
+    editor.commands.setTextSelection({ from: 8, to: 14 });
+    document.querySelector<HTMLButtonElement>('button[aria-label="Link"]')?.click();
+    await flush();
+    const inputs = document.querySelectorAll<HTMLInputElement>('.a9-tiptap-editor__link-panel input');
+    inputs[1].value = '/mapped';
+    inputs[1].dispatchEvent(new Event('input', { bubbles: true }));
+    editor.view.dispatch(editor.state.tr.insertText('NEW ', 1));
+    editor.commands.setTextSelection(1);
+    await flush();
+    expect(document.querySelector('.a9-tiptap-editor__link-panel')).not.toBeNull();
+    expect(document.querySelectorAll<HTMLInputElement>('.a9-tiptap-editor__link-panel input')[1].value).toBe('/mapped');
+    const apply = [...document.querySelectorAll<HTMLButtonElement>('.a9-tiptap-editor__link-panel button')].find(
+      (button) => button.textContent?.trim() === 'Apply'
+    );
+    apply?.click();
+    await flush();
+    const result = new DOMParser().parseFromString(instance.getHTML(), 'text/html');
+    expect(result.querySelector('a')?.textContent).toBe('target');
+    expect(result.querySelector('a')?.getAttribute('href')).toBe('/mapped');
+    expect(result.body.textContent).toBe('NEW Before target after');
+  });
+
+  it('maps the original link cursor for cancellation and invalidates a deleted target', async () => {
+    const { editor } = await mountReactiveEditor({ modelValue: '<p><a href="/old">target</a> after</p>' });
+    editor.commands.setTextSelection(3);
+    const trigger = document.querySelector<HTMLButtonElement>('button[aria-label="Link"]');
+    trigger?.click();
+    await flush();
+    editor.view.dispatch(editor.state.tr.insertText('NEW ', 1));
+    await flush();
+    document
+      .querySelector('.a9-tiptap-editor__link-panel')
+      ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await flush();
+    expect(editor.state.selection.from).toBe(7);
+    expect(editor.state.selection.empty).toBe(true);
+    expect(document.activeElement).toBe(trigger);
+    editor.commands.setTextSelection({ from: 5, to: 11 });
+    trigger?.click();
+    await flush();
+    editor.view.dispatch(editor.state.tr.delete(editor.state.selection.from, editor.state.selection.to));
+    await flush();
+    expect(document.querySelector('.a9-tiptap-editor__link-panel')).toBeNull();
+  });
+
+  it('shows basic toolbar explanations on keyboard focus and dismisses them on blur', async () => {
+    const { editor } = await mountReactiveEditor({ modelValue: '<p>Keyboard</p>' });
+    const button = document.querySelector<HTMLButtonElement>('button[aria-label="Bold"]');
+    const tooltip = button?.closest('[data-tooltip-content]');
+    expect(tooltip?.getAttribute('data-tooltip-visible')).toBe('false');
+    button?.focus();
+    await flush();
+    expect(tooltip?.getAttribute('data-tooltip-visible')).toBe('true');
+    editor.commands.focus();
+    await flush();
+    expect(tooltip?.getAttribute('data-tooltip-visible')).toBe('false');
+    expect(editor.can().undo()).toBe(false);
+  });
+
   beforeEach(() => {
     document.body.innerHTML = '<div id="app"></div>';
     // Notification transitions outlive individual fixtures on slower CI runners.
@@ -1385,6 +1775,8 @@ describe('ATiptapEditor public contract', () => {
     expect(document.querySelectorAll('table tr')).toHaveLength(2);
     expect(document.querySelectorAll('table td')).toHaveLength(8);
     expect(document.querySelectorAll('table th')).toHaveLength(0);
+    document.querySelector<HTMLButtonElement>('.a9-toolbar-table-trigger')?.click();
+    await flush();
     expect(document.body.textContent).toContain('Insert row below');
     expect(document.body.textContent).toContain('Delete table');
   });
@@ -1575,6 +1967,8 @@ describe('ATiptapEditor public contract', () => {
     const instance = mountEditor({ modelValue: '<p>Toolbar state</p>', service: {} });
     await flush();
 
+    document.querySelector<HTMLButtonElement>('[data-toolbar-menu="insert"] button')?.click();
+    await flush();
     const ordinaryLabels = ['Bold', 'Italic', 'Insert image', 'Insert video', 'Insert audio', 'Undo', 'Redo'];
     ordinaryLabels.forEach((label) => {
       expect(document.querySelector(`button[aria-label="${label}"]`)?.getAttribute('data-button-type')).toBe('text');

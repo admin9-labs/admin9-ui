@@ -1,27 +1,53 @@
 <script setup lang="ts">
-  import { nextTick, ref, watch } from 'vue';
+  import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
   import { IconDown } from '@arco-design/web-vue/es/icon';
 
-  const props = defineProps<{ visible: boolean; label: string; disabled?: boolean; iconOnly?: boolean }>();
+  const props = defineProps<{
+    visible: boolean;
+    label: string;
+    disabled?: boolean;
+    iconOnly?: boolean;
+    unavailable?: boolean;
+    description?: string;
+    active?: boolean;
+    buttonClass?: string;
+  }>();
   const emit = defineEmits<{ (event: 'update:visible', value: boolean): void }>();
   const trigger = ref<{ $el: HTMLButtonElement }>();
   const panel = ref<HTMLElement>();
+  const triggerFocused = ref(false);
+  const tooltipHovered = ref(false);
+  const availableHeight = ref(480);
+  const fitMenu = () => {
+    if (!props.visible) return;
+    const rect = trigger.value?.$el.getBoundingClientRect();
+    if (rect) availableHeight.value = Math.max(80, Math.max(rect.top, window.innerHeight - rect.bottom) - 48);
+  };
+  onMounted(() => window.addEventListener('resize', fitMenu));
+  onBeforeUnmount(() => window.removeEventListener('resize', fitMenu));
   const items = () => Array.from(panel.value?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []);
   const close = (restoreFocus: boolean) => {
     emit('update:visible', false);
     if (restoreFocus) trigger.value?.$el.focus({ preventScroll: true });
   };
   const open = () => {
-    if (!props.disabled) emit('update:visible', true);
+    if (!props.disabled && !props.unavailable) emit('update:visible', true);
   };
   watch(
     () => props.visible,
     async (visible) => {
       if (!visible) return;
+      fitMenu();
       await nextTick();
       if (!props.visible) return;
       const buttons = items();
       (buttons.find((button) => button.getAttribute('aria-checked') === 'true') ?? buttons[0])?.focus();
+    }
+  );
+  watch(
+    () => props.disabled || props.unavailable,
+    (unavailable) => {
+      if (unavailable && props.visible) close(Boolean(panel.value?.contains(document.activeElement)) && !props.disabled);
     }
   );
   const onKeydown = (event: KeyboardEvent) => {
@@ -49,18 +75,27 @@
     trigger="click"
     position="bottom"
     :disabled="disabled"
-    @update:popup-visible="emit('update:visible', $event)"
+    @update:popup-visible="emit('update:visible', $event && !unavailable)"
   >
-    <a-tooltip :content="label">
+    <a-tooltip
+      :content="description ? `${label}：${description}` : label"
+      :popup-visible="!visible && (triggerFocused || tooltipHovered)"
+      @popup-visible-change="tooltipHovered = $event"
+    >
       <a-button
         ref="trigger"
         size="small"
-        type="text"
+        :type="active ? 'primary' : 'text'"
+        :class="[buttonClass, { 'a9-media-menu-unavailable': unavailable }]"
+        :aria-disabled="unavailable || disabled"
+        :aria-description="description"
         :disabled="disabled"
         :aria-label="label"
         :aria-expanded="visible"
         aria-haspopup="menu"
         @mousedown.prevent
+        @focus="triggerFocused = true"
+        @blur="triggerFocused = false"
         @keydown.down.prevent="open"
         @keydown.up.prevent="open"
         @keydown.esc.stop.prevent="close(true)"
@@ -70,7 +105,15 @@
       </a-button>
     </a-tooltip>
     <template #content>
-      <div ref="panel" class="a9-media-menu" role="menu" :aria-label="label" @mousedown.stop @keydown="onKeydown">
+      <div
+        ref="panel"
+        class="a9-media-menu"
+        :style="{ maxHeight: `${Math.min(480, availableHeight)}px` }"
+        role="menu"
+        :aria-label="label"
+        @mousedown.stop
+        @keydown="onKeydown"
+      >
         <slot />
       </div>
     </template>
@@ -78,6 +121,11 @@
 </template>
 
 <style scoped lang="less">
+  .a9-media-menu-unavailable {
+    color: var(--color-text-4);
+    cursor: not-allowed;
+  }
+
   .a9-media-menu__arrow {
     margin-left: 4px;
     font-size: 10px;
@@ -89,6 +137,8 @@
     gap: 2px;
     min-width: 160px;
     max-width: calc(100vw - 48px);
+    max-height: min(480px, calc(100dvh - 64px));
+    overflow: hidden auto;
 
     :deep(button) {
       display: flex;

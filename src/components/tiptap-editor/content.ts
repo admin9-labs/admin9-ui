@@ -81,7 +81,7 @@ export function parseTiptapDocument(value: unknown, editor: Editor): ProseMirror
     if (name === 'paragraph' || name === 'heading') {
       attrs.textAlign = ['left', 'center', 'right', 'justify'].includes(attrs.textAlign) ? attrs.textAlign : null;
     }
-    if (name === 'paragraph') attrs.firstLineIndent = normalizeFirstLineIndent(attrs.firstLineIndent);
+    if (name === 'paragraph' || name === 'heading') attrs.firstLineIndent = normalizeFirstLineIndent(attrs.firstLineIndent);
     if (name === 'paragraph' || name === 'heading') attrs.lineHeight = normalizeLineHeight(attrs.lineHeight);
     if (name === 'heading') attrs.level = [1, 2, 3, 4, 5, 6].includes(attrs.level) ? attrs.level : 1;
     if (name === 'orderedList') {

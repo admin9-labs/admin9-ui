@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { Editor, Extension } from '@tiptap/core';
-import { createApp, nextTick, type App } from 'vue';
-import ArcoVue from '@arco-design/web-vue';
+import { createApp, defineComponent, h, nextTick, type App } from 'vue';
 import { createI18n } from 'vue-i18n';
 import StarterKit from '@tiptap/starter-kit';
 import TextAlign from '@tiptap/extension-text-align';
@@ -14,6 +13,8 @@ import {
   TextStyle,
   SafeColor,
   SafeFontSize,
+  SafeHighlight,
+  normalizeTextColor,
   normalizeFirstLineIndent,
 } from '../src/components/tiptap-editor/text-format';
 import { parseTiptapDocument } from '../src/components/tiptap-editor/content';
@@ -29,6 +30,7 @@ function mount(content: string) {
       TextStyle,
       SafeColor,
       SafeFontSize,
+      SafeHighlight,
       TextFormat,
       TableKit,
       TextAlign.configure({ types: ['paragraph', 'heading'], alignments: ['left', 'center', 'right', 'justify'] }),
@@ -44,43 +46,51 @@ function mountToolbar(editor: Editor, showHighlight = true) {
   const props = { editor, disabled: false, showHighlight };
   const app = createApp(TextFormatToolbar, props);
   app.use(createI18n({ legacy: false, locale: 'en-US', messages }));
-  app.use(ArcoVue);
+  const passthrough = defineComponent({
+    setup:
+      (_, { slots }) =>
+      () =>
+        h('div', [slots.default?.(), slots.content?.()]),
+  });
+  app.component(
+    'ADropdown',
+    defineComponent({
+      emits: ['select'],
+      setup:
+        (_, { slots, emit }) =>
+        () =>
+          h(
+            'div',
+            {
+              class: 'test-dropdown',
+              onChoose: (event: Event) => emit('select', (event as CustomEvent).detail),
+            },
+            [slots.default?.(), slots.content?.()]
+          ),
+    })
+  );
+  ['a-button', 'a-doption', 'a-tooltip', 'a-popover'].forEach((name) => app.component(name, passthrough));
   apps.push(app);
   app.mount(root);
   return root;
 }
-async function settle() {
-  await nextTick();
-  await nextTick();
-  await nextTick();
-}
-async function openMenu(root: HTMLElement, name: string) {
-  const trigger = root.querySelector<HTMLButtonElement>(`[data-format-control="${name}"]`);
-  if (!trigger) throw new Error(`Missing control: ${name}`);
-  trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
-  await settle();
-  const menu = document.querySelector<HTMLElement>(`[role="menu"][aria-label="${trigger.getAttribute('aria-label')}"]`);
-  if (!menu) throw new Error(`Missing menu: ${name}`);
-  return menu;
-}
-async function menuState(root: HTMLElement, name: string) {
-  const menu = await openMenu(root, name);
-  const result = {
-    heading: menu.querySelector('.a9-text-format-menu__heading')?.textContent,
-    checked: Array.from(menu.querySelectorAll('[role="menuitemradio"][aria-checked="true"]')).map((option) =>
-      option.getAttribute('data-format-option')
-    ),
-  };
-  menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
-  await settle();
-  return result;
-}
-async function choose(root: HTMLElement, name: string, value: string) {
-  const menu = await openMenu(root, name);
-  const option = menu.querySelector<HTMLButtonElement>(`[data-format-option="${name}:${value}"]`);
-  if (!option) throw new Error(`Missing option: ${name}:${value}`);
+function choose(root: HTMLElement, label: string, value: string) {
+  const control = root.querySelector(`[aria-label="${label}"]`)?.closest('.test-dropdown');
+  if (control) {
+    control.dispatchEvent(new CustomEvent('choose', { detail: value }));
+    return;
+  }
+  const menu = root.querySelector(`[role="menu"][aria-label="${label}"]`);
+  const options = menu?.querySelectorAll<HTMLElement>('[role="menuitemradio"]');
+  const values =
+    {
+      'First line indent': ['default', '0em', '2em'],
+      'Line height': ['default', '1', '1.5', '2'],
+      'Letter spacing': ['default', '0px', '1px', '2px'],
+    }[label] ?? [];
+  const option = options?.[values.indexOf(value)];
+  if (!option) throw new Error(`Missing control: ${label}`);
   option.click();
-  await settle();
 }
 function selectCells(editor: Editor, anchor: number, head: number) {
   const cells: number[] = [];
@@ -244,26 +254,66 @@ describe('text format attributes', () => {
 });
 
 describe('text format toolbar', () => {
+  it.each([
+    ['Text color', 'textStyle', 'color'],
+    ['Highlight', 'highlight', 'color'],
+  ])('keeps %s custom color as a draft until applied and supports undo and default', async (label, mark, attribute) => {
+    const editor = mount('<p>ABC DEF</p>');
+    editor.commands.setTextSelection({ from: 1, to: 4 });
+    const root = mountToolbar(editor);
+    const panel = root.querySelector<HTMLElement>(`.a9-text-palette[aria-label="${label}"]`);
+    if (!panel) throw new Error('Missing color panel');
+    expect(panel.querySelectorAll('.arco-color-picker-color-block')).toHaveLength(33);
+    const input = panel.querySelector<HTMLInputElement>('.arco-color-picker-input-hex input');
+    if (!input) throw new Error('Missing hex input');
+    input.focus();
+    input.value = 'C0A5A5';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+    input.blur();
+    await nextTick();
+    expect(editor.getHTML()).toBe('<p>ABC DEF</p>');
+    const buttons = panel.querySelectorAll<HTMLElement>('.a9-text-palette__actions > div');
+    Array.from(buttons)
+      .find((button) => button.textContent?.trim() === 'Apply')
+      ?.click();
+    await nextTick();
+    expect(editor.state.doc.firstChild?.firstChild?.marks.find((item) => item.type.name === mark)?.attrs[attribute]).toBe(
+      normalizeTextColor('#c0a5a5')
+    );
+    expect(editor.state.doc.firstChild?.lastChild?.marks).toHaveLength(0);
+    editor.commands.undo();
+    expect(editor.getHTML()).toBe('<p>ABC DEF</p>');
+    editor.commands.redo();
+    buttons[0].click();
+    expect(editor.getHTML()).toBe('<p>ABC DEF</p>');
+  });
+
   it('reads and applies only rectangular selected cells, including null versus explicit zero', async () => {
     const editor = mount(
       '<table><tr><td><p style="text-indent:0em;line-height:1.5"><span style="letter-spacing:0px;font-size:36px;color:red">A</span></p></td><td><p>B</p></td></tr><tr><td><p style="text-indent:0em;line-height:1.5"><span style="letter-spacing:0px;font-size:36px;color:red">C</span></p></td><td><p>D</p></td></tr></table>'
     );
     selectCells(editor, 0, 2);
     const root = mountToolbar(editor);
-    await settle();
-    expect((await menuState(root, 'firstLineIndent')).checked).toEqual(['firstLineIndent:0em']);
-    expect((await menuState(root, 'lineHeight')).checked).toEqual(['lineHeight:1.5']);
-    expect((await menuState(root, 'letterSpacing')).checked).toEqual(['letterSpacing:0px']);
-    expect(root.querySelector('[data-format-control="fontSize"]')?.textContent).toContain('36px');
-    expect((await menuState(root, 'color')).heading).not.toContain(messages['en-US'].admin9Ui.tiptapEditor.mixedFormat);
-    await choose(root, 'firstLineIndent', '2em');
-    await choose(root, 'lineHeight', '2');
-    await choose(root, 'letterSpacing', '2px');
+    await nextTick();
+    const label = (name: string) => {
+      const control = root.querySelector(`[aria-label="${name}"]`);
+      return control?.getAttribute('aria-description') ?? control?.textContent;
+    };
+    expect(label('First line indent')).toBe('No indent');
+    expect(label('Line height')).toContain('1.5');
+    expect(label('Letter spacing')).toContain('0px');
+    expect(label('Font size')).toContain('36px');
+    expect(root.querySelector('.a9-text-palette > span')?.textContent).not.toBe('Mixed');
+    choose(root, 'First line indent', '2em');
+    choose(root, 'Line height', '2');
+    choose(root, 'Letter spacing', '2px');
     expect(editor.state.selection).toBeInstanceOf(CellSelection);
     expect(editor.state.selection.ranges).toHaveLength(2);
-    expect((await menuState(root, 'firstLineIndent')).checked).toEqual(['firstLineIndent:2em']);
-    expect((await menuState(root, 'lineHeight')).checked).toEqual(['lineHeight:2']);
-    expect((await menuState(root, 'letterSpacing')).checked).toEqual(['letterSpacing:2px']);
+    await nextTick();
+    expect(label('First line indent')).toBe('Indent 2 characters');
+    expect(label('Line height')).toBe('Double');
+    expect(label('Letter spacing')).toContain('2px');
     const values: unknown[] = [];
     editor.state.doc.descendants((node) => {
       if (node.type.name === 'paragraph' && node.textContent)
@@ -279,38 +329,67 @@ describe('text format toolbar', () => {
       ['2em', '2', '2px'],
       [null, null, null],
     ]);
-    await choose(root, 'letterSpacing', 'default');
+    choose(root, 'Letter spacing', 'default');
     const colors: unknown[] = [];
     editor.state.doc.descendants((node) => {
       if (node.isText) colors.push(node.marks.find((mark) => mark.type.name === 'textStyle')?.attrs.color ?? null);
     });
     expect(colors[0]).toBeTruthy();
     expect(colors).toEqual([colors[0], null, colors[0], null]);
-    await choose(root, 'firstLineIndent', 'default');
-    await choose(root, 'letterSpacing', '0px');
+    choose(root, 'First line indent', 'default');
+    choose(root, 'Letter spacing', '0px');
     selectCells(editor, 0, 1);
-    await settle();
-    expect((await menuState(root, 'firstLineIndent')).checked).toEqual(['firstLineIndent:default']);
-    const spacing = await menuState(root, 'letterSpacing');
-    expect(spacing.heading).toContain(messages['en-US'].admin9Ui.tiptapEditor.mixedFormat);
-    expect(spacing.checked).toEqual([]);
+    await nextTick();
+    expect(label('First line indent')).toBe(messages['en-US'].admin9Ui.tiptapEditor.formatDefault);
+    expect(label('Letter spacing')).toContain(messages['en-US'].admin9Ui.tiptapEditor.mixedFormat);
     selectCells(editor, 0, 2);
-    await choose(root, 'firstLineIndent', '0em');
+    choose(root, 'First line indent', '0em');
     selectCells(editor, 0, 1);
-    await settle();
-    const indent = await menuState(root, 'firstLineIndent');
-    expect(indent.heading).toContain(messages['en-US'].admin9Ui.tiptapEditor.mixedFormat);
-    expect(indent.checked).toEqual([]);
+    await nextTick();
+    expect(label('First line indent')).toContain(messages['en-US'].admin9Ui.tiptapEditor.mixedFormat);
+  });
+
+  it('applies indent to headings and paragraphs, distinguishes mixed and excludes code blocks', async () => {
+    const editor = mount('<h2 style="text-indent:0em">Title</h2><p>Body</p><pre><code>Code</code></pre>');
+    editor.commands.selectAll();
+    const root = mountToolbar(editor);
+    await nextTick();
+    const trigger = () => root.querySelector('[aria-label="First line indent"]');
+    expect(trigger()?.getAttribute('aria-description')).toBe('Mixed formatting');
+    const menu = () => root.querySelector('[role="menu"][aria-label="First line indent"]');
+    expect(menu()?.querySelector('[aria-checked="true"]')).toBeNull();
+    choose(root, 'First line indent', '2em');
+    expect(editor.state.doc.child(0).attrs.firstLineIndent).toBe('2em');
+    expect(editor.state.doc.child(1).attrs.firstLineIndent).toBe('2em');
+    expect(editor.state.doc.child(2).attrs.firstLineIndent).toBeUndefined();
+    editor.commands.undo();
+    expect(editor.state.doc.child(0).attrs.firstLineIndent).toBe('0em');
+    expect(editor.state.doc.child(1).attrs.firstLineIndent).toBeNull();
+    editor.commands.redo();
+    let codePos = 0;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'codeBlock') codePos = pos + 1;
+    });
+    editor.commands.setTextSelection(codePos);
+    await nextTick();
+    expect(trigger()?.getAttribute('aria-disabled')).toBe('true');
+    expect(trigger()?.getAttribute('aria-description')).toBe('Available for paragraphs and headings');
+    expect(menu()?.querySelector('[aria-checked="true"]')).toBeNull();
+    const before = editor.getJSON();
+    choose(root, 'First line indent', '0em');
+    expect(editor.getJSON()).toEqual(before);
   });
 
   it('excludes a trailing unselected paragraph at a text selection boundary', async () => {
     const editor = mount('<p>A</p><p style="line-height:2;text-indent:2em">B</p>');
     editor.commands.setTextSelection({ from: 1, to: 4 });
     const root = mountToolbar(editor);
-    await settle();
-    expect((await menuState(root, 'lineHeight')).checked).toEqual(['lineHeight:default']);
-    await choose(root, 'lineHeight', '1');
-    await choose(root, 'firstLineIndent', '0em');
+    await nextTick();
+    expect(root.querySelector('[aria-label="Line height"]')?.getAttribute('aria-description')).toContain(
+      messages['en-US'].admin9Ui.tiptapEditor.formatDefault
+    );
+    choose(root, 'Line height', '1');
+    choose(root, 'First line indent', '0em');
     expect(editor.state.doc.child(0).attrs).toMatchObject({ lineHeight: '1', firstLineIndent: '0em' });
     expect(editor.state.doc.child(1).attrs).toMatchObject({ lineHeight: '2', firstLineIndent: '2em' });
   });
@@ -319,28 +398,21 @@ describe('text format toolbar', () => {
     const editor = mount('<p>Text</p>');
     editor.commands.selectAll();
     const root = mountToolbar(editor, false);
-    await settle();
-    expect(root.querySelector('[data-format-control="highlight"]')).toBeNull();
-    expect(root.querySelector('[data-format-control="letterSpacing"]')?.textContent).toContain(
-      messages['en-US'].admin9Ui.tiptapEditor.textLayout
-    );
-    expect(root.querySelector('[data-format-control="firstLineIndent"]')?.getAttribute('aria-label')).toBe(
-      messages['en-US'].admin9Ui.tiptapEditor.firstLineIndent
-    );
-    const exercise = async (attribute: string, value: string) => {
-      await choose(root, attribute, value);
+    await nextTick();
+    expect(root.querySelector('[aria-label="Highlight"]')).toBeNull();
+    [
+      ['First line indent', '2em', 'firstLineIndent'],
+      ['Line height', '1.5', 'lineHeight'],
+      ['Letter spacing', '2px', 'letterSpacing'],
+    ].forEach(([label, value, attribute]) => {
+      choose(root, label, value);
       const attrs = () =>
         attribute === 'letterSpacing'
           ? editor.state.doc.firstChild?.firstChild?.marks.find((mark) => mark.type.name === 'textStyle')?.attrs
           : editor.state.doc.firstChild?.attrs;
       expect(attrs()?.[attribute]).toBe(value);
-      expect((await menuState(root, attribute)).checked).toEqual([`${attribute}:${value}`]);
-      await choose(root, attribute, 'default');
+      choose(root, label, 'default');
       expect(attrs()?.[attribute] ?? null).toBeNull();
-      expect((await menuState(root, attribute)).checked).toEqual([`${attribute}:default`]);
-    };
-    await exercise('firstLineIndent', '2em');
-    await exercise('lineHeight', '1.5');
-    await exercise('letterSpacing', '2px');
+    });
   });
 });

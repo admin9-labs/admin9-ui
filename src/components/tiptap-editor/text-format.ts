@@ -3,8 +3,6 @@ import { Color, FontSize, TextStyle } from '@tiptap/extension-text-style';
 import Highlight from '@tiptap/extension-highlight';
 
 export const fontSizes = ['12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px', '36px', '48px'];
-export const textColors = ['#000000', '#ffffff', '#666666', '#f53f3f', '#ff7d00', '#f7ba1e', '#00b42a', '#165dff', '#722ed1'];
-export const highlightColors = ['#fff7cc', '#e8ffea', '#e8f3ff', '#ffe8f1', '#f5e8ff'];
 
 export function normalizeTextColor(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -106,13 +104,15 @@ export const TextFormat = Extension.create({
   addGlobalAttributes() {
     return [
       {
-        types: ['paragraph'],
+        types: ['paragraph', 'heading'],
         attributes: {
           firstLineIndent: {
             default: null,
             parseHTML: (element: HTMLElement) => normalizeFirstLineIndent(element.style.textIndent),
-            renderHTML: (attrs: Record<string, unknown>) =>
-              normalizeFirstLineIndent(attrs.firstLineIndent) ? { style: `text-indent: ${attrs.firstLineIndent}` } : {},
+            renderHTML: (attrs: Record<string, unknown>) => {
+              const indent = normalizeFirstLineIndent(attrs.firstLineIndent);
+              return indent === null ? {} : { style: `text-indent: ${indent}` };
+            },
           },
         },
       },
