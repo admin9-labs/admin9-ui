@@ -2,6 +2,7 @@ import { Editor } from '@tiptap/core';
 import CharacterCount from '@tiptap/extension-character-count';
 import StarterKit from '@tiptap/starter-kit';
 import { TableKit } from '@tiptap/extension-table';
+import { Plugin } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import createCharacterLimit from '../src/components/tiptap-editor/character-limit';
@@ -47,6 +48,14 @@ describe('paste character limit integrity', () => {
     editor.commands.redo();
     expect(editor.state.doc.textContent).toBe(`BEGIN${'甲'.repeat(7)}END`);
     expect(notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports rejection when an extension filters the truncated paste', () => {
+    const { editor, notify } = mount('<p>ABC</p>', 5);
+    editor.registerPlugin(new Plugin({ filterTransaction: (tr) => !tr.getMeta('paste') }));
+    editor.view.pasteText('1234567');
+    expect(editor.getHTML()).toBe('<p>ABC</p>');
+    expect(notify.mock.calls).toEqual([[{ kind: 'rejected', limit: 5 }]]);
   });
 
   it('accounts for replaced selection without deleting its surrounding text', () => {

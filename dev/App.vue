@@ -151,6 +151,7 @@
       '<span style="color:#165dff;font-size:20px">从活动的起因</span>、<span style="color:#f53f3f">现场的变化</span>和参与者的感受入手'
     )
     .replace('写下三个最想告诉读者的要点', '<mark>写下三个最想告诉读者的要点</mark>');
+  const previewManuscript = ref(manuscriptHTML);
   const manuscriptCopyStatus = ref('');
   const copyManuscript = async (kind: 'normal' | 'overLimit' | 'missingImage') => {
     let html = manuscriptHTML;
@@ -158,6 +159,7 @@
     if (kind === 'missingImage') {
       html += '<p>现场作品与合影</p><img src="file:///source/portrait.png"><img src="file:///source/group.png">';
     }
+    previewManuscript.value = html;
     const template = document.createElement('template');
     template.innerHTML = html;
     try {
@@ -726,7 +728,7 @@
             <p role="status">{{ manuscriptCopyStatus }}</p>
             <!-- This fixture is a local, static article, never user-provided HTML. -->
             <!-- eslint-disable-next-line vue/no-v-html -->
-            <div class="tiptap-manuscript__source" v-html="manuscriptHTML" />
+            <div class="tiptap-manuscript__source" v-html="previewManuscript" />
           </details>
           <ATiptapEditor
             :key="editorScenario"

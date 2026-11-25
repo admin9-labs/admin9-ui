@@ -81,8 +81,9 @@ export default function createCharacterLimit(getLimit: () => number, notify: (no
               if (prefix && prefix.content.size > 0) {
                 const transaction = view.state.tr.replaceSelection(prefix);
                 if (characters(transaction.doc) <= limit && !transaction.doc.eq(empty.doc)) {
+                  const before = view.state;
                   view.dispatch(closeHistory(transaction).setMeta('paste', true).setMeta('uiEvent', 'paste').scrollIntoView());
-                  notify({ kind: 'partial', limit });
+                  notify({ kind: view.state === before ? 'rejected' : 'partial', limit });
                   return true;
                 }
               }
