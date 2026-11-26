@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { crc32 } from 'node:zlib';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import {
   cropOutputSize,
@@ -13,7 +14,96 @@ const crop: ImageCropOptions = {
   source: { maxBytes: 10 * 1024 ** 2, maxPixels: 20_000_000 },
   output: { format: 'image/png', resize: { mode: 'exact', longEdge: 640 }, maxBytes: 2 * 1024 ** 2 },
 };
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+// Solid 40×24 images. Each test inserts its own metadata into the same source pixels.
+const jpeg = Buffer.from(
+  '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAAYACgBAREA/8QAFQABAQAAAAAAAAAAAAAAAAAAAAj/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAA/AJ/AAAAB/9k=',
+  'base64'
+);
+const pngBase = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAACgAAAAYCAAAAACt7+AcAAAAEUlEQVR42mNgGAWjYBQMNwAAA9gAAa4p3LEAAAAASUVORK5CYII=',
+  'base64'
+);
+
+function orientationTiff(orientation: number, littleEndian = false) {
+  // TIFF header, one IFD entry (Orientation, SHORT, count 1), then no further IFD.
+  const tiff = Buffer.alloc(26);
+  const view = new DataView(tiff.buffer, tiff.byteOffset, tiff.length);
+  tiff.write(littleEndian ? 'II' : 'MM');
+  view.setUint16(2, 42, littleEndian);
+  view.setUint32(4, 8, littleEndian);
+  view.setUint16(8, 1, littleEndian);
+  view.setUint16(10, 0x0112, littleEndian);
+  view.setUint16(12, 3, littleEndian);
+  view.setUint32(14, 1, littleEndian);
+  view.setUint16(18, orientation, littleEndian);
+  return tiff;
+}
+
+function pngWithExif(tiff: Buffer) {
+  const chunk = Buffer.alloc(12 + tiff.length);
+  chunk.writeUInt32BE(tiff.length, 0);
+  chunk.write('eXIf', 4);
+  tiff.copy(chunk, 8);
+  chunk.writeUInt32BE(crc32(chunk.subarray(4, -4)), chunk.length - 4);
+  return Buffer.concat([pngBase.subarray(0, 33), chunk, pngBase.subarray(33)]); // after IHDR
+}
+
+describe('image crop orientation', () => {
+  it.each([1, 2, 3, 4, 5, 6, 7, 8])('reads JPEG orientation %i and preserves the encoded dimensions', (orientation) => {
+    const tiff = orientationTiff(orientation);
+    const app1 = Buffer.concat([Buffer.from([0xff, 0xe1, 0, 8 + tiff.length]), Buffer.from('Exif\0\0'), tiff]);
+    const source = Buffer.concat([jpeg.subarray(0, 20), app1, jpeg.subarray(20)]); // after JFIF APP0
+    expect(inspectImageSource(source, crop.source.maxPixels)).toEqual({
+      orientation,
+      width: 40,
+      height: 24,
+      type: 'image/jpeg',
+    });
+  });
+
+  it.each([
+    { orientation: 4, width: 40, height: 24 },
+    { orientation: 5, width: 24, height: 40 },
+  ])('checks PNG bitmap dimensions and ownership for orientation $orientation', async ({ orientation, width, height }) => {
+    const source = new File([pngWithExif(orientationTiff(orientation))], 'photo.png', { type: 'image/png' });
+    const accepted = { width, height, close: vi.fn() };
+    const rejected = { width: height, height: width, close: vi.fn() };
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValueOnce(accepted).mockResolvedValueOnce(rejected));
+
+    await expect(decodeImageSource(source, crop.source)).resolves.toBe(accepted);
+    expect(accepted.close).not.toHaveBeenCalled();
+    await expect(decodeImageSource(source, crop.source)).rejects.toMatchObject({ code: 'decode' });
+    expect(rejected.close).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['little', 'big'])('reads PNG eXIf orientation in %s-endian order', (order) => {
+    const source = pngWithExif(orientationTiff(6, order === 'little'));
+    expect(inspectImageSource(source, crop.source.maxPixels).orientation).toBe(6);
+  });
+
+  it('rejects a truncated TIFF header inside a complete PNG', () => {
+    const source = pngWithExif(orientationTiff(6).subarray(0, 7));
+    expect(() => inspectImageSource(source, crop.source.maxPixels)).toThrow(expect.objectContaining({ code: 'format' }));
+  });
+
+  it.each([
+    { field: 'IFD offset outside eXIf', offset: 4, bytes: '00000020' },
+    { field: 'entry count exceeding eXIf length', offset: 8, bytes: '0002' },
+    { field: 'orientation type other than SHORT', offset: 12, bytes: '0004' },
+    { field: 'orientation count other than one', offset: 14, bytes: '00000002' },
+    { field: 'orientation value above eight', offset: 18, bytes: '0009' },
+  ])('rejects PNG metadata with $field', ({ offset, bytes }) => {
+    const tiff = orientationTiff(6);
+    tiff.write(bytes, offset, 'hex');
+    const source = pngWithExif(tiff);
+    expect(() => inspectImageSource(source, crop.source.maxPixels)).toThrow(expect.objectContaining({ code: 'format' }));
+  });
+});
 
 describe('image crop processing', () => {
   it.each([
@@ -66,7 +156,6 @@ describe('image crop processing', () => {
     vi.stubGlobal('createImageBitmap', decode);
     await expect(decodeImageSource(original, { maxBytes: 1, maxPixels: 20_000_000 })).rejects.toThrow('sourceSize');
     expect(decode).not.toHaveBeenCalled();
-    vi.unstubAllGlobals();
   });
   it('rejects oversized encoded output without silently changing quality or dimensions', async () => {
     const context = { drawImage: vi.fn() };
